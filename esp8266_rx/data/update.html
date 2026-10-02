@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RC Lap Timer Pro - Web Update</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0c10;
+      --card-bg: rgba(22, 27, 34, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --neon-green: #00ff66;
+      --neon-cyan: #00e5ff;
+      --neon-orange: #ff9900;
+      --neon-red: #ff3366;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --font-display: 'Orbitron', sans-serif;
+      --font-body: 'Rajdhani', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      font-size: 16px;
+      padding: 15px;
+      background-color: var(--bg-dark);
+      background-image: 
+        linear-gradient(27deg, #151515 5px, transparent 5px),
+        linear-gradient(207deg, #151515 5px, transparent 5px),
+        linear-gradient(27deg, #222 5px, transparent 5px),
+        linear-gradient(207deg, #222 5px, transparent 5px);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px, 0 10px, 10px 0;
+      color: var(--text-main);
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero-header {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto 15px auto;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--card-border);
+      background: linear-gradient(to right, rgba(0,0,0,0.8), rgba(0,0,0,0.4)), 
+                  url('https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;
+      padding: 25px 15px;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 12px var(--neon-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      padding: 24px 20px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 600px;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .card h2 {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      color: var(--neon-cyan);
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+    }
+
+    .info {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .file-input-wrapper {
+      margin-bottom: 18px;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      background: #0d1117;
+      border: 1px dashed var(--card-border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    input[type="file"]:hover {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+    }
+
+    .btn {
+      width: 100%;
+      font-family: var(--font-display);
+      background: linear-gradient(135deg, #1f293d, #111827);
+      color: var(--neon-cyan);
+      border: 1px solid var(--neon-cyan);
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 0 12px var(--neon-cyan);
+      background: var(--neon-cyan);
+      color: #000;
+    }
+
+    .btn:disabled {
+      border-color: #444;
+      color: #666;
+      cursor: not-allowed;
+      background: #111;
+    }
+
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 10px;
+      background-color: #0d1117;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #333;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background-color: var(--neon-green);
+      box-shadow: 0 0 10px var(--neon-green);
+      transition: width 0.2s ease;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-back {
+      margin-top: 15px;
+      display: inline-block;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .nav-back:hover {
+      color: var(--neon-cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero-header">
+    <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+  </div>
+
+  <main class="card">
+    <h2>WEB-UPDATE</h2>
+    <p class="info">Lade eine neue Web-Datei (z. B. <code>index.html</code>) in das LittleFS hoch. Die Runden- und Session-Daten bleiben erhalten.</p>
+
+    <form id="uploadForm">
+      <div class="file-input-wrapper">
+        <input type="file" id="fileInput" name="data" required>
+      </div>
+      <button type="submit" id="subBtn" class="btn">Datei Hochladen</button>
+    </form>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div id="status">Upload läuft...</div>
+    </div>
+  </main>
+
+  <a href="/" class="nav-back">← Zurück zur Hauptseite</a>
+
+  <script>
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput.files.length) return;
+
+      const formData = new FormData();
+      formData.append('data', fileInput.files[0]);
+
+      const xhr = new XMLHttpRequest();
+      const btn = document.getElementById('subBtn');
+      const progressContainer = document.getElementById('progressContainer');
+      const progressFill = document.getElementById('progressFill');
+      const statusText = document.getElementById('status');
+
+      btn.disabled = true;
+      progressContainer.style.display = 'block';
+      statusText.style.color = 'var(--text-main)';
+      statusText.innerText = 'Upload läuft...';
+
+      xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          progressFill.style.width = percent + '%';
+          statusText.innerText = 'Upload: ' + percent + '%';
+        }
+      });
+
+      xhr.addEventListener('load', function() {
+        if (xhr.status === 200) {
+          statusText.style.color = 'var(--neon-green)';
+          statusText.innerText = '✓ ERFOLGREICH HOCHGELADEN!';
+        } else {
+          statusText.style.color = 'var(--neon-red)';
+          statusText.innerText = '✕ FEHLER BEIM UPLOAD!';
+        }
+        btn.disabled = false;
+      });
+
+      xhr.addEventListener('error', function() {
+        statusText.style.color = 'var(--neon-red)';
+        statusText.innerText = '✕ NETZWERKFEHLER!';
+        btn.disabled = false;
+      });
+
+      xhr.open('POST', '/api/upload', true);
+      xhr.send(formData);
+    });
+  </script>
+</body>
+</html>

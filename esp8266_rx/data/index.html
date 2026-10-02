@@ -1,0 +1,1783 @@
+<!DOCTYPE HTML>
+<html lang="de">
+<head>
+  <title>RC Lap Timer Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0c10;
+      --card-bg: rgba(22, 27, 34, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --neon-green: #00ff66;
+      --neon-cyan: #00e5ff;
+      --neon-orange: #ff9900;
+      --neon-red: #ff3366;
+      --neon-purple: #b532ff;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --font-display: 'Orbitron', sans-serif;
+      --font-body: 'Rajdhani', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      font-size: 16px;
+      margin: 0;
+      padding: 15px;
+      background-color: var(--bg-dark);
+      background-image: 
+        linear-gradient(27deg, #151515 5px, transparent 5px),
+        linear-gradient(207deg, #151515 5px, transparent 5px),
+        linear-gradient(27deg, #222 5px, transparent 5px),
+        linear-gradient(207deg, #222 5px, transparent 5px);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px, 0 10px, 10px 0;
+      color: var(--text-main);
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .main-wrapper {
+      flex: 1;
+    }
+
+    .hero-header {
+      position: relative;
+      max-width: 900px;
+      margin: 0 auto 15px auto;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--card-border);
+      background: linear-gradient(to right, rgba(0,0,0,0.8), rgba(0,0,0,0.4)), 
+                  url('https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;
+      padding: 25px 15px;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      font-weight: 900;
+      margin: 0;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 12px var(--neon-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+      border-radius: 12px;
+      max-width: 900px;
+      margin: 15px auto;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .status-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      font-family: var(--font-display);
+      margin-bottom: 15px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .status-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .status-val {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .timer-display {
+      color: var(--neon-cyan) !important;
+      font-size: 24px !important;
+      text-shadow: 0 0 8px var(--neon-cyan);
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .control-group {
+      border: 1px solid var(--card-border);
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .control-group-title {
+      font-family: var(--font-display);
+      font-size: 11px;
+      color: var(--neon-cyan);
+      letter-spacing: 1px;
+    }
+
+    .btn {
+      font-family: var(--font-display);
+      background: linear-gradient(135deg, #1f293d, #111827);
+      color: var(--neon-cyan);
+      border: 1px solid var(--neon-cyan);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: 6px;
+      margin: 3px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 10px var(--neon-cyan);
+      background: var(--neon-cyan);
+      color: #000;
+    }
+
+    .btn-danger { color: var(--neon-red); border-color: var(--neon-red); }
+    .btn-danger:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 10px var(--neon-red); }
+
+    .btn-warning { color: var(--neon-orange); border-color: var(--neon-orange); }
+    .btn-warning:hover { background: var(--neon-orange); color: #000; box-shadow: 0 0 10px var(--neon-orange); }
+
+    .btn-success { color: var(--neon-green); border-color: var(--neon-green); }
+    .btn-success:hover { background: var(--neon-green); color: #000; box-shadow: 0 0 10px var(--neon-green); }
+
+    .btn-purple { color: var(--neon-purple); border-color: var(--neon-purple); }
+    .btn-purple:hover { background: var(--neon-purple); color: #fff; box-shadow: 0 0 10px var(--neon-purple); }
+
+    .btn-ios { color: #e040fb; border-color: #e040fb; }
+    .btn-ios:hover { background: #e040fb; color: #fff; }
+
+    .btn-icon { background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 2px 5px; color: var(--text-muted); }
+    .btn-icon:hover { color: var(--neon-red); }
+
+    input[type="number"], input[type="text"] {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #0d1117;
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 15px;
+      text-align: center;
+    }
+
+    input[type="number"]:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--neon-cyan);
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: center; }
+    th { 
+      font-family: var(--font-display); 
+      font-size: 12px; 
+      background-color: rgba(0, 229, 255, 0.1); 
+      color: var(--neon-cyan); 
+      text-transform: uppercase; 
+      letter-spacing: 1px; 
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    th.sortable:hover {
+      background-color: rgba(0, 229, 255, 0.25);
+      color: #fff;
+    }
+    th .sort-icon {
+      font-size: 10px;
+      margin-left: 4px;
+      opacity: 0.6;
+    }
+    th.sortable:hover .sort-icon {
+      opacity: 1;
+    }
+    tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.02); }
+    tr:hover { background-color: rgba(255, 255, 255, 0.04); }
+
+    .driver-name { cursor: pointer; text-decoration: none; color: #fff; font-weight: 700; font-size: 17px; transition: color 0.2s; }
+    .driver-name:hover { color: var(--neon-green); text-shadow: 0 0 5px var(--neon-green); }
+
+    .recent-id-box { display: flex; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .recent-item { padding: 8px 16px; background: #0d1117; color: var(--text-muted); border-radius: 6px; font-weight: bold; border: 1px solid #222; font-family: var(--font-display); }
+    .recent-item.active { background: rgba(255, 153, 0, 0.15); color: var(--neon-orange); border-color: var(--neon-orange); box-shadow: 0 0 8px rgba(255, 153, 0, 0.3); }
+
+    .pause-badge { color: var(--neon-orange); font-weight: bold; background: rgba(255, 152, 0, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--neon-orange); font-size: 13px; }
+    .pit-badge { color: var(--neon-cyan); font-weight: bold; background: rgba(0, 229, 255, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--neon-cyan); font-size: 13px; }
+
+    .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); }
+    .modal-content { background: #161b22; margin: 3% auto; padding: 20px; border-radius: 12px; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--card-border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+    .modal-body { overflow-y: auto; padding-right: 5px; flex-grow: 1; }
+    .modal-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 5px; }
+
+    .tts-filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+    .tts-filter-item { background: #0d1117; padding: 8px 10px; border-radius: 6px; border: 1px solid #222; font-size: 13px; display: flex; align-items: center; }
+    .tts-filter-item input { margin-right: 8px; transform: scale(1.2); cursor: pointer; }
+
+    .driver-select-card { background: #0d1117; border: 1px solid #222; padding: 12px 15px; border-radius: 8px; margin-bottom: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
+    .driver-select-card:hover { border-color: var(--neon-cyan); background: #161b22; transform: translateX(3px); }
+
+    .tab-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; }
+    .tab-btn { font-family: var(--font-display); background: #0d1117; color: var(--text-muted); border: 1px solid #333; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    .tab-btn.active { background: var(--neon-cyan); color: #000; border-color: var(--neon-cyan); font-weight: bold; }
+
+    .session-card { background: #0d1117; border: 1px solid #222; border-left: 4px solid var(--neon-green); padding: 12px 15px; margin-bottom: 10px; border-radius: 6px; text-align: left; }
+    .session-card.quali { border-left-color: var(--neon-purple); }
+    .session-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #222; }
+    .driver-lap-details { display: none; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 6px; margin-top: 5px; }
+
+    .backup-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #222;
+      margin-bottom: 15px;
+    }
+
+    footer {
+      max-width: 900px;
+      margin: 20px auto 10px auto;
+      padding: 15px;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--card-border);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="main-wrapper">
+    <div class="hero-header">
+      <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+    </div>
+
+    <div class="card">
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-label">Modus</span>
+          <span id="modeDisplay" class="status-val" style="color:var(--neon-green);">Freies Training</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Restzeit</span>
+          <span id="timerDisplay" class="status-val timer-display">--:--</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Führende Runde</span>
+          <span id="leaderLapDisplay" class="status-val" style="color:var(--neon-orange);">0</span>
+        </div>
+      </div>
+
+      <div class="control-grid">
+        <div class="control-group">
+          <div class="control-group-title">PRACTICE</div>
+          <button class="btn btn-success" onclick="startPractice()">Freies Training</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">QUALIFYING</div>
+          <div>
+            <input type="number" id="qualiTimeInput" min="1" max="60" value="5" style="width: 60px;"> Min.
+          </div>
+          <button class="btn btn-purple" onclick="startQuali()">Start Quali</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">RENNEN (RUNDEN)</div>
+          <div>
+            <input type="number" id="raceLapsInput" min="1" max="100" value="15" style="width: 60px;"> Rnd.
+          </div>
+          <button class="btn btn-success" onclick="startRaceLaps()">Start Runden</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">RENNEN (ZEIT)</div>
+          <div>
+            <input type="number" id="raceTimeInput" min="1" max="60" value="8" style="width: 60px;"> Min.
+          </div>
+          <button class="btn btn-success" onclick="startRaceTime()">Start Zeit</button>
+        </div>
+      </div>
+
+      <div>
+        <button class="btn btn-warning" onclick="stopSession()">⏹ Durchgang Stoppen</button>
+        <button class="btn btn-danger" onclick="resetLaps()">Komplett-Reset</button>
+        <button class="btn btn-purple" onclick="openStatsOverviewModal()">📊 Statistiken</button>
+        <button class="btn" onclick="openConfigModal()">⚙️ Einstellungen</button>
+        <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
+        <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
+        <button class="btn btn-light" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
+      </div>
+      <div style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
+        Sprachausgabe für: <strong id="ttsSelectedCarsDisplay" style="color: var(--neon-cyan);">Alle Fahrzeuge</strong>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('laps')">Runde <span id="sort-icon-laps" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('lastLap')">Letzte Zeit <span id="sort-icon-lastLap" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('bestLap')">Beste Zeit <span id="sort-icon-bestLap" class="sort-icon"></span></th>
+          </tr>
+        </thead>
+        <tbody id="lapTable">
+          <tr><td colspan="5">Warte auf Signal...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="background: rgba(13, 17, 23, 0.9);">
+      <h3 style="color: var(--neon-orange); margin: 0 0 5px 0; font-size: 14px; font-family: var(--font-display); letter-spacing: 1px;">LIVE SENSOR DEBUG (LETZTE 5 IDS)</h3>
+      <div class="recent-id-box" id="recentIdsContainer">
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATISTIKEN ÜBERSICHT MODAL -->
+  <div id="statsOverviewModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="color:var(--neon-green); margin:0; font-family:var(--font-display);">📊 STATISTIKEN & RENN-HISTORIE</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsOverviewModal()">✕</button>
+      </div>
+
+      <div class="backup-bar">
+        <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">DATENSICHERUNG:</span>
+        <div>
+          <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="downloadStatsBackup()">💾 Backup herunterladen</button>
+          <button class="btn btn-warning" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="triggerRestoreBackup()">📂 Wiederherstellen</button>
+          <input type="file" id="backupFileInput" accept=".json" style="display:none;" onchange="handleRestoreBackup(event)">
+        </div>
+      </div>
+
+      <div class="tab-container">
+        <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer-Statistik</button>
+        <button class="tab-btn" id="tabSessionsBtn" onclick="switchStatsTab('sessions')">🏆 Rennen & Qualifying</button>
+      </div>
+      
+      <div class="modal-body" id="statsTabDrivers"></div>
+      <div class="modal-body" id="statsTabSessions" style="display:none;"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+        <button class="btn btn-danger" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
+        <button class="btn btn-warning" onclick="closeStatsOverviewModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EINZELNE FAHRER STATISTIK (DETAILS) -->
+  <div id="statsModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <button class="btn" style="padding:4px 8px;" onclick="backToStatsOverview()">← Zurück</button>
+        <h3 id="statsModalTitle" style="color:var(--neon-green); margin:0; font-family:var(--font-display);">Statistik</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsModal()">✕</button>
+      </div>
+      
+      <div class="modal-body">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortStatsTable('lap')">Runde <span id="sort-stats-icon-lap" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortStatsTable('time')">Zeit <span id="sort-stats-icon-time" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody id="statsTableBody">
+            <tr><td colspan="5">Lade Statistik...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+        <button class="btn btn-danger" id="deleteDriverStatsBtn" onclick="confirmDeleteDriverStats()">Alle Statistiken dieses Fahrers löschen</button>
+        <button class="btn btn-warning" onclick="closeStatsModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EINSTELLUNGEN-MODAL -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <h3 style="color:var(--neon-cyan); margin:0; font-family:var(--font-display);">SYSTEM-EINSTELLUNGEN</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeConfigModal()">✕</button>
+      </div>
+      
+      <div class="modal-body">
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
+          <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
+            Wähle, welche Fahrzeuge auf <strong>diesem Gerät</strong> angesagt werden sollen:
+          </p>
+          <div style="margin-bottom: 8px;">
+            <button class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" onclick="selectAllTTS(true)">Alle anhaken</button>
+            <button class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" onclick="selectAllTTS(false)">Alle abwählen</button>
+          </div>
+          <div class="tts-filter-grid" id="ttsFilterContainer"></div>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid #222;">
+          <label><strong>Mindest-Rundenzeit / Deadtime (Sek.):</strong></label><br>
+          <input type="number" id="cfg_deadtime" step="0.1" min="0.5" max="30" value="2.0" style="margin-top:5px; width:100px;">
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid #222;">
+          <label style="cursor:pointer;">
+            <input type="checkbox" id="cfg_two_frames" style="transform: scale(1.3); margin-right: 8px;">
+            <strong>2-Frame Entprellung aktivieren</strong>
+          </label>
+        </div>
+
+        <h4 style="color:var(--neon-cyan); margin-bottom:8px; font-family:var(--font-display);">Transponder-IDs zuweisen (Fahrer & Auto)</h4>
+        <div id="configRows"></div>
+      </div>
+
+      <div style="text-align: right; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+        <button class="btn btn-success" onclick="saveConfig()">Speichern & Schließen</button>
+        <button class="btn btn-warning" onclick="closeConfigModal()">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    RC Lap Timer Pro <span id="firmware-version">v1.0.0</span> &copy; 2026 | Powered by ESP8266
+  </footer>
+
+  <script>
+    const MAX_CARS = 15;
+    let ttsEnabled = true;
+	async function loadVersion() {
+      try {
+        const response = await fetch('/api/version');
+        if (response.ok) {
+          const data = await response.json();
+          const elem = document.getElementById('firmware-version');
+          if (elem) elem.textContent = data.firmware;
+        }
+      } catch (err) {
+        console.error('Fehler beim Laden der Version:', err);
+      }
+    }
+
+    // Direkt beim Start mit dem Time-Sync ausführen:
+    window.addEventListener('DOMContentLoaded', () => {
+      loadVersion();
+      syncTimeWithServer();
+      setInterval(syncTimeWithServer, 300000);
+    });
+    let currentMode = 0;
+    let targetLaps = 0;
+    let maxLapInRace = 0;
+    let isSessionActive = false;
+    let isSessionFinished = false;
+    let previousLaps = {};
+    let previousBestLaps = {};
+    let carNamesMap = {};
+    let audioUnmuted = false;
+    let lastLapsData = [];
+
+    // Sortier-Status Haupttabelle
+    let currentSortColumn = 'default'; // 'default', 'driver', 'laps', 'lastLap', 'bestLap'
+    let currentSortDir = 'asc';        // 'asc', 'desc'
+
+    // Sortier-Status Statistiken (Einzelne Fahrer)
+    let statsSortColumn = 'default';   // 'default', 'lap', 'time', 'ts', 'mode'
+    let statsSortDir = 'desc';         // 'asc', 'desc'
+    let rawDriverLapsData = [];
+
+    let currentLeaderId = null;
+    let lapHistoryMap = {}; 
+    let statusCarsMap = {};
+    let activeStatsCarId = null;
+    let serverMillisOffset = 0;
+    let currentTab = 'drivers';
+
+    let speechQueue = [];
+    let isSpeaking = false;
+
+    let selectedTTSCars = JSON.parse(localStorage.getItem('myTTSCars') || '[]');
+
+    let announced60 = false;
+    let announced30 = false;
+    let announced10 = false;
+
+    const synth = window.speechSynthesis;
+
+    // --- Synchronisierung der Epoch-Uhrzeit mit dem ESP8266 ---
+    function syncTimeWithServer() {
+      let nowMs = Date.now(); // Präziser Millisekunden-Timestamp
+      fetch('/api/synctime?ts=' + Math.floor(nowMs / 1000), { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }).catch(e => console.error("Sync error:", e));
+    }
+    
+    // Initialer Sync beim Start
+    window.addEventListener('DOMContentLoaded', () => {
+      syncTimeWithServer();
+      setInterval(syncTimeWithServer, 300000); // Alle 5 Minuten nachsynchronisieren
+    });
+
+    window.onclick = function(event) {
+      if (event.target === document.getElementById('configModal')) closeConfigModal();
+      if (event.target === document.getElementById('statsModal')) closeStatsModal();
+      if (event.target === document.getElementById('statsOverviewModal')) closeStatsOverviewModal();
+    };
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeConfigModal();
+        closeStatsModal();
+        closeStatsOverviewModal();
+      }
+    });
+
+    function unmuteIOSAudio() {
+      if ('speechSynthesis' in window) {
+        synth.cancel();
+        speechQueue = [];
+        isSpeaking = false;
+        let u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0.01;
+        synth.speak(u);
+        audioUnmuted = true;
+        let btn = document.getElementById('iosUnmuteBtn');
+        if (btn) { btn.style.borderColor = 'var(--neon-green)'; btn.style.color = 'var(--neon-green)'; btn.innerText = '✅ iOS Ton Aktiv'; }
+      }
+    }
+    document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });
+
+    function speak(text, cancelCurrent = false) {
+      if (!ttsEnabled || !('speechSynthesis' in window)) return;
+      
+      if (cancelCurrent) {
+        synth.cancel();
+        speechQueue = [];
+        isSpeaking = false;
+      }
+      
+      speechQueue.push(text);
+      processSpeechQueue();
+    }
+
+    function processSpeechQueue() {
+      if (isSpeaking || speechQueue.length === 0) return;
+
+      isSpeaking = true;
+      let text = speechQueue.shift();
+      let utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE';
+      utterance.rate = 1.0;
+
+      utterance.onend = function() {
+        isSpeaking = false;
+        processSpeechQueue();
+      };
+
+      utterance.onerror = function() {
+        isSpeaking = false;
+        processSpeechQueue();
+      };
+
+      synth.speak(utterance);
+    }
+
+    function isCarAllowedForTTS(carId) {
+      if (!ttsEnabled) return false;
+      if (selectedTTSCars.length === 0) return true;
+      return selectedTTSCars.includes(Number(carId));
+    }
+
+    async function loadCarNames() {
+      try {
+        let response = await fetch('/api/names');
+        let names = await response.json();
+        for (let i = 1; i <= MAX_CARS; i++) {
+          if (names[i]) carNamesMap[i] = names[i];
+        }
+      } catch (e) {
+        console.error("Fehler beim Laden der Namen:", e);
+      }
+    }
+
+    function updateTTSFilterDisplay() {
+      let disp = document.getElementById('ttsSelectedCarsDisplay');
+      if (!disp) return;
+      if (selectedTTSCars.length === 0) {
+        disp.innerText = "Alle Fahrzeuge";
+        disp.style.color = "var(--neon-cyan)";
+      } else {
+        let namesLoaded = selectedTTSCars.every(id => carNamesMap[id] !== undefined);
+        if (!namesLoaded) {
+          loadCarNames().then(() => updateTTSFilterDisplay());
+          return;
+        }
+        let names = selectedTTSCars.map(id => carNamesMap[id]?.driver || ("Fahrer " + id));
+        disp.innerText = names.join(", ");
+        disp.style.color = "var(--neon-green)";
+      }
+    }
+
+    function toggleTTS() {
+      ttsEnabled = !ttsEnabled;
+      document.getElementById('ttsToggleBtn').innerText = ttsEnabled ? "🔊 Ton: AN" : "🔇 Ton: AUS";
+      if (ttsEnabled) speak("Sprachausgabe aktiviert");
+    }
+
+    function startRaceCountdown(onComplete) {
+      speak("Achtung, das Rennen beginnt gleich!", true);
+
+      setTimeout(() => {
+        speak("3");
+        setTimeout(() => {
+          speak("2");
+          setTimeout(() => {
+            speak("1");
+            setTimeout(() => {
+              speak("Los!");
+              if (typeof onComplete === 'function') {
+                onComplete();
+              }
+            }, 1000);
+          }, 1000);
+        }, 1000);
+      }, 5000);
+    }
+
+    function startPractice() { sendSession(0, 0, 0, "Freies Training gestartet"); }
+
+    function startQuali() {
+      let mins = parseInt(document.getElementById('qualiTimeInput').value);
+      if (isNaN(mins) || mins < 1) return;
+      let minStr = (mins === 1) ? "eine Minute" : mins + " Minuten";
+      sendSession(1, mins, 0, "Qualifying gestartet für " + minStr + "!");
+    }
+
+    function startRaceLaps() {
+      let laps = parseInt(document.getElementById('raceLapsInput').value);
+      if (isNaN(laps) || laps < 1) return;
+
+      startRaceCountdown(() => {
+        sendSession(2, 0, laps, "");
+      });
+    }
+
+    function startRaceTime() {
+      let mins = parseInt(document.getElementById('raceTimeInput').value);
+      if (isNaN(mins) || mins < 1) return;
+
+      startRaceCountdown(() => {
+        sendSession(3, mins, 0, "");
+      });
+    }
+
+    function sendSession(mode, duration, laps, speakText) {
+      currentMode = mode;
+      targetLaps = laps;
+      maxLapInRace = 0;
+      currentLeaderId = null;
+      isSessionActive = true;
+      isSessionFinished = false;
+
+      announced60 = false;
+      announced30 = false;
+      announced10 = false;
+
+      fetch(`/api/session?mode=${mode}&duration=${duration}&laps=${laps}`, { method: 'POST' })
+        .then(() => {
+          resetLapsDataSilent();
+          if (speakText) {
+            speak(speakText, true);
+          }
+        }).catch(err => console.error(err));
+    }
+
+    function stopSession() {
+      currentMode = 0;
+      isSessionActive = false;
+      currentLeaderId = null;
+      fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' })
+        .then(() => { speak("Durchgang gestoppt. Freies Training.", true); }).catch(err => console.error(err));
+    }
+
+    function resetLaps() {
+      if (confirm("Alle Zeiten und Runden komplett zurücksetzen?")) {
+        stopSession();
+        resetLapsData();
+      }
+    }
+
+    function resetLapsDataSilent() {
+      fetch('/api/reset', { method: 'POST' }).then(() => {
+        previousLaps = {};
+        previousBestLaps = {};
+        lapHistoryMap = {};
+        statusCarsMap = {};
+        currentLeaderId = null;
+        updateData();
+      }).catch(err => console.error(err));
+    }
+
+    function resetLapsData() {
+      fetch('/api/reset', { method: 'POST' }).then(() => {
+        previousLaps = {};
+        previousBestLaps = {};
+        lapHistoryMap = {};
+        statusCarsMap = {};
+        isSessionFinished = false;
+        maxLapInRace = 0;
+        currentLeaderId = null;
+        document.getElementById('leaderLapDisplay').innerText = "0";
+        updateData();
+      }).catch(err => console.error(err));
+    }
+
+    function autoSaveSessionResult(mode, modeName) {
+      if (!lastLapsData || lastLapsData.length === 0) return;
+
+      let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
+      if (activeCars.length === 0) return;
+
+      if (mode === 1) {
+        activeCars.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+      } else {
+        activeCars.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+      }
+
+      let nowTs = Math.floor(Date.now() / 1000);
+      let sessionData = {
+        ts: nowTs,
+        mode: mode,
+        modeName: modeName,
+        results: activeCars.map((car, idx) => ({
+          pos: idx + 1,
+          id: car.id,
+          driver: car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id)),
+          car: car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id)),
+          laps: car.completedLaps,
+          bestLap: car.bestLap,
+          lastLap: car.lastLap
+        }))
+      };
+
+      let formData = new FormData();
+      formData.append('data', JSON.stringify(sessionData));
+      fetch('/api/savesessionresult', { method: 'POST', body: formData }).catch(e => console.error(e));
+    }
+
+    function announceRaceResults() {
+      if (!lastLapsData || lastLapsData.length === 0) return;
+
+      let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
+      if (activeCars.length === 0) {
+        speak("Das Rennen ist beendet!", true);
+        return;
+      }
+
+      activeCars.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+
+      let winner = activeCars[0];
+      let p2 = activeCars[1];
+      let p3 = activeCars[2];
+
+      let winnerDriver = winner.driver || (carNamesMap[winner.id]?.driver || ("Fahrer " + winner.id));
+      let winnerCar = winner.car || (carNamesMap[winner.id]?.car || ("Auto " + winner.id));
+
+      let podiumText = "Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an " + winnerDriver + " auf " + winnerCar + " zum Sieg!";
+
+      if (p2 && p3) {
+        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
+        let p3Driver = p3.driver || (carNamesMap[p3.id]?.driver || ("Fahrer " + p3.id));
+        podiumText += " Platz 2 geht an " + p2Driver + ", und Platz 3 an " + p3Driver + "!";
+      } else if (p2) {
+        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
+        podiumText += " Platz 2 geht an " + p2Driver + "!";
+      }
+
+      speak(podiumText, true);
+
+      if (activeCars.length > 3) {
+        let restText = "Auf den weiteren Plätzen: ";
+        for (let i = 3; i < activeCars.length; i++) {
+          let pos = i + 1;
+          let driverName = activeCars[i].driver || (carNamesMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
+          restText += "Platz " + pos + " " + driverName + ". ";
+        }
+        speak(restText, false);
+      }
+      autoSaveSessionResult(currentMode, "Rennen");
+    }
+
+    function sortTable(column) {
+      if (currentSortColumn === column) {
+        currentSortDir = (currentSortDir === 'asc') ? 'desc' : 'asc';
+      } else {
+        currentSortColumn = column;
+        currentSortDir = 'asc';
+      }
+      updateSortIcons();
+      updateData();
+    }
+
+    function updateSortIcons() {
+      const columns = ['default', 'driver', 'laps', 'lastLap', 'bestLap'];
+      columns.forEach(col => {
+        let iconElem = document.getElementById('sort-icon-' + col);
+        if (!iconElem) return;
+        if (currentSortColumn === col) {
+          iconElem.innerText = currentSortDir === 'asc' ? '▲' : '▼';
+        } else {
+          iconElem.innerText = '';
+        }
+      });
+    }
+
+    function sortLapData(data) {
+      let defaultSorted = [...data];
+      if (currentMode === 1) {
+        defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+      } else {
+        defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+      }
+
+      defaultSorted.forEach((item, index) => {
+        item._defaultPos = index + 1;
+      });
+
+      if (currentSortColumn === 'default') {
+        if (currentSortDir === 'desc') {
+          defaultSorted.reverse();
+        }
+        return defaultSorted;
+      }
+
+      let sorted = [...defaultSorted];
+      sorted.sort((a, b) => {
+        let valA, valB;
+        if (currentSortColumn === 'driver') {
+          valA = (a.driver || '').toLowerCase();
+          valB = (b.driver || '').toLowerCase();
+          return currentSortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else if (currentSortColumn === 'laps') {
+          valA = a.completedLaps || 0;
+          valB = b.completedLaps || 0;
+        } else if (currentSortColumn === 'lastLap') {
+          valA = a.lastLap > 0 ? a.lastLap : 99999999;
+          valB = b.lastLap > 0 ? b.lastLap : 99999999;
+        } else if (currentSortColumn === 'bestLap') {
+          valA = a.bestLap > 0 ? a.bestLap : 99999999;
+          valB = b.bestLap > 0 ? b.bestLap : 99999999;
+        }
+
+        if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
+        if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      return sorted;
+    }
+
+    function sortStatsTable(column) {
+      if (statsSortColumn === column) {
+        statsSortDir = (statsSortDir === 'asc') ? 'desc' : 'asc';
+      } else {
+        statsSortColumn = column;
+        statsSortDir = 'asc';
+      }
+      updateStatsSortIcons();
+      renderDriverStatsTable();
+    }
+
+    function updateStatsSortIcons() {
+      const columns = ['lap', 'time', 'ts', 'mode'];
+      columns.forEach(col => {
+        let iconElem = document.getElementById('sort-stats-icon-' + col);
+        if (!iconElem) return;
+        if (statsSortColumn === col) {
+          iconElem.innerText = statsSortDir === 'asc' ? '▲' : '▼';
+        } else {
+          iconElem.innerText = '';
+        }
+      });
+    }
+
+    function renderDriverStatsTable() {
+      let tbody = document.getElementById('statsTableBody');
+      if (!rawDriverLapsData || rawDriverLapsData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">Keine gespeicherten Runden vorhanden.</td></tr>';
+        return;
+      }
+
+      let sorted = [...rawDriverLapsData];
+      if (statsSortColumn !== 'default') {
+        sorted.sort((a, b) => {
+          let valA, valB;
+          if (statsSortColumn === 'lap') {
+            valA = a.lap || 0;
+            valB = b.lap || 0;
+          } else if (statsSortColumn === 'time') {
+            valA = a.time || 0;
+            valB = b.time || 0;
+          } else if (statsSortColumn === 'ts') {
+            valA = a.ts || 0;
+            valB = b.ts || 0;
+          } else if (statsSortColumn === 'mode') {
+            valA = a.mode || 0;
+            valB = b.mode || 0;
+          }
+
+          if (valA < valB) return statsSortDir === 'asc' ? -1 : 1;
+          if (valA > valB) return statsSortDir === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+
+      let html = '';
+      sorted.forEach(l => {
+        let modeStr = "Training";
+        if (l.mode === 1) modeStr = "Quali";
+        if (l.mode === 2 || l.mode === 3) modeStr = "Rennen (P" + (l.pos || '-') + ")";
+
+        let timeSec = (l.time / 1000).toFixed(2) + 's';
+        let dateStr = formatTimestamp(l.ts);
+
+        html += `<tr>
+          <td>Runde ${l.lap}</td>
+          <td style="color:var(--neon-green); font-weight:bold;">${timeSec}</td>
+          <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
+          <td>${modeStr}</td>
+          <td>
+            <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑️</button>
+          </td>
+        </tr>`;
+      });
+      tbody.innerHTML = html;
+    }
+
+    async function updateData() {
+      try {
+        let response = await fetch('/api/laps');
+        let data = await response.json();
+        
+        lastLapsData = data;
+        let html = '';
+        if (data.length === 0) {
+          html = '<tr><td colspan="5">Keine Autos erfasst</td></tr>';
+          currentLeaderId = null;
+        } else {
+          let leaderSearch = [...data];
+          if (currentMode === 1) {
+            leaderSearch.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+          } else {
+            leaderSearch.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+          }
+
+          let leaderLaps = leaderSearch[0].completedLaps;
+          document.getElementById('leaderLapDisplay').innerText = leaderLaps;
+
+          // Initialen Führenden setzen
+          let newLeader = leaderSearch[0];
+          if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
+            if (currentLeaderId === null && newLeader && newLeader.completedLaps > 0) {
+              currentLeaderId = newLeader.id;
+            }
+          }
+
+          let displayData = sortLapData(data);
+
+          displayData.forEach((row) => {
+            carNamesMap[row.id] = { driver: row.driver, car: row.car };
+            let defaultPosition = row._defaultPos;
+            
+            checkLapEvents(row, leaderLaps, defaultPosition);
+
+            let isPaused = false;
+            let history = lapHistoryMap[row.id] || [];
+            if (row.lastSeenMs && row.lastSeenMs > 0 && serverMillisOffset > 0) {
+              let timeSinceLastSignal = serverMillisOffset - row.lastSeenMs;
+              let avgMs = history.length > 0 ? (history.reduce((a, b) => a + b, 0) / history.length) : 0;
+              let thresholdMs = Math.max(avgMs * 3.0, 10000);
+
+              if (timeSinceLastSignal > thresholdMs) {
+                isPaused = true;
+              }
+            }
+
+            let lastDisplay = '---';
+            let isRaceMode = (currentMode === 2 || currentMode === 3);
+            let currentStatus = statusCarsMap[row.id];
+
+            if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
+              if (isRaceMode) {
+                statusCarsMap[row.id] = 'box';
+                lastDisplay = '<span class="pit-badge">Box</span>';
+              } else {
+                statusCarsMap[row.id] = 'pause';
+                lastDisplay = '<span class="pause-badge">Pause</span>';
+              }
+            } else if (row.lastLap > 0) {
+              lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            }
+
+            let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
+            
+            html += `<tr>
+              <td><strong>P${defaultPosition}</strong></td>
+              <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
+              <td>${row.completedLaps} ${targetLaps > 0 ? '/ ' + targetLaps : ''}</td>
+              <td>${lastDisplay}</td>
+              <td style="color:var(--neon-green); font-weight:bold;">${bestDisplay}</td>
+            </tr>`;
+          });
+        }
+        document.getElementById('lapTable').innerHTML = html;
+        updateTTSFilterDisplay();
+      } catch (err) {
+        console.error("Error fetching lap data:", err);
+      }
+
+      try {
+        let r = await fetch('/api/timeleft');
+        let info = await r.json();
+
+        currentMode = info.mode;
+        serverMillisOffset = info.serverMillis || 0;
+        let modeText = "Freies Training";
+        if (currentMode === 1) modeText = "Qualifying";
+        if (currentMode === 2) modeText = "Rennen (Runden)";
+        if (currentMode === 3) modeText = "Rennen (Zeit)";
+        document.getElementById('modeDisplay').innerText = modeText;
+
+        let secondsLeft = info.secondsLeft;
+
+        if (secondsLeft >= 0) {
+          let m = Math.floor(secondsLeft / 60);
+          let s = secondsLeft % 60;
+          document.getElementById('timerDisplay').innerText = 
+            (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+
+          if (isSessionActive && !isSessionFinished) {
+            if (secondsLeft <= 60 && secondsLeft > 58 && !announced60) {
+              announced60 = true;
+              speak("Noch eine Minute!", true);
+            } else if (secondsLeft <= 30 && secondsLeft > 28 && !announced30) {
+              announced30 = true;
+              speak("Noch 30 Sekunden!", true);
+            } else if (secondsLeft <= 10 && secondsLeft > 8 && !announced10) {
+              announced10 = true;
+              speak("Noch 10 Sekunden!", true);
+            } else if (secondsLeft === 0) {
+              isSessionFinished = true;
+              isSessionActive = false;
+
+              if (currentMode === 1) {
+                let bestDriver = null;
+                let bestCar = null;
+                let bestTimeMs = 0;
+                let participantCount = 0;
+
+                lastLapsData.forEach(car => {
+                  if (car.completedLaps > 0 || car.bestLap > 0) { participantCount++; }
+                  if (car.bestLap > 0 && (bestTimeMs === 0 || car.bestLap < bestTimeMs)) {
+                    bestTimeMs = car.bestLap;
+                    bestDriver = car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id));
+                    bestCar = car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id));
+                  }
+                });
+
+                if (participantCount > 1 && bestDriver && bestTimeMs > 0) {
+                  let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
+                  speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + " holt die Pole Position mit " + timeSec, true);
+                } else if (participantCount === 1 && bestDriver && bestTimeMs > 0) {
+                  let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
+                  speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + ", beste Zeit: " + timeSec, true);
+                } else {
+                  speak("Das Qualifying ist beendet!", true);
+                }
+                autoSaveSessionResult(1, "Qualifying");
+              } else if (currentMode === 2 || currentMode === 3) {
+                announceRaceResults();
+              } else {
+                speak("Die Zeit ist abgelaufen! Durchgang beendet!", true);
+              }
+            }
+          }
+        } else {
+          document.getElementById('timerDisplay').innerText = "--:--";
+        }
+      } catch (err) {
+        console.error("Error fetching time left:", err);
+      }
+
+      try {
+        let r = await fetch('/api/recent');
+        let ids = await r.json();
+        let html = '';
+        ids.forEach(id => {
+          if (id > 0) {
+            let title = carNamesMap[id] ? (carNamesMap[id].driver + " (" + carNamesMap[id].car + ")") : ("Auto " + id);
+            html += `<div class="recent-item active" title="${title}">ID ${id}</div>`;
+          } else {
+            html += `<div class="recent-item">-</div>`;
+          }
+        });
+        document.getElementById('recentIdsContainer').innerHTML = html;
+      } catch (err) {
+        console.error("Error fetching recent IDs:", err);
+      }
+    }
+
+    // --- Blockierungsfreies Polling für den Live-Monitor ---
+    let isPolling = false;
+    async function pollData() {
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        await updateData();
+      } finally {
+        isPolling = false;
+        setTimeout(pollData, 1000); // 1.0 Sekunden Intervall, verhindert Überlastung
+      }
+    }
+
+    function checkLapEvents(car, currentLeaderLaps, position) {
+      let carId = car.id;
+      let currentLaps = car.completedLaps;
+      let prevLaps = previousLaps[carId];
+      let prevBest = previousBestLaps[carId] || 0;
+      let driverName = car.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+
+      if (prevLaps === undefined) {
+        previousLaps[carId] = currentLaps;
+        previousBestLaps[carId] = car.bestLap || 0;
+        lapHistoryMap[carId] = [];
+        statusCarsMap[carId] = null;
+
+        if (isCarAllowedForTTS(carId)) {
+          speak(driverName + " gestartet!");
+        }
+        return;
+      }
+
+      if (currentLaps > prevLaps) {
+        previousLaps[carId] = currentLaps;
+        let lastLapMs = car.lastLap;
+
+        let history = lapHistoryMap[carId] || [];
+        let isDelayInvalid = false;
+
+        if (history.length > 0 && lastLapMs > 0) {
+          let avgMs = history.reduce((a, b) => a + b, 0) / history.length;
+          let thresholdMs = Math.max(avgMs * 3.0, 10000);
+
+          if (lastLapMs > thresholdMs) {
+            isDelayInvalid = true;
+          }
+        }
+
+        if (isDelayInvalid) {
+          if (currentMode === 0 || currentMode === 1) {
+            statusCarsMap[carId] = 'pause';
+            if (isCarAllowedForTTS(carId)) {
+              speak(driverName + " wieder gestartet");
+            }
+          } 
+          else if (currentMode === 2 || currentMode === 3) {
+            statusCarsMap[carId] = 'box';
+            if (isCarAllowedForTTS(carId)) {
+              speak(driverName + " verlässt die Box");
+            }
+          }
+          return;
+        }
+
+        if (statusCarsMap[carId]) {
+          statusCarsMap[carId] = null;
+        }
+
+        if (lastLapMs > 0) {
+          history.push(lastLapMs);
+          if (history.length > 5) history.shift();
+          lapHistoryMap[carId] = history;
+        }
+
+        if (currentMode === 2 && targetLaps > 0 && currentLaps >= targetLaps && !isSessionFinished) {
+          isSessionFinished = true;
+          isSessionActive = false;
+          announceRaceResults();
+          return;
+        }
+
+        if (currentMode === 2 && targetLaps > 0 && currentLeaderLaps > maxLapInRace) {
+          maxLapInRace = currentLeaderLaps;
+          let remainingLaps = targetLaps - currentLeaderLaps;
+
+          if (remainingLaps > 0 && remainingLaps <= 5) {
+            if (remainingLaps === 1) { speak("Letzte Runde!", true); } 
+            else { speak("Noch " + remainingLaps + " Runden!", true); }
+            return;
+          }
+        }
+
+        // --- Führungswechsel im Rennen ---
+        let leadChangeOccurred = false;
+        if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
+          if (currentLeaderId !== null && currentLeaderId !== carId) {
+            let leaderCar = lastLapsData.find(c => c.id === currentLeaderId);
+            if (leaderCar && currentLaps > leaderCar.completedLaps) {
+              currentLeaderId = carId;
+              leadChangeOccurred = true;
+              speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", true);
+            }
+          }
+        }
+
+        if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred) {
+          let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
+          
+          let isBestLap = false;
+          if (currentLaps > 1 && car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
+            isBestLap = true;
+          }
+          
+          if (car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
+            previousBestLaps[carId] = car.bestLap;
+          }
+
+          let posText = ", ";
+          if (currentMode !== 0 && position > 0) {
+            posText = ", Platz " + position + ", ";
+          }
+
+          if (isBestLap) {
+            speak(driverName + posText + "beste Runde! " + timeSec);
+          } else {
+            speak(driverName + posText + timeSec);
+          }
+        }
+      }
+    }
+
+    function switchStatsTab(tab) {
+      currentTab = tab;
+      document.getElementById('tabDriversBtn').classList.toggle('active', tab === 'drivers');
+      document.getElementById('tabSessionsBtn').classList.toggle('active', tab === 'sessions');
+      document.getElementById('statsTabDrivers').style.display = (tab === 'drivers') ? 'block' : 'none';
+      document.getElementById('statsTabSessions').style.display = (tab === 'sessions') ? 'block' : 'none';
+
+      if (tab === 'drivers') {
+        renderDriversOverview();
+      } else {
+        loadSessionsOverview();
+      }
+    }
+
+    async function openStatsOverviewModal() {
+      document.getElementById('statsOverviewModal').style.display = 'block';
+      await loadCarNames();
+      switchStatsTab(currentTab);
+    }
+
+    async function renderDriversOverview() {
+      let list = document.getElementById('statsTabDrivers');
+      list.innerHTML = '<p style="color:var(--text-muted);">Lade Fahrertabelle...</p>';
+
+      let html = '';
+      for (let i = 1; i <= MAX_CARS; i++) {
+        let driver = carNamesMap[i]?.driver || ("Fahrer " + i);
+        let car = carNamesMap[i]?.car || ("Auto " + i);
+        
+        try {
+          let res = await fetch('/api/stats?id=' + i);
+          let data = await res.json();
+          let lapCount = data.laps ? data.laps.length : 0;
+          let best = '---';
+          if (lapCount > 0) {
+            let minTime = Math.min(...data.laps.map(l => l.time));
+            best = (minTime / 1000).toFixed(2) + 's';
+          }
+
+          html += `<div class="driver-select-card" onclick="openDriverStats(${i})">
+            <div>
+              <strong style="color:var(--neon-cyan); font-size:16px;">${driver}</strong>
+              <small style="color:var(--text-muted);">(${car} - ID ${i})</small><br>
+              <span style="font-size:12px; color:var(--text-muted);">Gespeicherte Runden: ${lapCount}</span>
+            </div>
+            <div style="text-align:right;">
+              <span style="color:var(--neon-green); font-weight:bold; font-size:15px;">${best}</span><br>
+              <span style="font-size:11px; color:var(--text-muted);">Bestzeit</span>
+            </div>
+          </div>`;
+        } catch (e) { console.error(e); }
+      }
+      list.innerHTML = html;
+    }
+
+    async function loadSessionsOverview() {
+      let container = document.getElementById('statsTabSessions');
+      container.innerHTML = '<p style="color:var(--text-muted);">Lade Renn-Historie...</p>';
+
+      try {
+        let res = await fetch('/api/sessions');
+        let data = await res.json();
+        
+        if (!data.sessions || data.sessions.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine absolvierten Rennen oder Qualifyings gespeichert.</p>';
+          return;
+        }
+
+        let html = '';
+        data.sessions.slice().reverse().forEach(s => {
+          let isQuali = (s.mode === 1);
+          let badgeClass = isQuali ? 'session-card quali' : 'session-card';
+          let dateStr = formatTimestamp(s.ts);
+
+          html += `<div class="${badgeClass}">
+            <div style="display:flex; justify-content:space-between; align-items:center;" onclick="toggleSessionDetails(${s.ts})">
+              <div>
+                <strong style="color:${isQuali ? 'var(--neon-purple)' : 'var(--neon-green)'}; font-size:16px;">${s.modeName}</strong>
+                <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">📅 ${dateStr}</span>
+              </div>
+              <div>
+                <span style="font-size:12px; color:var(--neon-cyan); margin-right:8px;">Details 🔽</span>
+                <button class="btn-icon" onclick="event.stopPropagation(); deleteSession(${s.ts})" title="Löschen">🗑</button>
+              </div>
+            </div>
+            
+            <div id="session_detail_${s.ts}" class="session-details">
+              <table>
+                <thead>
+                  <tr><th>Pos</th><th>Fahrer</th><th>Fahrzeug</th><th>Runden</th><th>Beste Zeit</th><th>Aktion</th></tr>
+                </thead>
+                <tbody>`;
+
+          s.results.forEach(r => {
+            let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
+            let driverDetailId = `s_${s.ts}_driver_${r.id}`;
+            html += `<tr>
+              <td><strong>P${r.pos}</strong></td>
+              <td style="color:var(--neon-cyan); font-weight:bold;">${r.driver}</td>
+              <td style="color:var(--text-muted);">${r.car}</td>
+              <td>${r.laps}</td>
+              <td style="color:var(--neon-green);">${bestStr}</td>
+              <td>
+                <button class="btn btn-purple" style="padding:2px 6px; font-size:10px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', ${r.id}, ${s.ts})">Details 🔽</button>
+              </td>
+            </tr>
+            <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.2);">
+              <td colspan="6">
+                <div id="${driverDetailId}_content" class="driver-lap-details">Lade Rundenzeiten...</div>
+              </td>
+            </tr>`;
+          });
+
+          html += `</tbody></table></div></div>`;
+        });
+
+        container.innerHTML = html;
+      } catch(e) {
+        console.error(e);
+        container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Rennstatistik.</p>';
+      }
+    }
+
+    async function toggleDriverLapsInSession(elemId, carId, sessionTs) {
+      let trElem = document.getElementById(elemId + '_tr');
+      let contentElem = document.getElementById(elemId + '_content');
+
+      if (!trElem || !contentElem) return;
+
+      if (trElem.style.display === 'table-row') {
+        trElem.style.display = 'none';
+        return;
+      }
+
+      trElem.style.display = 'table-row';
+      contentElem.style.display = 'block';
+      contentElem.innerHTML = 'Lade Rundenzeiten...';
+
+      try {
+        let res = await fetch('/api/stats?id=' + carId);
+        let data = await res.json();
+
+        if (!data.laps || data.laps.length === 0) {
+          contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten gespeichert.</span>';
+          return;
+        }
+
+        let filteredLaps = data.laps.filter(l => {
+          if (l.mode === 0) return false;
+          if (sessionTs) {
+            return l.ts <= sessionTs && l.ts >= (sessionTs - 3600);
+          }
+          return true;
+        });
+
+        if (filteredLaps.length === 0) {
+          contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine spezifischen Rundenzeiten für dieses Rennen gefunden.</span>';
+          return;
+        }
+
+        let minTime = Math.min(...filteredLaps.map(l => l.time));
+        let maxTime = Math.max(...filteredLaps.map(l => l.time));
+
+        let html = `<table style="margin:0; font-size:12px;">
+          <thead>
+            <tr><th>Runde</th><th>Zeit</th><th>Platz</th><th>Datum / Uhrzeit</th></tr>
+          </thead>
+          <tbody>`;
+
+        filteredLaps.slice().reverse().forEach(l => {
+          let timeSec = (l.time / 1000).toFixed(2) + 's';
+          let dateStr = formatTimestamp(l.ts);
+          let posStr = (l.pos && l.pos > 0) ? 'P' + l.pos : '---';
+
+          let timeColor = 'var(--neon-cyan)';
+          if (filteredLaps.length > 1) {
+            if (l.time === minTime) {
+              timeColor = 'var(--neon-green)';
+            } else if (l.time === maxTime) {
+              timeColor = 'var(--neon-red)';
+            }
+          }
+
+          html += `<tr>
+            <td>Runde ${l.lap}</td>
+            <td style="color:${timeColor}; font-weight:bold;">${timeSec}</td>
+            <td style="color:var(--neon-orange); font-weight:bold;">${posStr}</td>
+            <td style="color:var(--text-muted);">${dateStr}</td>
+          </tr>`;
+        });
+
+        html += '</tbody></table>';
+        contentElem.innerHTML = html;
+      } catch (e) {
+        console.error(e);
+        contentElem.innerHTML = '<span style="color:var(--neon-red);">Fehler beim Laden der Rundenzeiten.</span>';
+      }
+    }
+
+    function toggleSessionDetails(ts) {
+      let el = document.getElementById('session_detail_' + ts);
+      if (el) el.style.display = (el.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function deleteSession(ts) {
+      if (confirm("Möchtest du diese Rennstatistik wirklich löschen?")) {
+        fetch('/api/deletesession?ts=' + ts, { method: 'POST' })
+          .then(() => loadSessionsOverview())
+          .catch(e => console.error(e));
+      }
+    }
+
+    function closeStatsOverviewModal() { document.getElementById('statsOverviewModal').style.display = 'none'; }
+    function backToStatsOverview() { closeStatsModal(); openStatsOverviewModal(); }
+
+    function openDriverStats(carId) {
+      activeStatsCarId = carId;
+      statsSortColumn = 'default';
+      statsSortDir = 'desc';
+      updateStatsSortIcons();
+
+      let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
+      document.getElementById('statsModalTitle').innerText = driverName + " (ID " + carId + ")";
+      document.getElementById('deleteDriverStatsBtn').innerText = "Statistiken von " + driverName + " löschen";
+      
+      closeStatsOverviewModal();
+      document.getElementById('statsModal').style.display = 'block';
+
+      loadDriverStats(carId);
+    }
+
+    function closeStatsModal() {
+      document.getElementById('statsModal').style.display = 'none';
+      activeStatsCarId = null;
+    }
+
+    function formatTimestamp(ts) {
+      if (!ts || ts === 0) return '---';
+      // Formatierung von Millisekunden- oder Sekunden-Timestamp
+      let tsMs = ts < 10000000000 ? ts * 1000 : ts;
+      let d = new Date(tsMs);
+      let day = String(d.getDate()).padStart(2, '0');
+      let month = String(d.getMonth() + 1).padStart(2, '0');
+      let year = d.getFullYear();
+      let hours = String(d.getHours()).padStart(2, '0');
+      let mins = String(d.getMinutes()).padStart(2, '0');
+      let secs = String(d.getSeconds()).padStart(2, '0');
+      return `${day}.${month}.${year} ${hours}:${mins}:${secs}`;
+    }
+
+    function loadDriverStats(carId) {
+      let tbody = document.getElementById('statsTableBody');
+      tbody.innerHTML = '<tr><td colspan="5">Lade Daten...</td></tr>';
+
+      fetch('/api/stats?id=' + carId)
+        .then(r => r.json())
+        .then(data => {
+          rawDriverLapsData = data.laps || [];
+          renderDriverStatsTable();
+        }).catch(err => {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="5" style="color:var(--neon-red);">Fehler beim Laden.</td></tr>';
+        });
+    }
+
+    function deleteSingleLap(carId, lapNum) {
+      fetch(`/api/deletelap?id=${carId}&lap=${lapNum}`, { method: 'POST' })
+        .then(() => loadDriverStats(carId))
+        .catch(err => console.error(err));
+    }
+
+    function confirmDeleteDriverStats() {
+      let driverName = carNamesMap[activeStatsCarId]?.driver || ("Fahrer " + activeStatsCarId);
+      if (confirm(`Wirklich ALLE gespeicherten Statistiken von ${driverName} dauerhaft löschen?`)) {
+        fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' })
+          .then(() => { loadDriverStats(activeStatsCarId); }).catch(err => console.error(err));
+      }
+    }
+
+    function confirmDeleteAllStats() {
+      if (confirm("WARNUNG: Möchtest du wirklich ALLE Statistiken (Fahrer & Rennergebnisse) unwiderruflich löschen?")) {
+        fetch('/api/deleteallstats', { method: 'POST' })
+          .then(() => {
+            alert("Alle Statistiken wurden gelöscht.");
+            closeStatsOverviewModal();
+          }).catch(err => console.error(err));
+      }
+    }
+
+    /* BACKUP & RESTORE DIE STATISTIKEN */
+    async function downloadStatsBackup() {
+      let backupData = {
+        version: 1,
+        exportedAt: Math.floor(Date.now() / 1000),
+        driverStats: {},
+        sessions: []
+      };
+
+      try {
+        for (let i = 1; i <= MAX_CARS; i++) {
+          let res = await fetch('/api/stats?id=' + i);
+          let data = await res.json();
+          if (data && data.laps) {
+            backupData.driverStats[i] = data;
+          }
+        }
+
+        let sRes = await fetch('/api/sessions');
+        let sData = await sRes.json();
+        if (sData && sData.sessions) {
+          backupData.sessions = sData.sessions;
+        }
+
+        let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+        let downloadAnchor = document.createElement('a');
+        let dateISO = new Date().toISOString().slice(0, 10);
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `rctl_stats_backup_${dateISO}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+      } catch (e) {
+        alert("Fehler beim Erstellen des Backups: " + e.message);
+      }
+    }
+
+    function triggerRestoreBackup() {
+      document.getElementById('backupFileInput').click();
+    }
+
+    async function handleRestoreBackup(event) {
+      let file = event.target.files[0];
+      if (!file) return;
+
+      let reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          let backup = JSON.parse(e.target.result);
+          if (!backup.driverStats && !backup.sessions) {
+            alert("Ungültiges Backup-Format!");
+            return;
+          }
+
+          if (!confirm("Soll das Backup eingespielt werden? Bestehende Datensätze werden ergänzt/aktualisiert.")) {
+            return;
+          }
+
+          if (backup.sessions && backup.sessions.length > 0) {
+            for (let session of backup.sessions) {
+              let formData = new FormData();
+              formData.append('data', JSON.stringify(session));
+              await fetch('/api/savesessionresult', { method: 'POST', body: formData });
+            }
+          }
+
+          alert("Backup erfolgreich wiederhergestellt!");
+          switchStatsTab(currentTab);
+        } catch (err) {
+          alert("Fehler beim Einlesen der Backup-Datei: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function openConfigModal() {
+      document.getElementById('configModal').style.display = 'block';
+
+      let container = document.getElementById('configRows');
+      let ttsContainer = document.getElementById('ttsFilterContainer');
+      
+      container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
+      ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
+
+      fetch('/api/deadtime').then(r => r.json()).then(data => {
+        if (data.ms) document.getElementById('cfg_deadtime').value = (data.ms / 1000).toFixed(1);
+      }).catch(e => console.error(e));
+
+      fetch('/api/filter').then(r => r.json()).then(data => {
+        let cb = document.getElementById('cfg_two_frames');
+        if (cb) cb.checked = data.enabled;
+      }).catch(e => console.error(e));
+
+      fetch('/api/names').then(r => r.json()).then(names => {
+        container.innerHTML = '';
+        ttsContainer.innerHTML = '';
+
+        for (let i = 1; i <= MAX_CARS; i++) {
+          let driver = names[i]?.driver || ('Fahrer ' + i);
+          let car = names[i]?.car || ('Auto ' + i);
+          carNamesMap[i] = { driver: driver, car: car };
+          
+          container.innerHTML += `<div class="modal-row">
+            <span>ID <strong>${i}</strong>:</span>
+            <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer">
+            <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto">
+          </div>`;
+
+          let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
+          ttsContainer.innerHTML += `<div class="tts-filter-item">
+            <input type="checkbox" class="tts-car-cb" id="cb_tts_${i}" value="${i}" ${isChecked}>
+            <label for="cb_tts_${i}"><strong>${driver}</strong></label>
+          </div>`;
+        }
+        updateTTSFilterDisplay();
+      }).catch(e => {
+        console.error(e);
+        container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Namen</p>';
+      });
+    }
+
+    function closeConfigModal() {
+      document.getElementById('configModal').style.display = 'none';
+    }
+
+    function selectAllTTS(checkAll) {
+      let cbs = document.querySelectorAll('.tts-car-cb');
+      cbs.forEach(cb => cb.checked = checkAll);
+    }
+
+    async function saveConfig() {
+      try {
+        let cbs = document.querySelectorAll('.tts-car-cb');
+        let selected = [];
+        let totalCount = cbs.length;
+
+        cbs.forEach(cb => {
+          if (cb.checked) selected.push(Number(cb.value));
+        });
+
+        if (selected.length === totalCount) {
+          selectedTTSCars = [];
+        } else {
+          selectedTTSCars = selected;
+        }
+        localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
+
+        let deadtimeSec = parseFloat(document.getElementById('cfg_deadtime').value);
+        if (!isNaN(deadtimeSec)) {
+          await fetch('/api/setdeadtime?ms=' + Math.round(deadtimeSec * 1000), { method: 'POST' });
+        }
+        let filterCb = document.getElementById('cfg_two_frames');
+        if (filterCb) {
+          await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
+        }
+        for (let i = 1; i <= MAX_CARS; i++) {
+          let driverElem = document.getElementById('cfg_driver_' + i);
+          let carElem = document.getElementById('cfg_car_' + i);
+          if (driverElem && carElem) {
+            let driverVal = driverElem.value.trim() || ('Fahrer ' + i);
+            let carVal = carElem.value.trim() || ('Auto ' + i);
+            carNamesMap[i] = { driver: driverVal, car: carVal }; 
+            await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
+          }
+        }
+      } catch (err) { 
+        console.error(err); 
+      } finally {
+        closeConfigModal();
+        updateData();
+      }
+    }
+
+    // --- Start der Anwendung ---
+    loadCarNames().then(() => updateTTSFilterDisplay());
+    pollData(); // Startet das optimierte, sequenzielle Polling
+  </script>
+</body>
+</html>
