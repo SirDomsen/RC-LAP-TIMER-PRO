@@ -160,6 +160,11 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
     laps = doc["laps"].to<JsonArray>();
   }
 
+  // Begrenzung: Max. 100 Runden pro Fahrzeug speichern, um den RAM beim Laden/Parsen nicht zu überlasten
+  if (laps.size() >= 100) {
+    laps.remove(0);
+  }
+
   JsonObject newLap = laps.add<JsonObject>();
   newLap["lap"] = lapNum;
   newLap["time"] = lapTimeMs;
@@ -246,6 +251,11 @@ void saveSessionToHistory(const String& sessionJsonStr) {
   JsonArray sessions = doc["sessions"].as<JsonArray>();
   if (!sessions) {
     sessions = doc["sessions"].to<JsonArray>();
+  }
+
+  // Begrenzung: Max. 20 Sessions speichern
+  if (sessions.size() >= 20) {
+    sessions.remove(0);
   }
 
   JsonDocument newSessionDoc;
