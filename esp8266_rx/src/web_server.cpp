@@ -8,8 +8,12 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <DNSServer.h>
 
 static AsyncWebServer server(80);
+DNSServer dnsServer;
+
+const byte DNS_PORT = 53;
 
 static void setupWLAN() {
   IPAddress local_IP(192, 168, 0, 8);
@@ -26,9 +30,14 @@ static void setupWLAN() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("[WLAN] IP: " + WiFi.localIP().toString());
   } else {
+    // Access Point starten, wenn keine Verbindung zum Heim-WLAN besteht
     WiFi.mode(WIFI_AP);
     WiFi.softAPConfig(local_IP, gateway, subnet);
     WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
+
+    // DNS-Server starten: Fängt alle Domain-Abfragen (*) ab und leitet sie auf den Laptimer um
+    dnsServer.start(DNS_PORT, "*", local_IP);
+    Serial.println("[DNS] Captive Portal DNS-Server gestartet.");
   }
 
   // --- mDNS Konfiguration ---
@@ -99,10 +108,16 @@ void initNetworkAndServer() {
   server.on("/api/savesessionresult", HTTP_POST, handlePostSaveSessionResult);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
 
+  // Captive Portal Umleitung für Android / iOS Internet-Erkennungs-Probes
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    request->redirect("http://192.168.0.8/");
+  });
+
   server.begin();
 }
 
 void handleNetworkTasks() {
+  dnsServer.processNextRequest(); // Verarbeitet DNS-Anfragen für das Captive Portal
   ArduinoOTA.handle();
   MDNS.update();
 }

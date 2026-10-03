@@ -4,8 +4,10 @@
 #include <LittleFS.h>
 
 void handleGetLaps(AsyncWebServerRequest *request) {
-  String json;
+  static String json;
+  json = "";
   json.reserve(1024);
+
   json = "[";
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
@@ -59,7 +61,8 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
       secondsLeft = 0;
     }
   }
-  String json;
+  static String json;
+  json = "";
   json.reserve(128);
   json = "{\"mode\":";
   json += (int)currentMode;
@@ -72,7 +75,8 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
 }
 
 void handleGetRecent(AsyncWebServerRequest *request) {
-  String json;
+  static String json;
+  json = "";
   json.reserve(64);
   json = "[";
   for (int i = 0; i < 5; i++) {
@@ -84,19 +88,28 @@ void handleGetRecent(AsyncWebServerRequest *request) {
 }
 
 void handleGetDeadtime(AsyncWebServerRequest *request) {
-  String json = "{\"ms\":" + String(minLapTimeMs) + "}";
+  static String json;
+  json = "";
+  json.reserve(32);
+  json = "{\"ms\":";
+  json += minLapTimeMs;
+  json += "}";
   request->send(200, "application/json", json);
 }
 
 void handleGetFilter(AsyncWebServerRequest *request) {
-  String json = "{\"enabled\":";
+  static String json;
+  json = "";
+  json.reserve(32);
+  json = "{\"enabled\":";
   json += (requireTwoFrames ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
 
 void handleGetNames(AsyncWebServerRequest *request) {
-  String json;
+  static String json;
+  json = "";
   json.reserve(1024);
   json = "{";
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
@@ -114,7 +127,10 @@ void handleGetNames(AsyncWebServerRequest *request) {
 }
 
 void handleGetVersion(AsyncWebServerRequest *request) {
-  String json = "{\"firmware\":\"" FIRMWARE_VERSION "\",\"ui\":\"" UI_VERSION "\"}";
+  static String json;
+  json = "";
+  json.reserve(64);
+  json = "{\"firmware\":\"" FIRMWARE_VERSION "\",\"ui\":\"" UI_VERSION "\"}";
   request->send(200, "application/json", json);
 }
 

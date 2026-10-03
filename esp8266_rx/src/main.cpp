@@ -20,8 +20,6 @@ void setup() {
   initIRDecoder();
   initLapLogic();
   initNetworkAndServer();
-
-  
 }
 
 void loop() {
@@ -30,4 +28,12 @@ void loop() {
   processStorageQueue(); // Verarbeitet gepufferte Runden für die Flash-Speicherung
   updateLEDs();
   handleNetworkTasks();
+
+  // Periodische Kontrolle des freien Arbeitsspeichers (Heap) zur Diagnose von Speicherlecks
+  static uint32_t lastHeapCheck = 0;
+  if (millis() - lastHeapCheck > 30000) { // Alle 30 Sekunden
+    lastHeapCheck = millis();
+    Serial.printf("[SYSTEM] Freier Heap: %u Bytes | Fragmentierung: %u%%\n", 
+                  ESP.getFreeHeap(), ESP.getHeapFragmentation());
+  }
 }
