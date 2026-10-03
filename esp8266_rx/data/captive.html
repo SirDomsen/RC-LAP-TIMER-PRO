@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RC Laptimer Pro</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      text-align: center;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 28px 20px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      max-width: 360px;
+      width: 100%;
+      border: 1px solid #2a2a2a;
+    }
+    .icon { font-size: 48px; margin-bottom: 12px; }
+    h1 { font-size: 1.4rem; margin-bottom: 12px; color: #00e676; }
+    p { font-size: 0.9rem; color: #bbb; margin-bottom: 20px; line-height: 1.4; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px 0;
+      background-color: #00e676;
+      color: #000;
+      font-weight: bold;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      box-shadow: 0 4px 15px rgba(0,230,118,0.3);
+      margin-bottom: 12px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-secondary {
+      background-color: #2a2a2a;
+      color: #00e676;
+      border: 1px solid #00e676;
+      box-shadow: none;
+    }
+    .btn-secondary:active {
+      background-color: #333;
+    }
+    .ip-info { margin-top: 12px; font-size: 0.8rem; color: #888; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🏎️</div>
+    <h1>RC Laptimer Pro</h1>
+    <p>Das Login-Fenster unterstützt keine <b>Sprachausgabe</b>. Klicke auf 1. "Im Browser öffnen". Dann im Browser auf den unteren Button 2. "Laptimer jetzt öffnen".</p>
+    
+    <!-- Button 1: Zum Browser wechseln / Intent -->
+    <a id="browserLink" href="#" class="btn">1. Im Browser öffnen</a>
+
+    <!-- Button 2: Direkter Link zur Laptimer-IP (index.html) -->
+    <a id="laptimerLink" href="#" class="btn btn-secondary">2. Laptimer jetzt öffnen</a>
+    
+    <div class="ip-info" id="ipDisplay">http://192.168.0.8</div>
+  </div>
+
+  <script>
+    (function() {
+      let targetIp = "%LAPTIMER_IP%";
+      if (targetIp === "" || targetIp.startsWith("%")) {
+        targetIp = window.location.hostname;
+      }
+      
+      const baseUrl = "http://" + targetIp + "/";
+      const directUrl = "http://" + targetIp + "/index.html";
+
+      const browserBtn = document.getElementById('browserLink');
+      const laptimerBtn = document.getElementById('laptimerLink');
+      const info = document.getElementById('ipDisplay');
+      
+      info.textContent = baseUrl;
+
+      // Button 2 führt immer direkt auf die IP
+      laptimerBtn.href = directUrl;
+
+      // Button 1 erzwingt unter Android den Aufruf im externen Browser
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        browserBtn.href = "intent://" + targetIp + "/index.html#Intent;scheme=http;action=android.intent.action.VIEW;end";
+      } else {
+        browserBtn.href = directUrl;
+        browserBtn.target = "_system";
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -14,6 +14,41 @@ static AsyncWebServer server(80);
 DNSServer dnsServer;
 
 const byte DNS_PORT = 53;
+static IPAddress currentActiveIP(192, 168, 0, 8);
+
+// Fallback HTML für das Captive Portal (falls captive.html nicht in LittleFS liegt)
+const char CAPTIVE_HTML_FALLBACK[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RC Laptimer Pro</title>
+  <style>
+    body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 40px 20px; }
+    .btn { display: block; padding: 16px; background: #00e676; color: #000; text-decoration: none; font-weight: bold; border-radius: 8px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h2>RC Laptimer Pro</h2>
+  <p>Für Sprachausgabe bitte im Browser öffnen:</p>
+  <a id="lnk" href="#" class="btn">Zum RC Laptimer Pro</a>
+  <script>
+    var ip = "%LAPTIMER_IP%";
+    if(ip.startsWith("%")) ip = window.location.hostname;
+    document.getElementById("lnk").href = "http://" + ip + "/";
+  </script>
+</body>
+</html>
+)rawliteral";
+
+// Template Processor ersetzt %LAPTIMER_IP% dynamisch durch die reale IP
+String captiveProcessor(const String& var) {
+  if (var == "LAPTIMER_IP") {
+    return currentActiveIP.toString();
+  }
+  return String();
+}
 
 static void setupWLAN() {
   IPAddress local_IP(192, 168, 0, 8);
@@ -28,15 +63,17 @@ static void setupWLAN() {
   while (WiFi.status() != WL_CONNECTED && timeout < 20) { delay(500); timeout++; }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[WLAN] IP: " + WiFi.localIP().toString());
+    currentActiveIP = WiFi.localIP();
+    Serial.println("[WLAN] IP: " + currentActiveIP.toString());
   } else {
     // Access Point starten, wenn keine Verbindung zum Heim-WLAN besteht
     WiFi.mode(WIFI_AP);
     WiFi.softAPConfig(local_IP, gateway, subnet);
     WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
+    currentActiveIP = local_IP;
 
     // DNS-Server starten: Fängt alle Domain-Abfragen (*) ab und leitet sie auf den Laptimer um
-    dnsServer.start(DNS_PORT, "*", local_IP);
+    dnsServer.start(DNS_PORT, "*", currentActiveIP);
     Serial.println("[DNS] Captive Portal DNS-Server gestartet.");
   }
 
@@ -67,6 +104,7 @@ static void setupWLAN() {
 void initNetworkAndServer() {
   setupWLAN();
 
+  // 1. Statische Dateien aus LittleFS servieren
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
   // Streamt /update direkt aus dem Dateisystem
@@ -86,6 +124,7 @@ void initNetworkAndServer() {
     request->send(200, "text/plain", "OK");
   }, handleFileUpload);
 
+  // --- API Endpunkte ---
   server.on("/api/laps", HTTP_GET, handleGetLaps);
   server.on("/api/session", HTTP_POST, handlePostSession);
   server.on("/api/timeleft", HTTP_GET, handleGetTimeLeft);
@@ -108,9 +147,46 @@ void initNetworkAndServer() {
   server.on("/api/savesessionresult", HTTP_POST, handlePostSaveSessionResult);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
 
-  // Captive Portal Umleitung für Android / iOS Internet-Erkennungs-Probes
+  // --- Captive Portal & Connectivity-Checks Handler ---
   server.onNotFound([](AsyncWebServerRequest *request) {
-    request->redirect("http://192.168.0.8/");
+    String host = request->host();
+    String url = request->url();
+
+    // A) Wenn die Anfrage an die IP-Adresse des ESP oder laptimer.local geht:
+    // Echte Dateien oder index.html ausliefern
+    if (host == currentActiveIP.toString() || host == "laptimer.local") {
+      if (LittleFS.exists(url)) {
+        request->send(LittleFS, url, "text/html");
+      } else if (url == "/" || url == "/index.html") {
+        request->send(LittleFS, "/index.html", "text/html");
+      } else {
+        request->send(404, "text/plain", "404: Not Found");
+      }
+      return;
+    }
+
+    // B) Android Connectivity Probe
+    if (url.indexOf("generate_204") >= 0 || url.indexOf("gen_204") >= 0) {
+      if (LittleFS.exists("/captive.html")) {
+        request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
+      } else {
+        request->send(200, "text/html", CAPTIVE_HTML_FALLBACK, captiveProcessor);
+      }
+      return;
+    }
+    
+    // C) Apple Connectivity Probe
+    if (url.indexOf("captive.apple.com") >= 0 || url.indexOf("hotspot-detect") >= 0) {
+      request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+      return;
+    }
+
+    // D) Alle sonstigen Aufrufe landen auf der captive.html
+    if (LittleFS.exists("/captive.html")) {
+      request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
+    } else {
+      request->send(200, "text/html", CAPTIVE_HTML_FALLBACK, captiveProcessor);
+    }
   });
 
   server.begin();
