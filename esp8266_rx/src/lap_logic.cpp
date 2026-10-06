@@ -20,8 +20,9 @@ bool requireTwoFrames = true;
 uint32_t lastSeenMs[MAX_CARS + 1] = {0};
 bool readyForNextLap[MAX_CARS + 1] = {false};
 
-uint64_t latestClientTimestampMs = 0;
-uint32_t lastSyncMillis = 0;
+// Globale Variablen für den ressourcenschonenden Einmal-Sync
+uint64_t baseUnixTimestampSec = 0;
+uint32_t baseMillis = 0;
 
 const uint16_t CLEARANCE_TIMEOUT_MS = 1000; 
 
@@ -44,6 +45,24 @@ void initLapLogic() {
   digitalWrite(LED_ONBOARD, HIGH);
   
   resetAllLaps();
+}
+
+void syncClockOnce(uint64_t clientTsSec) {
+  // Setzt die Basiszeit einmalig beim Start/Verbindung des Clients
+  if (baseUnixTimestampSec == 0 || clientTsSec > baseUnixTimestampSec + 3600) {
+    baseUnixTimestampSec = clientTsSec;
+    baseMillis = millis();
+    Serial.printf("[ClockSync] Basis-Uhrzeit gesetzt auf: %llu\n", clientTsSec);
+  }
+}
+
+uint64_t getCurrentTimestampMs() {
+  if (baseUnixTimestampSec == 0) {
+    return (uint64_t)millis(); // Fallback vor dem ersten Sync
+  }
+  uint32_t elapsedMs = millis() - baseMillis;
+  // baseUnixTimestampSec sind Sekunden -> * 1000ULL für Millisekunden
+  return (baseUnixTimestampSec * 1000ULL) + elapsedMs;
 }
 
 void addRecentID(uint8_t newId) {
@@ -154,13 +173,8 @@ void processLapLogic() {
         readyForNextLap[carId] = false;
         lapCounted = true;
 
-        // Zeitstempel bestimmen (Fallback auf millis() Relativzeit, falls keine Client-Zeit synchronisiert)
-        uint64_t currentTsMs = 0;
-        if (latestClientTimestampMs > 0) {
-          currentTsMs = latestClientTimestampMs + (millis() - lastSyncMillis);
-        } else {
-          currentTsMs = (uint64_t)millis();
-        }
+        // Exakten Zeitstempel ohne Netzwerk-Last intern berechnen
+        uint64_t currentTsMs = getCurrentTimestampMs();
 
         uint8_t pos = getCurrentPosition(carId);
         queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);

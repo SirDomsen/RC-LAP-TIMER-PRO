@@ -177,9 +177,8 @@ void handlePostReset(AsyncWebServerRequest *request) {
 
 void handlePostSyncTime(AsyncWebServerRequest *request) {
   if (request->hasParam("ts")) {
-    uint64_t clientTs = strtoull(request->getParam("ts")->value().c_str(), NULL, 10);
-    latestClientTimestampMs = clientTs;
-    lastSyncMillis = millis();
+    uint64_t clientTsSec = strtoull(request->getParam("ts")->value().c_str(), NULL, 10);
+    syncClockOnce(clientTsSec);
   }
   request->send(200, "text/plain", "OK");
 }
@@ -277,7 +276,7 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
       if (filename == "/names.json") {
         loadNamesFromFS();
       } 
-      // Verarbeitet JSON Backup-Dateien (sowohl rctl_stats_backup... als auch backup.json)
+      // Verarbeitet Backup-Dateien
       else if (filename.endsWith(".json")) {
         File bFile = LittleFS.open(filename, "r");
         if (bFile) {
@@ -286,7 +285,7 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
           bFile.close();
 
           if (!err) {
-            // 1. Sessions wiederherstellen
+            // 1. Renn-Sessions wiederherstellen
             if (doc["sessions"].is<JsonArray>()) {
               for (JsonObject sess : doc["sessions"].as<JsonArray>()) {
                 String sessStr;
@@ -295,7 +294,7 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
               }
             }
 
-            // 2. Rundenzeiten entpacken (unterstützt 'driverStats' und 'stats')
+            // 2. Rundenhistorie entpacken (unterstützt 'driverStats' & 'stats')
             JsonObject statsObj;
             if (doc["driverStats"].is<JsonObject>()) {
               statsObj = doc["driverStats"].as<JsonObject>();
@@ -315,8 +314,9 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
                     uint8_t pos = lapObj["pos"] | 1;
                     
                     if (lap > 0 && timeMs > 0) {
-                      saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
-                    }
+  // Nimmt exakt den ts-Wert aus dem Backup (z.B. 1791338175)
+  saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
+}
                   }
                 }
               }

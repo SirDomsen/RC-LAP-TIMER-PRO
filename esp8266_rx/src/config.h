@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v1.3.1"  //xiaomi-fix
+#define FIRMWARE_VERSION  "v1.3.7"
 #define UI_VERSION        "v1.3.0"
 
 #if __has_include("secrets.h")

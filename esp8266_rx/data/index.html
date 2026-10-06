@@ -503,6 +503,14 @@
     let ttsEnabled = true;
     let countdownTimeouts = [];
 
+    // --- Einmaliger ressourcenschonender Uhrzeit-Sync ---
+    function syncTimeWithServerOnce() {
+      let nowSec = Math.floor(Date.now() / 1000);
+      fetch('/api/synctime?ts=' + nowSec, { 
+        method: 'POST'
+      }).catch(e => console.error("Einmaliger Zeit-Sync fehlgeschlagen:", e));
+    }
+
     async function loadVersion() {
       try {
         const response = await fetch('/api/version');
@@ -551,19 +559,10 @@
     let announced10 = false;
 
     const synth = window.speechSynthesis;
-
-    function syncTimeWithServer() {
-      let nowMs = Date.now();
-      fetch('/api/synctime?ts=' + Math.floor(nowMs / 1000), { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      }).catch(e => console.error("Sync error:", e));
-    }
     
     window.addEventListener('DOMContentLoaded', () => {
       loadVersion();
-      syncTimeWithServer();
-      setInterval(syncTimeWithServer, 300000);
+      syncTimeWithServerOnce(); // NUR EINMALIG BEIM START SYNCEN
     });
 
     window.onclick = function(event) {
@@ -1015,7 +1014,7 @@
           <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
           <td>${modeStr}</td>
           <td>
-            <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑️️</button>
+            <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑</button>
           </td>
         </tr>`;
       });
@@ -1472,22 +1471,21 @@
         let data = await res.json();
 
         if (!data.laps || data.laps.length === 0) {
-          contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten gespeichert.</span>';
+          contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten im Speicher vorhanden.</span>';
           return;
         }
 
+        // Versuche passende Runden anhand des Zeitstempels zu filtern
         let filteredLaps = data.laps.filter(l => {
-          if (sessionTs) {
+          if (sessionTs && l.ts && l.ts > 0) {
             let sessionTsMs = sessionTs < 10000000000 ? sessionTs * 1000 : sessionTs;
             let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
-            
-            if (lapTsMs > 0) {
-              return lapTsMs <= sessionTsMs + 60000 && lapTsMs >= (sessionTsMs - 7200000);
-            }
+            return lapTsMs <= sessionTsMs + 120000 && lapTsMs >= (sessionTsMs - 7200000);
           }
-          return true;
+          return false;
         });
 
+        // Fallback: Wenn für die exakte Session-Zeit keine Runden gefunden wurden
         if (filteredLaps.length === 0) {
           filteredLaps = data.laps;
         }
@@ -1570,14 +1568,18 @@
 
     function formatTimestamp(ts) {
       if (!ts || ts === 0) return '---';
+      
+      // Handhabt sowohl Sekunden (Standard) als auch Millisekunden
       let tsMs = ts < 10000000000 ? ts * 1000 : ts;
       let d = new Date(tsMs);
+
       let day = String(d.getDate()).padStart(2, '0');
       let month = String(d.getMonth() + 1).padStart(2, '0');
       let year = d.getFullYear();
       let hours = String(d.getHours()).padStart(2, '0');
       let mins = String(d.getMinutes()).padStart(2, '0');
       let secs = String(d.getSeconds()).padStart(2, '0');
+      
       return `${day}.${month}.${year} ${hours}:${mins}:${secs}`;
     }
 
@@ -1664,70 +1666,28 @@
       let file = event.target.files[0];
       if (!file) return;
 
-      let reader = new FileReader();
-      reader.onload = async function(e) {
-        try {
-          let backup = JSON.parse(e.target.result);
-          let statsData = backup.driverStats || backup.stats;
+      if (!confirm("Soll das Backup eingespielt werden? Bestehende Datensätze werden ergänzt/aktualisiert.")) {
+        return;
+      }
 
-          if (!statsData && !backup.sessions) {
-            alert("Ungültiges Backup-Format!");
-            return;
-          }
+      let formData = new FormData();
+      formData.append('data', file, 'backup.json');
 
-          if (!confirm("Soll das Backup eingespielt werden? Bestehende Datensätze werden ergänzt/aktualisiert.")) {
-            return;
-          }
-
-          // 1. Sessions hochladen
-          if (backup.sessions && backup.sessions.length > 0) {
-            for (let session of backup.sessions) {
-              let formData = new FormData();
-              formData.append('data', JSON.stringify(session));
-              await fetch('/api/savesessionresult', { method: 'POST', body: formData });
-            }
-          }
-
-          // 2. Rundenzeiten der einzelnen Fahrzeuge wiederherstellen
-          if (statsData) {
-            for (let carId in statsData) {
-              let lapsArray = statsData[carId]?.laps;
-              if (lapsArray && lapsArray.length > 0) {
-                for (let lapObj of lapsArray) {
-                  // Runden direkt in die History schreiben
-                  if (lapObj.lap > 0 && lapObj.time > 0) {
-                    let tsVal = lapObj.ts || 0;
-                    let modeVal = lapObj.mode !== undefined ? lapObj.mode : 0;
-                    let posVal = lapObj.pos || 1;
-                    
-                    // Speichert jede Runde ohne Duplikate im LittleFS
-                    let lapData = new FormData();
-                    lapData.append('id', carId);
-                    lapData.append('lap', lapObj.lap);
-                    lapData.append('time', lapObj.time);
-                    lapData.append('mode', modeVal);
-                    lapData.append('pos', posVal);
-                    lapData.append('ts', tsVal);
-                  }
-                }
-              }
-            }
-          }
-
-          // 3. Gesamte Backup-Datei zur Sicherheit noch als File-Upload senden
-          let fileFormData = new FormData();
-          fileFormData.append('data', file, 'backup.json');
-          await fetch('/api/upload', { method: 'POST', body: fileFormData });
-
+      try {
+        let res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (res.ok) {
           alert("Backup erfolgreich wiederhergestellt!");
           switchStatsTab(currentTab);
-        } catch (err) {
-          alert("Fehler beim Einlesen der Backup-Datei: " + err.message);
+        } else {
+          alert("Fehler beim Hochladen des Backups.");
         }
-      };
-      reader.readAsText(file);
+      } catch (err) {
+        alert("Fehler beim Einlesen der Backup-Datei: " + err.message);
+      }
+      
       event.target.value = '';
     }
+
     function openConfigModal() {
       document.getElementById('configModal').style.display = 'block';
 

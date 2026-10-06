@@ -26,8 +26,8 @@ extern bool requireTwoFrames;
 extern uint32_t lastSeenMs[MAX_CARS + 1];
 extern bool readyForNextLap[MAX_CARS + 1];
 
-extern uint64_t latestClientTimestampMs;
-extern uint32_t lastSyncMillis;
+extern uint64_t baseUnixTimestampSec;
+extern uint32_t baseMillis;
 
 void initLapLogic();
 void processLapLogic();
@@ -36,5 +36,8 @@ void updateLEDs();
 void resetAllLaps();
 void addRecentID(uint8_t newId);
 uint8_t getCurrentPosition(uint8_t carId);
+
+void syncClockOnce(uint64_t clientTsSec);
+uint64_t getCurrentTimestampMs();
 
 #endif
