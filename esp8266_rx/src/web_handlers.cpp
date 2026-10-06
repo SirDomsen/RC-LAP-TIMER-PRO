@@ -2,6 +2,7 @@
 #include "storage.h"
 #include "lap_logic.h"
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 
 void handleGetLaps(AsyncWebServerRequest *request) {
   static String json;
@@ -260,7 +261,7 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
     if (!filename.startsWith("/")) {
       filename = "/" + filename;
     }
-    Serial.printf("[Update] Upload Start: %s\n", filename.c_str());
+    Serial.printf("[Upload] Start: %s\n", filename.c_str());
     uploadFile = LittleFS.open(filename, "w");
   }
   
@@ -271,8 +272,54 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
   if (final) {
     if (uploadFile) {
       uploadFile.close();
-      Serial.printf("[Update] Upload Fertig: %s (%u Bytes)\n", filename.c_str(), index + len);
+      Serial.printf("[Upload] Fertig: %s (%u Bytes)\n", filename.c_str(), index + len);
+      
+      // 1. Namen aktualisieren
+      if (filename == "/names.json") {
+        loadNamesFromFS();
+      } 
+      // 2. Falls ein gesammeltes Backup (backup.json) hochgeladen wurde: Rundenzeiten & Sessions parsen
+      else if (filename == "/backup.json" || filename.endsWith("backup.json")) {
+        File bFile = LittleFS.open(filename, "r");
+        if (bFile) {
+          JsonDocument doc;
+          DeserializationError err = deserializeJson(doc, bFile);
+          bFile.close();
+
+          if (!err) {
+            // A) Sessions wiederherstellen
+            if (doc["sessions"].is<JsonArray>()) {
+              for (JsonObject sess : doc["sessions"].as<JsonArray>()) {
+                String sessStr;
+                serializeJson(sess, sessStr);
+                saveSessionToHistory(sessStr);
+              }
+            }
+
+            // B) Fahrer- & Rundendaten wiederherstellen (stats / stats_X / drivers)
+            if (doc["stats"].is<JsonObject>()) {
+              JsonObject statsObj = doc["stats"].as<JsonObject>();
+              for (JsonPair kv : statsObj) {
+                uint8_t carId = String(kv.key().c_str()).toInt();
+                if (carId >= 1 && carId <= MAX_CARS && kv.value()["laps"].is<JsonArray>()) {
+                  for (JsonObject lapObj : kv.value()["laps"].as<JsonArray>()) {
+                    uint16_t lap = lapObj["lap"] | 0;
+                    uint32_t timeMs = lapObj["time"] | 0;
+                    uint8_t mode = lapObj["mode"] | 0;
+                    uint64_t ts = lapObj["ts"] | 0;
+                    uint8_t pos = lapObj["pos"] | 1;
+                    
+                    if (lap > 0 && timeMs > 0) {
+                      saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-    request->send(200, "text/plain", "Datei erfolgreich aktualisiert!");
+    request->send(200, "text/plain", "Datei erfolgreich wiederhergestellt!");
   }
 }

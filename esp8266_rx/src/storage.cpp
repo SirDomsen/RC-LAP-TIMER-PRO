@@ -160,7 +160,16 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
     laps = doc["laps"].to<JsonArray>();
   }
 
-  // Begrenzung: Max. 100 Runden pro Fahrzeug speichern, um den RAM beim Laden/Parsen nicht zu überlasten
+  // DUPLIKATSPRÜFUNG: Verhindert doppelte Runden-Einträge
+  for (JsonObject existingLap : laps) {
+    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs && existingLap["mode"] == mode) {
+      if (timestampMs == 0 || existingLap["ts"] == timestampMs) {
+        return; // Runde bereits vorhanden -> nicht erneut hinzufügen
+      }
+    }
+  }
+
+  // Begrenzung: Max. 100 Runden pro Fahrzeug speichern
   if (laps.size() >= 100) {
     laps.remove(0);
   }
@@ -170,9 +179,7 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
   newLap["time"] = lapTimeMs;
   newLap["mode"] = mode;
   newLap["ts"] = timestampMs;
-  if (mode == 2 || mode == 3) {
-    newLap["pos"] = position;
-  }
+  newLap["pos"] = position;
 
   File f = LittleFS.open(filepath, "w");
   if (f) {
@@ -253,14 +260,32 @@ void saveSessionToHistory(const String& sessionJsonStr) {
     sessions = doc["sessions"].to<JsonArray>();
   }
 
-  // Begrenzung: Max. 20 Sessions speichern
-  if (sessions.size() >= 20) {
-    sessions.remove(0);
+  JsonDocument incomingSessionDoc;
+  DeserializationError err = deserializeJson(incomingSessionDoc, sessionJsonStr);
+  if (err) return;
+
+  JsonObject incomingObj = incomingSessionDoc.as<JsonObject>();
+  uint64_t incomingTs = incomingObj["ts"] | 0;
+
+  // DUPLIKATSPRÜFUNG & UPDATE: Falls Session mit gleichem Zeitstempel existiert, überschreiben
+  bool updated = false;
+  if (incomingTs > 0) {
+    for (size_t i = 0; i < sessions.size(); i++) {
+      if (sessions[i]["ts"] == incomingTs) {
+        sessions[i] = incomingObj;
+        updated = true;
+        break;
+      }
+    }
   }
 
-  JsonDocument newSessionDoc;
-  deserializeJson(newSessionDoc, sessionJsonStr);
-  sessions.add(newSessionDoc.as<JsonObject>());
+  if (!updated) {
+    // Max 30 Sessions aufbewahren
+    if (sessions.size() >= 30) {
+      sessions.remove(0);
+    }
+    sessions.add(incomingObj);
+  }
 
   File f = LittleFS.open(filepath, "w");
   if (f) {

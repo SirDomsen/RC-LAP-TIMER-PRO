@@ -149,12 +149,18 @@ void initNetworkAndServer() {
 
   // --- Captive Portal & Connectivity-Checks Handler ---
   server.onNotFound([](AsyncWebServerRequest *request) {
-    String host = request->host();
     String url = request->url();
 
+    // WICHTIG: API-Aufrufe dürfen NIEMALS im Captive Portal landen!
+    if (url.startsWith("/api/")) {
+      request->send(404, "application/json", "{\"error\":\"Not Found\"}");
+      return;
+    }
+
+    String host = request->host();
+
     // A) Wenn die Anfrage an die IP-Adresse des ESP oder laptimer.local geht:
-    // Echte Dateien oder index.html ausliefern
-    if (host == currentActiveIP.toString() || host == "laptimer.local") {
+    if (host == currentActiveIP.toString() || host == "laptimer.local" || host.indexOf("192.168.") >= 0) {
       if (LittleFS.exists(url)) {
         request->send(LittleFS, url, "text/html");
       } else if (url == "/" || url == "/index.html") {
@@ -181,7 +187,7 @@ void initNetworkAndServer() {
       return;
     }
 
-    // D) Alle sonstigen Aufrufe landen auf der captive.html
+    // D) Alle sonstigen Captive-Portal Aufrufe
     if (LittleFS.exists("/captive.html")) {
       request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
     } else {

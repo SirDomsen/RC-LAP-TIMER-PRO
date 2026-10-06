@@ -133,7 +133,7 @@ void processLapLogic() {
         readyForNextLap[carId] = false;
         lapCounted = true;
       } 
-      // 2. Folgerunden
+      // 2. Folgerunden (unterstützt alle Modi inklusive Freies Training)
       else if ((exactSignalTime - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
         uint32_t currentLapTimeMs = (exactSignalTime - lastCrossTime[carId]) / 1000UL;
         
