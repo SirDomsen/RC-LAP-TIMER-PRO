@@ -274,12 +274,11 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
       uploadFile.close();
       Serial.printf("[Upload] Fertig: %s (%u Bytes)\n", filename.c_str(), index + len);
       
-      // 1. Namen aktualisieren
       if (filename == "/names.json") {
         loadNamesFromFS();
       } 
-      // 2. Falls ein gesammeltes Backup (backup.json) hochgeladen wurde: Rundenzeiten & Sessions parsen
-      else if (filename == "/backup.json" || filename.endsWith("backup.json")) {
+      // Verarbeitet JSON Backup-Dateien (sowohl rctl_stats_backup... als auch backup.json)
+      else if (filename.endsWith(".json")) {
         File bFile = LittleFS.open(filename, "r");
         if (bFile) {
           JsonDocument doc;
@@ -287,7 +286,7 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
           bFile.close();
 
           if (!err) {
-            // A) Sessions wiederherstellen
+            // 1. Sessions wiederherstellen
             if (doc["sessions"].is<JsonArray>()) {
               for (JsonObject sess : doc["sessions"].as<JsonArray>()) {
                 String sessStr;
@@ -296,9 +295,15 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
               }
             }
 
-            // B) Fahrer- & Rundendaten wiederherstellen (stats / stats_X / drivers)
-            if (doc["stats"].is<JsonObject>()) {
-              JsonObject statsObj = doc["stats"].as<JsonObject>();
+            // 2. Rundenzeiten entpacken (unterstützt 'driverStats' und 'stats')
+            JsonObject statsObj;
+            if (doc["driverStats"].is<JsonObject>()) {
+              statsObj = doc["driverStats"].as<JsonObject>();
+            } else if (doc["stats"].is<JsonObject>()) {
+              statsObj = doc["stats"].as<JsonObject>();
+            }
+
+            if (!statsObj.isNull()) {
               for (JsonPair kv : statsObj) {
                 uint8_t carId = String(kv.key().c_str()).toInt();
                 if (carId >= 1 && carId <= MAX_CARS && kv.value()["laps"].is<JsonArray>()) {

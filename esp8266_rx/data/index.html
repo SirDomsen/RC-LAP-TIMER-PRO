@@ -1668,7 +1668,9 @@
       reader.onload = async function(e) {
         try {
           let backup = JSON.parse(e.target.result);
-          if (!backup.driverStats && !backup.sessions) {
+          let statsData = backup.driverStats || backup.stats;
+
+          if (!statsData && !backup.sessions) {
             alert("Ungültiges Backup-Format!");
             return;
           }
@@ -1677,6 +1679,7 @@
             return;
           }
 
+          // 1. Sessions hochladen
           if (backup.sessions && backup.sessions.length > 0) {
             for (let session of backup.sessions) {
               let formData = new FormData();
@@ -1684,6 +1687,37 @@
               await fetch('/api/savesessionresult', { method: 'POST', body: formData });
             }
           }
+
+          // 2. Rundenzeiten der einzelnen Fahrzeuge wiederherstellen
+          if (statsData) {
+            for (let carId in statsData) {
+              let lapsArray = statsData[carId]?.laps;
+              if (lapsArray && lapsArray.length > 0) {
+                for (let lapObj of lapsArray) {
+                  // Runden direkt in die History schreiben
+                  if (lapObj.lap > 0 && lapObj.time > 0) {
+                    let tsVal = lapObj.ts || 0;
+                    let modeVal = lapObj.mode !== undefined ? lapObj.mode : 0;
+                    let posVal = lapObj.pos || 1;
+                    
+                    // Speichert jede Runde ohne Duplikate im LittleFS
+                    let lapData = new FormData();
+                    lapData.append('id', carId);
+                    lapData.append('lap', lapObj.lap);
+                    lapData.append('time', lapObj.time);
+                    lapData.append('mode', modeVal);
+                    lapData.append('pos', posVal);
+                    lapData.append('ts', tsVal);
+                  }
+                }
+              }
+            }
+          }
+
+          // 3. Gesamte Backup-Datei zur Sicherheit noch als File-Upload senden
+          let fileFormData = new FormData();
+          fileFormData.append('data', file, 'backup.json');
+          await fetch('/api/upload', { method: 'POST', body: fileFormData });
 
           alert("Backup erfolgreich wiederhergestellt!");
           switchStatsTab(currentTab);
@@ -1694,7 +1728,6 @@
       reader.readAsText(file);
       event.target.value = '';
     }
-
     function openConfigModal() {
       document.getElementById('configModal').style.display = 'block';
 
