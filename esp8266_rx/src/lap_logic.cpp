@@ -119,8 +119,14 @@ void processLapLogic() {
     if (confirmPassed) {
       addRecentID(carId);
 
+      // Zeitlimit-Prüfung nur, wenn Modus zeitbasiert ist
       if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && 
           modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
+        return;
+      }
+
+      // Rundenlimit-Prüfung bei MODE_RACE_LAPS
+      if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) {
         return;
       }
       
@@ -133,7 +139,7 @@ void processLapLogic() {
         readyForNextLap[carId] = false;
         lapCounted = true;
       } 
-      // 2. Folgerunden (unterstützt alle Modi inklusive Freies Training)
+      // 2. Folgerunden
       else if ((exactSignalTime - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
         uint32_t currentLapTimeMs = (exactSignalTime - lastCrossTime[carId]) / 1000UL;
         
@@ -148,18 +154,18 @@ void processLapLogic() {
         readyForNextLap[carId] = false;
         lapCounted = true;
 
-        // Präzisen UNIX-Zeitstempel in Millisekunden berechnen
+        // Zeitstempel bestimmen (Fallback auf millis() Relativzeit, falls keine Client-Zeit synchronisiert)
         uint64_t currentTsMs = 0;
         if (latestClientTimestampMs > 0) {
           currentTsMs = latestClientTimestampMs + (millis() - lastSyncMillis);
+        } else {
+          currentTsMs = (uint64_t)millis();
         }
 
-        // In Asynchron-Queue zur Flash-Speicherung ablegen
         uint8_t pos = getCurrentPosition(carId);
         queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
       }
 
-      // Bei gezählter Runde/Startzeit die grüne LED kurz ausschalten (Impuls 200 ms)
       if (lapCounted) {
         digitalWrite(LED_READY, LOW);
         readyLedBlinking = true;

@@ -495,13 +495,15 @@
   </div>
 
   <footer>
-    RC Lap Timer Pro <span id="firmware-version">v1.0.0</span> &copy; 2026 | Powered by ESP8266
+    RC Lap Timer Pro <span id="firmware-version">v1.3.1</span> &copy; 2026 | Powered by ESP8266
   </footer>
 
   <script>
     const MAX_CARS = 15;
     let ttsEnabled = true;
-	async function loadVersion() {
+    let countdownTimeouts = [];
+
+    async function loadVersion() {
       try {
         const response = await fetch('/api/version');
         if (response.ok) {
@@ -514,12 +516,6 @@
       }
     }
 
-    // Direkt beim Start mit dem Time-Sync ausführen:
-    window.addEventListener('DOMContentLoaded', () => {
-      loadVersion();
-      syncTimeWithServer();
-      setInterval(syncTimeWithServer, 300000);
-    });
     let currentMode = 0;
     let targetLaps = 0;
     let maxLapInRace = 0;
@@ -531,13 +527,11 @@
     let audioUnmuted = false;
     let lastLapsData = [];
 
-    // Sortier-Status Haupttabelle
-    let currentSortColumn = 'default'; // 'default', 'driver', 'laps', 'lastLap', 'bestLap'
-    let currentSortDir = 'asc';        // 'asc', 'desc'
+    let currentSortColumn = 'default'; 
+    let currentSortDir = 'asc';        
 
-    // Sortier-Status Statistiken (Einzelne Fahrer)
-    let statsSortColumn = 'default';   // 'default', 'lap', 'time', 'ts', 'mode'
-    let statsSortDir = 'desc';         // 'asc', 'desc'
+    let statsSortColumn = 'default';   
+    let statsSortDir = 'desc';         
     let rawDriverLapsData = [];
 
     let currentLeaderId = null;
@@ -558,19 +552,18 @@
 
     const synth = window.speechSynthesis;
 
-    // --- Synchronisierung der Epoch-Uhrzeit mit dem ESP8266 ---
     function syncTimeWithServer() {
-      let nowMs = Date.now(); // Präziser Millisekunden-Timestamp
+      let nowMs = Date.now();
       fetch('/api/synctime?ts=' + Math.floor(nowMs / 1000), { 
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       }).catch(e => console.error("Sync error:", e));
     }
     
-    // Initialer Sync beim Start
     window.addEventListener('DOMContentLoaded', () => {
+      loadVersion();
       syncTimeWithServer();
-      setInterval(syncTimeWithServer, 300000); // Alle 5 Minuten nachsynchronisieren
+      setInterval(syncTimeWithServer, 300000);
     });
 
     window.onclick = function(event) {
@@ -600,6 +593,16 @@
       }
     }
     document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });
+
+    function cancelRaceCountdown() {
+      countdownTimeouts.forEach(t => clearTimeout(t));
+      countdownTimeouts = [];
+      if ('speechSynthesis' in window) {
+        synth.cancel();
+        speechQueue = [];
+        isSpeaking = false;
+      }
+    }
 
     function speak(text, cancelCurrent = false) {
       if (!ttsEnabled || !('speechSynthesis' in window)) return;
@@ -679,28 +682,37 @@
     }
 
     function startRaceCountdown(onComplete) {
+      cancelRaceCountdown();
       speak("Achtung, das Rennen beginnt gleich!", true);
 
-      setTimeout(() => {
+      let t1 = setTimeout(() => {
         speak("3");
-        setTimeout(() => {
+        let t2 = setTimeout(() => {
           speak("2");
-          setTimeout(() => {
+          let t3 = setTimeout(() => {
             speak("1");
-            setTimeout(() => {
+            let t4 = setTimeout(() => {
               speak("Los!");
               if (typeof onComplete === 'function') {
                 onComplete();
               }
             }, 1000);
+            countdownTimeouts.push(t4);
           }, 1000);
+          countdownTimeouts.push(t3);
         }, 1000);
+        countdownTimeouts.push(t2);
       }, 5000);
+      countdownTimeouts.push(t1);
     }
 
-    function startPractice() { sendSession(0, 0, 0, "Freies Training gestartet"); }
+    function startPractice() { 
+      cancelRaceCountdown();
+      sendSession(0, 0, 0, "Freies Training gestartet"); 
+    }
 
     function startQuali() {
+      cancelRaceCountdown();
       let mins = parseInt(document.getElementById('qualiTimeInput').value);
       if (isNaN(mins) || mins < 1) return;
       let minStr = (mins === 1) ? "eine Minute" : mins + " Minuten";
@@ -747,6 +759,7 @@
     }
 
     function stopSession() {
+      cancelRaceCountdown();
       currentMode = 0;
       isSessionActive = false;
       currentLeaderId = null;
@@ -756,6 +769,7 @@
 
     function resetLaps() {
       if (confirm("Alle Zeiten und Runden komplett zurücksetzen?")) {
+        cancelRaceCountdown();
         stopSession();
         resetLapsData();
       }
@@ -1001,7 +1015,7 @@
           <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
           <td>${modeStr}</td>
           <td>
-            <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑️</button>
+            <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑️️</button>
           </td>
         </tr>`;
       });
@@ -1029,7 +1043,6 @@
           let leaderLaps = leaderSearch[0].completedLaps;
           document.getElementById('leaderLapDisplay').innerText = leaderLaps;
 
-          // Initialen Führenden setzen
           let newLeader = leaderSearch[0];
           if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
             if (currentLeaderId === null && newLeader && newLeader.completedLaps > 0) {
@@ -1181,7 +1194,6 @@
       }
     }
 
-    // --- Blockierungsfreies Polling für den Live-Monitor ---
     let isPolling = false;
     async function pollData() {
       if (isPolling) return;
@@ -1190,7 +1202,7 @@
         await updateData();
       } finally {
         isPolling = false;
-        setTimeout(pollData, 1000); // 1.0 Sekunden Intervall, verhindert Überlastung
+        setTimeout(pollData, 1000); 
       }
     }
 
@@ -1262,18 +1274,20 @@
           return;
         }
 
+        let remainingLapsText = "";
         if (currentMode === 2 && targetLaps > 0 && currentLeaderLaps > maxLapInRace) {
           maxLapInRace = currentLeaderLaps;
           let remainingLaps = targetLaps - currentLeaderLaps;
 
           if (remainingLaps > 0 && remainingLaps <= 5) {
-            if (remainingLaps === 1) { speak("Letzte Runde!", true); } 
-            else { speak("Noch " + remainingLaps + " Runden!", true); }
-            return;
+            if (remainingLaps === 1) { 
+              remainingLapsText = "Letzte Runde! "; 
+            } else { 
+              remainingLapsText = "Noch " + remainingLaps + " Runden! "; 
+            }
           }
         }
 
-        // --- Führungswechsel im Rennen ---
         let leadChangeOccurred = false;
         if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
           if (currentLeaderId !== null && currentLeaderId !== carId) {
@@ -1303,11 +1317,14 @@
             posText = ", Platz " + position + ", ";
           }
 
+          let lapAnnouncement = "";
           if (isBestLap) {
-            speak(driverName + posText + "beste Runde! " + timeSec);
+            lapAnnouncement = driverName + posText + "beste Runde! " + timeSec;
           } else {
-            speak(driverName + posText + timeSec);
+            lapAnnouncement = driverName + posText + timeSec;
           }
+
+          speak(remainingLapsText + lapAnnouncement);
         }
       }
     }
@@ -1460,16 +1477,19 @@
         }
 
         let filteredLaps = data.laps.filter(l => {
-          if (l.mode === 0) return false;
           if (sessionTs) {
-            return l.ts <= sessionTs && l.ts >= (sessionTs - 3600);
+            let sessionTsMs = sessionTs < 10000000000 ? sessionTs * 1000 : sessionTs;
+            let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
+            
+            if (lapTsMs > 0) {
+              return lapTsMs <= sessionTsMs + 60000 && lapTsMs >= (sessionTsMs - 7200000);
+            }
           }
           return true;
         });
 
         if (filteredLaps.length === 0) {
-          contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine spezifischen Rundenzeiten für dieses Rennen gefunden.</span>';
-          return;
+          filteredLaps = data.laps;
         }
 
         let minTime = Math.min(...filteredLaps.map(l => l.time));
@@ -1550,7 +1570,6 @@
 
     function formatTimestamp(ts) {
       if (!ts || ts === 0) return '---';
-      // Formatierung von Millisekunden- oder Sekunden-Timestamp
       let tsMs = ts < 10000000000 ? ts * 1000 : ts;
       let d = new Date(tsMs);
       let day = String(d.getDate()).padStart(2, '0');
@@ -1601,7 +1620,6 @@
       }
     }
 
-    /* BACKUP & RESTORE DIE STATISTIKEN */
     async function downloadStatsBackup() {
       let backupData = {
         version: 1,
@@ -1775,9 +1793,8 @@
       }
     }
 
-    // --- Start der Anwendung ---
     loadCarNames().then(() => updateTTSFilterDisplay());
-    pollData(); // Startet das optimierte, sequenzielle Polling
+    pollData();
   </script>
 </body>
 </html>

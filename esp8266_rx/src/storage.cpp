@@ -19,7 +19,6 @@ static const String defaultCars[MAX_CARS + 1] = {
   "Auto 11", "Auto 12", "Auto 13", "Auto 14", "Auto 15"
 };
 
-// Queue für asynchrones Flash-Schreiben
 #define QUEUE_MAX 30
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
@@ -128,14 +127,14 @@ void saveFilterToEEPROM(bool enable) {
 
 void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
   uint8_t nextHead = (queueHead + 1) % QUEUE_MAX;
-  if (nextHead != queueTail) { // Puffer nicht voll
+  if (nextHead != queueTail) { 
     lapQueue[queueHead] = {carId, lapNum, lapTimeMs, position, mode, timestampMs};
     queueHead = nextHead;
   }
 }
 
 void processStorageQueue() {
-  if (queueHead == queueTail) return; // Queue leer
+  if (queueHead == queueTail) return; 
 
   PendingLap lap = lapQueue[queueTail];
   queueTail = (queueTail + 1) % QUEUE_MAX;
@@ -160,16 +159,13 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
     laps = doc["laps"].to<JsonArray>();
   }
 
-  // DUPLIKATSPRÜFUNG: Verhindert doppelte Runden-Einträge
+  // Duplikatsprüfung
   for (JsonObject existingLap : laps) {
-    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs && existingLap["mode"] == mode) {
-      if (timestampMs == 0 || existingLap["ts"] == timestampMs) {
-        return; // Runde bereits vorhanden -> nicht erneut hinzufügen
-      }
+    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs) {
+      return; 
     }
   }
 
-  // Begrenzung: Max. 100 Runden pro Fahrzeug speichern
   if (laps.size() >= 100) {
     laps.remove(0);
   }
@@ -267,7 +263,6 @@ void saveSessionToHistory(const String& sessionJsonStr) {
   JsonObject incomingObj = incomingSessionDoc.as<JsonObject>();
   uint64_t incomingTs = incomingObj["ts"] | 0;
 
-  // DUPLIKATSPRÜFUNG & UPDATE: Falls Session mit gleichem Zeitstempel existiert, überschreiben
   bool updated = false;
   if (incomingTs > 0) {
     for (size_t i = 0; i < sessions.size(); i++) {
@@ -280,7 +275,6 @@ void saveSessionToHistory(const String& sessionJsonStr) {
   }
 
   if (!updated) {
-    // Max 30 Sessions aufbewahren
     if (sessions.size() >= 30) {
       sessions.remove(0);
     }
