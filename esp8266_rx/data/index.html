@@ -477,9 +477,13 @@
         </div>
 
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid #222;">
-          <label style="cursor:pointer;">
+          <label style="cursor:pointer; display: block; margin-bottom: 8px;">
             <input type="checkbox" id="cfg_two_frames" style="transform: scale(1.3); margin-right: 8px;">
             <strong>2-Frame Entprellung aktivieren</strong>
+          </label>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
+            <strong>Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>
           </label>
         </div>
 
@@ -543,11 +547,13 @@
     let rawDriverLapsData = [];
 
     let currentLeaderId = null;
+    let sessionBestLap = 0;
     let lapHistoryMap = {}; 
     let statusCarsMap = {};
     let activeStatsCarId = null;
     let serverMillisOffset = 0;
     let currentTab = 'drivers';
+    let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
     let speechQueue = [];
     let isSpeaking = false;
@@ -741,6 +747,7 @@
       targetLaps = laps;
       maxLapInRace = 0;
       currentLeaderId = null;
+      sessionBestLap = 0;
       isSessionActive = true;
       isSessionFinished = false;
 
@@ -781,6 +788,7 @@
         lapHistoryMap = {};
         statusCarsMap = {};
         currentLeaderId = null;
+        sessionBestLap = 0;
         updateData();
       }).catch(err => console.error(err));
     }
@@ -794,6 +802,7 @@
         isSessionFinished = false;
         maxLapInRace = 0;
         currentLeaderId = null;
+        sessionBestLap = 0;
         document.getElementById('leaderLapDisplay').innerText = "0";
         updateData();
       }).catch(err => console.error(err));
@@ -802,8 +811,8 @@
     function autoSaveSessionResult(mode, modeName) {
       if (!lastLapsData || lastLapsData.length === 0) return;
 
-      let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
-      if (activeCars.length === 0) return;
+      let activeCars = lastLapsData.filter(car => car.completedLaps > 0 || car.bestLap > 0);
+      if (activeCars.length === 0) activeCars = lastLapsData;
 
       if (mode === 1) {
         activeCars.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
@@ -821,15 +830,20 @@
           id: car.id,
           driver: car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id)),
           car: car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id)),
-          laps: car.completedLaps,
-          bestLap: car.bestLap,
-          lastLap: car.lastLap
+          laps: car.completedLaps || 0,
+          bestLap: car.bestLap || 0,
+          lastLap: car.lastLap || 0
         }))
       };
 
-      let formData = new FormData();
+      let formData = new URLSearchParams();
       formData.append('data', JSON.stringify(sessionData));
-      fetch('/api/savesessionresult', { method: 'POST', body: formData }).catch(e => console.error(e));
+
+      fetch('/api/savesessionresult', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString() 
+      }).catch(e => console.error("Fehler beim Auto-Save der Session:", e));
     }
 
     function announceRaceResults() {
@@ -1302,9 +1316,15 @@
         if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred) {
           let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
           
-          let isBestLap = false;
+          let isAbsoluteBest = false;
+          if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
+            sessionBestLap = car.lastLap;
+            isAbsoluteBest = true;
+          }
+
+          let isPersonalBest = false;
           if (currentLaps > 1 && car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
-            isBestLap = true;
+            isPersonalBest = true;
           }
           
           if (car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
@@ -1317,10 +1337,24 @@
           }
 
           let lapAnnouncement = "";
-          if (isBestLap) {
-            lapAnnouncement = driverName + posText + "beste Runde! " + timeSec;
+          let isRaceMode = (currentMode === 2 || currentMode === 3);
+
+          if (isRaceMode && !announceLapTimesInRace) {
+            if (isAbsoluteBest) {
+              lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+            } else if (isPersonalBest) {
+              lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+            } else {
+              lapAnnouncement = driverName + posText;
+            }
           } else {
-            lapAnnouncement = driverName + posText + timeSec;
+            if (isAbsoluteBest) {
+              lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+            } else if (isPersonalBest) {
+              lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+            } else {
+              lapAnnouncement = driverName + posText + timeSec;
+            }
           }
 
           speak(remainingLapsText + lapAnnouncement);
@@ -1475,7 +1509,6 @@
           return;
         }
 
-        // Versuche passende Runden anhand des Zeitstempels zu filtern
         let filteredLaps = data.laps.filter(l => {
           if (sessionTs && l.ts && l.ts > 0) {
             let sessionTsMs = sessionTs < 10000000000 ? sessionTs * 1000 : sessionTs;
@@ -1485,7 +1518,6 @@
           return false;
         });
 
-        // Fallback: Wenn für die exakte Session-Zeit keine Runden gefunden wurden
         if (filteredLaps.length === 0) {
           filteredLaps = data.laps;
         }
@@ -1569,7 +1601,6 @@
     function formatTimestamp(ts) {
       if (!ts || ts === 0) return '---';
       
-      // Handhabt sowohl Sekunden (Standard) als auch Millisekunden
       let tsMs = ts < 10000000000 ? ts * 1000 : ts;
       let d = new Date(tsMs);
 
@@ -1693,6 +1724,9 @@
 
       let container = document.getElementById('configRows');
       let ttsContainer = document.getElementById('ttsFilterContainer');
+
+      let lapTimeCb = document.getElementById('cfg_announce_lap_times');
+      if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
       
       container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
       ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
@@ -1759,6 +1793,12 @@
           selectedTTSCars = selected;
         }
         localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
+
+        let lapTimeCb = document.getElementById('cfg_announce_lap_times');
+        if (lapTimeCb) {
+          announceLapTimesInRace = lapTimeCb.checked;
+          localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
+        }
 
         let deadtimeSec = parseFloat(document.getElementById('cfg_deadtime').value);
         if (!isNaN(deadtimeSec)) {
