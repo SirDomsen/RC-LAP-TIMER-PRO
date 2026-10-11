@@ -177,7 +177,13 @@ void processLapLogic() {
         uint64_t currentTsMs = getCurrentTimestampMs();
 
         uint8_t pos = getCurrentPosition(carId);
-        queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
+        
+        // Trennung: Freies Training (Mode 0) in den temporären Puffer, Rest in die direkte Historie
+        if (currentMode == MODE_PRACTICE) {
+          queuePracticeLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
+        } else {
+          queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
+        }
       }
 
       if (lapCounted) {

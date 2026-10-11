@@ -24,6 +24,10 @@ static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;
 
+static PendingLap practiceQueue[QUEUE_MAX];
+static uint8_t practiceQueueHead = 0;
+static uint8_t practiceQueueTail = 0;
+
 void initFS() {
   if (!LittleFS.begin()) {
     Serial.println("[FS] Fehler beim Mounten von LittleFS");
@@ -133,13 +137,25 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
   }
 }
 
+void queuePracticeLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+  uint8_t nextHead = (practiceQueueHead + 1) % QUEUE_MAX;
+  if (nextHead != practiceQueueTail) { 
+    practiceQueue[practiceQueueHead] = {carId, lapNum, lapTimeMs, position, mode, timestampMs};
+    practiceQueueHead = nextHead;
+  }
+}
+
 void processStorageQueue() {
-  if (queueHead == queueTail) return; 
-
-  PendingLap lap = lapQueue[queueTail];
-  queueTail = (queueTail + 1) % QUEUE_MAX;
-
-  saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.position, lap.mode, lap.timestampMs);
+  if (queueHead != queueTail) { 
+    PendingLap lap = lapQueue[queueTail];
+    queueTail = (queueTail + 1) % QUEUE_MAX;
+    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.position, lap.mode, lap.timestampMs);
+  }
+  if (practiceQueueHead != practiceQueueTail) {
+    PendingLap lap = practiceQueue[practiceQueueTail];
+    practiceQueueTail = (practiceQueueTail + 1) % QUEUE_MAX;
+    savePracticeLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.position, lap.mode, lap.timestampMs);
+  }
 }
 
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
@@ -166,7 +182,8 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
     }
   }
 
-  if (laps.size() >= 100) {
+  // Erhöht auf 300 Runden Limit
+  if (laps.size() >= 300) {
     laps.remove(0);
   }
 
@@ -181,6 +198,91 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
   if (f) {
     serializeJson(doc, f);
     f.close();
+  }
+}
+
+void savePracticeLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+  String filepath = "/practice_" + String(carId) + ".json";
+  
+  JsonDocument doc;
+  if (LittleFS.exists(filepath)) {
+    File f = LittleFS.open(filepath, "r");
+    if (f) {
+      deserializeJson(doc, f);
+      f.close();
+    }
+  }
+
+  JsonArray laps = doc["laps"].as<JsonArray>();
+  if (!laps) {
+    laps = doc["laps"].to<JsonArray>();
+  }
+
+  for (JsonObject existingLap : laps) {
+    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs) {
+      return; 
+    }
+  }
+
+  if (laps.size() >= 300) {
+    laps.remove(0);
+  }
+
+  JsonObject newLap = laps.add<JsonObject>();
+  newLap["lap"] = lapNum;
+  newLap["time"] = lapTimeMs;
+  newLap["mode"] = mode;
+  newLap["ts"] = timestampMs;
+  newLap["pos"] = position;
+
+  File f = LittleFS.open(filepath, "w");
+  if (f) {
+    serializeJson(doc, f);
+    f.close();
+  }
+}
+
+void flushPracticeToHistory(uint8_t carId) {
+  String practicePath = "/practice_" + String(carId) + ".json";
+  if (!LittleFS.exists(practicePath)) return;
+
+  File f = LittleFS.open(practicePath, "r");
+  if (!f) return;
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+
+  if (!err && doc["laps"].is<JsonArray>()) {
+    for (JsonObject lapObj : doc["laps"].as<JsonArray>()) {
+      uint16_t lap = lapObj["lap"] | 0;
+      uint32_t timeMs = lapObj["time"] | 0;
+      uint8_t mode = lapObj["mode"] | 0;
+      uint64_t ts = lapObj["ts"] | 0;
+      uint8_t pos = lapObj["pos"] | 1;
+      if (lap > 0 && timeMs > 0) {
+        saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
+      }
+    }
+  }
+  LittleFS.remove(practicePath);
+}
+
+void flushAllPracticeToHistory() {
+  for (uint8_t i = 1; i <= MAX_CARS; i++) {
+    flushPracticeToHistory(i);
+  }
+}
+
+void clearPracticeBuffer(uint8_t carId) {
+  String practicePath = "/practice_" + String(carId) + ".json";
+  if (LittleFS.exists(practicePath)) {
+    LittleFS.remove(practicePath);
+  }
+}
+
+void clearAllPracticeBuffers() {
+  for (uint8_t i = 1; i <= MAX_CARS; i++) {
+    clearPracticeBuffer(i);
   }
 }
 
@@ -228,6 +330,7 @@ void deleteDriverHistory(uint8_t carId) {
   if (LittleFS.exists(filepath)) {
     LittleFS.remove(filepath);
   }
+  clearPracticeBuffer(carId);
 }
 
 void deleteAllHistory() {

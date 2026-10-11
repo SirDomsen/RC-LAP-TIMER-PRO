@@ -17,7 +17,7 @@ struct PendingLap {
 };
 
 void loadSettingsFromEEPROM();
-void loadNamesFromFS(); // <--- Neu deklariert
+void loadNamesFromFS();
 void saveNamesToEEPROM(int id, const String& driver, const String& car);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
@@ -26,8 +26,16 @@ void saveFilterToEEPROM(bool enable);
 void initFS();
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
 
+// Freies Training Puffer & Langzeit-Speicher Transfer
+void savePracticeLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void flushPracticeToHistory(uint8_t carId);
+void flushAllPracticeToHistory();
+void clearPracticeBuffer(uint8_t carId);
+void clearAllPracticeBuffers();
+
 // Puffer-Queue für Flash-Schreibvorgänge
 void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void queuePracticeLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
 void processStorageQueue();
 
 String getDriverHistoryJson(uint8_t carId);
