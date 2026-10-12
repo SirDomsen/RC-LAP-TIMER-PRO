@@ -1,6 +1,7 @@
 #include "web_handlers.h"
 #include "storage.h"
 #include "lap_logic.h"
+#include "esp_now_base.h" // Wichtig für isStationOnline()
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
@@ -33,6 +34,19 @@ void handleGetLaps(AsyncWebServerRequest *request) {
     }
   }
   json += "]";
+  request->send(200, "application/json", json);
+}
+
+// NEU: Liefert den Online/Offline Status der Sektorstationen SZ1, SZ2, SZ3
+void handleGetStationsStatus(AsyncWebServerRequest *request) {
+  static String json;
+  json = "";
+  json.reserve(64);
+  json = "{";
+  json += "\"sz1\": " + String(isStationOnline(1) ? "true" : "false") + ",";
+  json += "\"sz2\": " + String(isStationOnline(2) ? "true" : "false") + ",";
+  json += "\"sz3\": " + String(isStationOnline(3) ? "true" : "false");
+  json += "}";
   request->send(200, "application/json", json);
 }
 
@@ -131,7 +145,7 @@ void handleGetVersion(AsyncWebServerRequest *request) {
   static String json;
   json = "";
   json.reserve(64);
-  json = "{\"firmware\":\"" FIRMWARE_VERSION "\",\"ui\":\"" UI_VERSION "\"}";
+  json = "{\"firmware\":\"" FIRMWARE_VERSION "\"}";
   request->send(200, "application/json", json);
 }
 
@@ -276,7 +290,6 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
       if (filename == "/names.json") {
         loadNamesFromFS();
       } 
-      // Verarbeitet Backup-Dateien
       else if (filename.endsWith(".json")) {
         File bFile = LittleFS.open(filename, "r");
         if (bFile) {
@@ -285,7 +298,6 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
           bFile.close();
 
           if (!err) {
-            // 1. Renn-Sessions wiederherstellen
             if (doc["sessions"].is<JsonArray>()) {
               for (JsonObject sess : doc["sessions"].as<JsonArray>()) {
                 String sessStr;
@@ -294,7 +306,6 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
               }
             }
 
-            // 2. Rundenhistorie entpacken (unterstützt 'driverStats' & 'stats')
             JsonObject statsObj;
             if (doc["driverStats"].is<JsonObject>()) {
               statsObj = doc["driverStats"].as<JsonObject>();
@@ -314,9 +325,8 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
                     uint8_t pos = lapObj["pos"] | 1;
                     
                     if (lap > 0 && timeMs > 0) {
-  // Nimmt exakt den ts-Wert aus dem Backup (z.B. 1791338175)
-  saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
-}
+                      saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
+                    }
                   }
                 }
               }

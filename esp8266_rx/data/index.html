@@ -90,7 +90,7 @@
 
     .status-bar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 10px;
       font-family: var(--font-display);
       margin-bottom: 15px;
@@ -287,6 +287,10 @@
       font-size: 13px;
       color: var(--text-muted);
       border-top: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: center;
     }
   </style>
 </head>
@@ -310,6 +314,14 @@
         <div class="status-item">
           <span class="status-label">Führende Runde</span>
           <span id="leaderLapDisplay" class="status-val" style="color:var(--neon-orange);">0</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Sektorstationen</span>
+          <span class="status-val" style="font-size: 15px; letter-spacing: 2px;">
+            SZ1:<span id="sz1Status" style="color:var(--neon-red);">●</span> 
+            SZ2:<span id="sz2Status" style="color:var(--neon-red);">●</span> 
+            SZ3:<span id="sz3Status" style="color:var(--neon-red);">●</span>
+          </span>
         </div>
       </div>
 
@@ -501,13 +513,16 @@
   </div>
 
   <footer>
-    RC Lap Timer Pro <span id="firmware-version">v1.3.1</span> &copy; 2026 | Powered by ESP8266
+    <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">--</span></div>
+    <div>&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
   <script>
     const MAX_CARS = 15;
     let ttsEnabled = true;
     let countdownTimeouts = [];
+    const UI_VERSION = "v1.4.1"; // Hier kannst du deine UI-Version direkt anpassen
 
     // --- Einmaliger ressourcenschonender Uhrzeit-Sync ---
     function syncTimeWithServerOnce() {
@@ -518,17 +533,25 @@
     }
 
     async function loadVersion() {
-      try {
-        const response = await fetch('/api/version');
-        if (response.ok) {
-          const data = await response.json();
-          const elem = document.getElementById('firmware-version');
-          if (elem) elem.textContent = data.firmware;
-        }
-      } catch (err) {
-        console.error('Fehler beim Laden der Version:', err);
-      }
+  const fwElem = document.getElementById('firmware-version');
+  const uiElem = document.getElementById('ui-version');
+
+  // UI-Version direkt aus der Konstanten setzen
+  if (uiElem) uiElem.textContent = UI_VERSION;
+
+  try {
+    const response = await fetch('/api/version');
+    if (response.ok) {
+      const data = await response.json();
+      if (fwElem) fwElem.textContent = data.firmware;
+    } else {
+      if (fwElem) fwElem.textContent = "error";
     }
+  } catch (err) {
+    console.error('Fehler beim Laden der Firmware-Version:', err);
+    if (fwElem) fwElem.textContent = "error";
+  }
+}
 
     let currentMode = 0;
     let targetLaps = 0;
@@ -570,7 +593,7 @@
     
     window.addEventListener('DOMContentLoaded', () => {
       loadVersion();
-      syncTimeWithServerOnce(); // NUR EINMALIG BEIM START SYNCEN
+      syncTimeWithServerOnce();
     });
 
     window.onclick = function(event) {
@@ -1116,6 +1139,22 @@
         updateTTSFilterDisplay();
       } catch (err) {
         console.error("Error fetching lap data:", err);
+      }
+
+      // Sektorstationen-Status abrufen
+      try {
+        let resStations = await fetch('/api/stations');
+        if (resStations.ok) {
+          let stations = await resStations.json();
+          let sz1 = document.getElementById('sz1Status');
+          let sz2 = document.getElementById('sz2Status');
+          let sz3 = document.getElementById('sz3Status');
+          if (sz1) sz1.style.color = stations.sz1 ? 'var(--neon-green)' : 'var(--neon-red)';
+          if (sz2) sz2.style.color = stations.sz2 ? 'var(--neon-green)' : 'var(--neon-red)';
+          if (sz3) sz3.style.color = stations.sz3 ? 'var(--neon-green)' : 'var(--neon-red)';
+        }
+      } catch (err) {
+        console.error("Error fetching station status:", err);
       }
 
       try {

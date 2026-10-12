@@ -16,6 +16,9 @@ void handlePostSetDeadtime(AsyncWebServerRequest *request);
 void handlePostRename(AsyncWebServerRequest *request);
 void handlePostReset(AsyncWebServerRequest *request);
 
+// Neu: Sektorstationen-Status abfragen
+void handleGetStationsStatus(AsyncWebServerRequest *request);
+
 // Zeit-Synchronisierung, Session-Historie & Statistik
 void handlePostSyncTime(AsyncWebServerRequest *request);
 void handleGetStats(AsyncWebServerRequest *request);

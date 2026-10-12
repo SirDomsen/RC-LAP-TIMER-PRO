@@ -126,6 +126,7 @@ void initNetworkAndServer() {
 
   // --- API Endpunkte ---
   server.on("/api/laps", HTTP_GET, handleGetLaps);
+  server.on("/api/stations", HTTP_GET, handleGetStationsStatus); // <--- HIER EINGEFÜGT
   server.on("/api/session", HTTP_POST, handlePostSession);
   server.on("/api/timeleft", HTTP_GET, handleGetTimeLeft);
   server.on("/api/recent", HTTP_GET, handleGetRecent);

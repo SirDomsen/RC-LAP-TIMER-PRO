@@ -4,7 +4,9 @@
 #include "ir_decoder.h"
 #include "lap_logic.h"
 #include "web_server.h"
+#include "esp_now_base.h"
 #include <ESP8266mDNS.h>
+#include <espnow.h>
 
 void setup() {
   Serial.begin(115200);
@@ -15,6 +17,8 @@ void setup() {
   Serial.print(ESP.getCpuFreqMHz());
   Serial.println(" MHz");
 
+  
+  initESPNowBase();
   initFS();
   loadSettingsFromEEPROM();
   initIRDecoder();
@@ -28,6 +32,7 @@ void loop() {
   processStorageQueue(); // Verarbeitet gepufferte Runden für die Flash-Speicherung
   updateLEDs();
   handleNetworkTasks();
+  handleTimeSyncBroadcast();
 
   // Periodische Kontrolle des freien Arbeitsspeichers (Heap) zur Diagnose von Speicherlecks
   static uint32_t lastHeapCheck = 0;
