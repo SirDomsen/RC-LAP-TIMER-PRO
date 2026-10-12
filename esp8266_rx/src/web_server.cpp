@@ -147,6 +147,8 @@ void initNetworkAndServer() {
   server.on("/api/sessions", HTTP_GET, handleGetSessions);
   server.on("/api/savesessionresult", HTTP_POST, handlePostSaveSessionResult);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
+  server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
+  server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
   // --- Captive Portal & Connectivity-Checks Handler ---
   server.onNotFound([](AsyncWebServerRequest *request) {

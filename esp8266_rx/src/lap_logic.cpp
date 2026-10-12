@@ -9,18 +9,28 @@ uint16_t lapCounter[MAX_CARS + 1]      = {0};
 uint16_t targetRounds                  = 0;
 uint16_t minLapTimeMs                  = DEFAULT_MIN_LAP_MS;
 
+bool useSz1 = true;
+bool useSz2 = true;
+bool useSz3 = true;
+bool checkpointMode = false;
+bool dragraceMode = false;
+
+uint32_t sz1TimeMs[MAX_CARS + 1] = {0};
+uint32_t sz2TimeMs[MAX_CARS + 1] = {0};
+uint32_t sz3TimeMs[MAX_CARS + 1] = {0};
+
+static uint8_t currentExpectedSector[MAX_CARS + 1] = {0};
+
 RaceMode currentMode = MODE_PRACTICE;
 uint32_t modeEndTimeMs = 0;
 uint16_t durationMinutes = 0;
 
 uint8_t recentIDs[5] = {0, 0, 0, 0, 0};
-
 bool requireTwoFrames = true;
 
 uint32_t lastSeenMs[MAX_CARS + 1] = {0};
 bool readyForNextLap[MAX_CARS + 1] = {false};
 
-// Globale Variablen für den ressourcenschonenden Einmal-Sync
 uint64_t baseUnixTimestampSec = 0;
 uint32_t baseMillis = 0;
 
@@ -48,7 +58,6 @@ void initLapLogic() {
 }
 
 void syncClockOnce(uint64_t clientTsSec) {
-  // Setzt die Basiszeit einmalig beim Start/Verbindung des Clients
   if (baseUnixTimestampSec == 0 || clientTsSec > baseUnixTimestampSec + 3600) {
     baseUnixTimestampSec = clientTsSec;
     baseMillis = millis();
@@ -58,10 +67,9 @@ void syncClockOnce(uint64_t clientTsSec) {
 
 uint64_t getCurrentTimestampMs() {
   if (baseUnixTimestampSec == 0) {
-    return (uint64_t)millis(); // Fallback vor dem ersten Sync
+    return (uint64_t)millis();
   }
   uint32_t elapsedMs = millis() - baseMillis;
-  // baseUnixTimestampSec sind Sekunden -> * 1000ULL für Millisekunden
   return (baseUnixTimestampSec * 1000ULL) + elapsedMs;
 }
 
@@ -80,11 +88,14 @@ void resetAllLaps() {
     lapCounter[i] = 0;
     lastSeenMs[i] = 0;
     readyForNextLap[i] = true;
+    currentExpectedSector[i] = 1;
+    sz1TimeMs[i] = 0;
+    sz2TimeMs[i] = 0;
+    sz3TimeMs[i] = 0;
   }
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
   lastPendingId = 0;
   detectionCount = 0;
-
   readyLedBlinking = false;
 }
 
@@ -101,6 +112,103 @@ uint8_t getCurrentPosition(uint8_t carId) {
   return pos;
 }
 
+uint8_t getActiveTargetSector() {
+  if (useSz3) return 3;
+  if (useSz2) return 2;
+  if (useSz1) return 1;
+  return 0;
+}
+
+void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs) {
+  if (carId < 1 || carId > MAX_CARS) return;
+  lastSeenMs[carId] = millis();
+  addRecentID(carId);
+
+  // Im Dragrace-Modus fungiert der letzte aktive Sektor als Ziellinie
+  if (currentMode == MODE_DRAGRACE && dragraceMode && stationId == getActiveTargetSector()) {
+    processValidLap(carId, (uint64_t)timestampMs * 1000UL);
+    return;
+  }
+
+  // Zwischenzeiten (Splits) relativ zum Startzeitpunkt der Runde berechnen
+  if (lastCrossTime[carId] > 0) {
+    uint32_t elapsedMs = (timestampMs >= (lastCrossTime[carId] / 1000UL)) ? (timestampMs - (lastCrossTime[carId] / 1000UL)) : 0;
+    if (stationId == 1 && useSz1) sz1TimeMs[carId] = elapsedMs;
+    if (stationId == 2 && useSz2) sz2TimeMs[carId] = elapsedMs;
+    if (stationId == 3 && useSz3) sz3TimeMs[carId] = elapsedMs;
+  }
+
+  // Checkpoint-Validierung
+  if (checkpointMode) {
+    if (stationId == 1 && useSz1 && currentExpectedSector[carId] == 1) currentExpectedSector[carId] = 2;
+    else if (stationId == 2 && useSz2 && currentExpectedSector[carId] == 2) currentExpectedSector[carId] = 3;
+    else if (stationId == 3 && useSz3 && currentExpectedSector[carId] == 3) currentExpectedSector[carId] = 4;
+  }
+}
+
+void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
+  if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
+  if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
+
+  if (checkpointMode && currentMode != MODE_DRAGRACE) {
+    bool passedAll = true;
+    if (useSz1 && currentExpectedSector[carId] < 2) passedAll = false;
+    if (useSz2 && currentExpectedSector[carId] < 3) passedAll = false;
+    if (useSz3 && currentExpectedSector[carId] < 4) passedAll = false;
+
+    if (!passedAll) {
+      currentExpectedSector[carId] = 1;
+      return;
+    }
+    currentExpectedSector[carId] = 1;
+  }
+
+  uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
+  bool lapCounted = false;
+
+  if (lapCounter[carId] == 0) {
+    lapCounter[carId] = 1;
+    lastCrossTime[carId] = exactMicros;
+    readyForNextLap[carId] = false;
+    sz1TimeMs[carId] = 0;
+    sz2TimeMs[carId] = 0;
+    sz3TimeMs[carId] = 0;
+    lapCounted = true;
+  } 
+  else if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
+    uint32_t currentLapTimeMs = (exactMicros - lastCrossTime[carId]) / 1000UL;
+    
+    lastLapDuration[carId] = currentLapTimeMs;
+    if (bestLapDuration[carId] == 0 || currentLapTimeMs < bestLapDuration[carId]) {
+      bestLapDuration[carId] = currentLapTimeMs;
+    }
+    
+    uint16_t completedLap = lapCounter[carId];
+    lapCounter[carId]++;
+    lastCrossTime[carId] = exactMicros;
+    readyForNextLap[carId] = false;
+    sz1TimeMs[carId] = 0;
+    sz2TimeMs[carId] = 0;
+    sz3TimeMs[carId] = 0;
+    lapCounted = true;
+
+    uint64_t currentTsMs = getCurrentTimestampMs();
+    uint8_t pos = getCurrentPosition(carId);
+    
+    if (currentMode == MODE_PRACTICE) {
+      queuePracticeLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
+    } else {
+      queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
+    }
+  }
+
+  if (lapCounted) {
+    digitalWrite(LED_READY, LOW);
+    readyLedBlinking = true;
+    readyLedOffTime = millis() + 200;
+  }
+}
+
 void processLapLogic() {
   if (!newCodeAvailable) return;
 
@@ -114,7 +222,6 @@ void processLapLogic() {
   bool isValidSignal = ((carId ^ carIdInv) == 0x3F);
 
   if (isValidSignal && carId >= 1 && carId <= MAX_CARS) {
-    
     lastSeenMs[carId] = millis();
     bool confirmPassed = false;
 
@@ -137,60 +244,7 @@ void processLapLogic() {
 
     if (confirmPassed) {
       addRecentID(carId);
-
-      // Zeitlimit-Prüfung nur, wenn Modus zeitbasiert ist
-      if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && 
-          modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
-        return;
-      }
-
-      // Rundenlimit-Prüfung bei MODE_RACE_LAPS
-      if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) {
-        return;
-      }
-      
-      bool lapCounted = false;
-
-      // 1. Erste Überfahrt (Start der Zeitmessung)
-      if (lapCounter[carId] == 0) {
-        lapCounter[carId] = 1;
-        lastCrossTime[carId] = exactSignalTime;
-        readyForNextLap[carId] = false;
-        lapCounted = true;
-      } 
-      // 2. Folgerunden
-      else if ((exactSignalTime - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
-        uint32_t currentLapTimeMs = (exactSignalTime - lastCrossTime[carId]) / 1000UL;
-        
-        lastLapDuration[carId] = currentLapTimeMs;
-        if (bestLapDuration[carId] == 0 || currentLapTimeMs < bestLapDuration[carId]) {
-          bestLapDuration[carId] = currentLapTimeMs;
-        }
-        
-        uint16_t completedLap = lapCounter[carId];
-        lapCounter[carId]++;
-        lastCrossTime[carId] = exactSignalTime;
-        readyForNextLap[carId] = false;
-        lapCounted = true;
-
-        // Exakten Zeitstempel ohne Netzwerk-Last intern berechnen
-        uint64_t currentTsMs = getCurrentTimestampMs();
-
-        uint8_t pos = getCurrentPosition(carId);
-        
-        // Trennung: Freies Training (Mode 0) in den temporären Puffer, Rest in die direkte Historie
-        if (currentMode == MODE_PRACTICE) {
-          queuePracticeLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
-        } else {
-          queueLapForStorage(carId, completedLap, currentLapTimeMs, pos, (uint8_t)currentMode, currentTsMs);
-        }
-      }
-
-      if (lapCounted) {
-        digitalWrite(LED_READY, LOW);
-        readyLedBlinking = true;
-        readyLedOffTime = millis() + 200;
-      }
+      processValidLap(carId, exactSignalTime);
     }
   }
 }
@@ -200,7 +254,6 @@ void updateLapLogicTasks() {
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (!readyForNextLap[i] && (now - lastSeenMs[i] > CLEARANCE_TIMEOUT_MS)) {
       readyForNextLap[i] = true; 
-      
       if (lapCounter[i] == 1) {
         lastCrossTime[i] = micros(); 
       }

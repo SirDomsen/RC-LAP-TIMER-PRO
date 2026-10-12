@@ -91,10 +91,21 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(301, (uint8_t)(DEFAULT_MIN_LAP_MS & 0xFF));
     EEPROM.write(302, (uint8_t)((DEFAULT_MIN_LAP_MS >> 8) & 0xFF));
     EEPROM.write(303, 1);
+    EEPROM.write(304, 1); // useSz1 = true
+    EEPROM.write(305, 1); // useSz2 = true
+    EEPROM.write(306, 1); // useSz3 = true
+    EEPROM.write(307, 0); // checkpointMode = false
+    EEPROM.write(308, 0); // dragraceMode = false
+
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;
     requireTwoFrames = true;
+    useSz1 = true;
+    useSz2 = true;
+    useSz3 = true;
+    checkpointMode = false;
+    dragraceMode = false;
   } else {
     uint16_t low = EEPROM.read(301);
     uint16_t high = EEPROM.read(302);
@@ -105,6 +116,12 @@ void loadSettingsFromEEPROM() {
 
     uint8_t filterVal = EEPROM.read(303);
     requireTwoFrames = (filterVal != 0);
+
+    useSz1 = (EEPROM.read(304) != 0);
+    useSz2 = (EEPROM.read(305) != 0);
+    useSz3 = (EEPROM.read(306) != 0);
+    checkpointMode = (EEPROM.read(307) != 0);
+    dragraceMode = (EEPROM.read(308) != 0);
   }
 }
 
@@ -126,6 +143,16 @@ void saveDeadtimeToEEPROM(uint16_t ms) {
 void saveFilterToEEPROM(bool enable) {
   int addr = 303;
   EEPROM.write(addr, enable ? 1 : 0);
+  EEPROM.commit();
+}
+
+
+void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr) {
+  EEPROM.write(304, s1 ? 1 : 0);
+  EEPROM.write(305, s2 ? 1 : 0);
+  EEPROM.write(306, s3 ? 1 : 0);
+  EEPROM.write(307, cp ? 1 : 0);
+  EEPROM.write(308, dr ? 1 : 0);
   EEPROM.commit();
 }
 

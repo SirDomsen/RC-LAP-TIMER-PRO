@@ -29,5 +29,8 @@ void handleGetSessions(AsyncWebServerRequest *request);
 void handlePostSaveSessionResult(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);
 void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void handleGetSectorConfig(AsyncWebServerRequest *request);
+void handlePostSetSectorConfig(AsyncWebServerRequest *request);
+
 
 #endif

@@ -1,28 +1,47 @@
 #include "esp_now_base.h"
+#include "lap_logic.h"
 #include <ESP8266WiFi.h>
 extern "C" {
   #include <espnow.h>
 }
 
-// Falls u8 im SDK-Header nicht aufgelöst wird:
 #ifndef u8
 typedef uint8_t u8;
 #endif
 
-// Zeitstempel für den Online-Status der Stationen
 static unsigned long sz1LastSeen = 0;
 static unsigned long sz2LastSeen = 0;
 static unsigned long sz3LastSeen = 0;
 
-// Callback für den Empfang von ESP-NOW Paketen an der Basis
+// Cache zur Duplikaterkennung (verhindert mehrfaches Verarbeiten von Relay-Paketen)
+#define RECENT_EVENTS_MAX 10
+struct RecentEvent {
+  uint32_t eventId;
+  unsigned long receivedAt;
+};
+static RecentEvent recentEvents[RECENT_EVENTS_MAX];
+static uint8_t recentEventIndex = 0;
+
+bool isDuplicateEvent(uint32_t eventId) {
+  if (eventId == 0) return false;
+  unsigned long now = millis();
+  for (int i = 0; i < RECENT_EVENTS_MAX; i++) {
+    if (recentEvents[i].eventId == eventId && (now - recentEvents[i].receivedAt < 3000)) {
+      return true;
+    }
+  }
+  // Neu eintragen
+  recentEvents[recentEventIndex] = {eventId, now};
+  recentEventIndex = (recentEventIndex + 1) % RECENT_EVENTS_MAX;
+  return false;
+}
+
 void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  // Automatisch als Peer registrieren, falls noch nicht geschehen, 
-  // damit Unicast-Pakete vom ESP8266-Stack überhaupt durchgelassen werden
   if (!esp_now_is_peer_exist(mac)) {
     esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, 1, NULL, 0);
   }
 
-  // 1. Prüfen, ob es ein Heartbeat (AlivePacket) ist
+  // 1. Heartbeat verarbeiten
   if (len == sizeof(AlivePacket)) {
     AlivePacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
@@ -34,13 +53,21 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 2. Reguläres Sektor-Paket verarbeiten
+  // 2. Sektor-Paket verarbeiten
   if (len == sizeof(SectorPacket)) {
     SectorPacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
 
+    // Duplikatprüfung anhand der Event-ID
+    if (isDuplicateEvent(packet.eventId)) {
+      return; 
+    }
+
     Serial.printf("[ESP-NOW] Sektor SZ%d -> Auto ID %d bei %u ms (Relay: %d)\n", 
                   packet.stationId, packet.carId, packet.timestamp, packet.relayed);
+
+    // Übergabe an die zentrale Runden- und Sektorlogik
+    processSectorPacket(packet.stationId, packet.carId, packet.timestamp);
   }
 }
 
@@ -71,7 +98,6 @@ void handleTimeSyncBroadcast() {
   }
 }
 
-// Prüft, ob innerhalb der letzten 8 Sekunden ein Heartbeat empfangen wurde
 bool isStationOnline(uint8_t stationId) {
   unsigned long now = millis();
   unsigned long timeout = 8000; 

@@ -55,11 +55,34 @@ void onDataSent(u8 *mac_addr, u8 sendStatus) {
 }
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
+  // 1. Zeit-Sync Paket von der Basis verarbeiten (gilt für ALLE SZ)
   if (len == sizeof(SyncPacket)) {
     SyncPacket sync;
     memcpy(&sync, incomingData, sizeof(sync));
     localSyncOffsetMs = sync.baseTimeMs - millis();
     timeSynced = true;
+  }
+  
+  // 2. Relay-Logik
+  else if (len == sizeof(SectorPacket)) {
+    SectorPacket pkt;
+    memcpy(&pkt, incomingData, sizeof(pkt));
+    
+    // SZ2 horcht nach SZ3 und leitet weiter
+    #if STATION_ID == 2
+    if (pkt.stationId == 3 && pkt.relayed == 0) {
+      pkt.relayed = 1;
+      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+    }
+    #endif
+
+    // Falls SZ1 z.B. auch noch als Relay für SZ2 dienen müsste (bei extremer Distanz):
+    #if STATION_ID == 1
+    if (pkt.stationId == 2 && pkt.relayed == 0) {
+      pkt.relayed = 1;
+      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+    }
+    #endif
   }
 }
 

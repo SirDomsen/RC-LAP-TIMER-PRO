@@ -7,7 +7,8 @@ struct SectorPacket {
   uint8_t stationId;
   uint8_t carId;
   uint32_t timestamp;
-  uint8_t relayed;
+  uint8_t relayed;      // 0 = direkt, 1 = via Relay weitergeleitet
+  uint32_t eventId;     // Eindeutige ID zur Duplikaterkennung
 };
 
 struct SyncPacket {

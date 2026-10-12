@@ -8,12 +8,13 @@
 void handleGetLaps(AsyncWebServerRequest *request) {
   static String json;
   json = "";
-  json.reserve(1024);
+  json.reserve(1536);
 
   json = "[";
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (lapCounter[i] > 0) {
+    // Autos anzeigen, wenn sie Runden haben oder Sektorzeiten gemessen wurden
+    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0) {
       if (!first) json += ",";
       json += "{\"id\":";
       json += i;
@@ -22,7 +23,13 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       json += "\",\"car\":\"";
       json += carNames[i];
       json += "\",\"completedLaps\":";
-      json += (lapCounter[i] - 1);
+      json += (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0);
+      json += ",\"sz1\":";
+      json += sz1TimeMs[i];
+      json += ",\"sz2\":";
+      json += sz2TimeMs[i];
+      json += ",\"sz3\":";
+      json += sz3TimeMs[i];
       json += ",\"lastLap\":";
       json += lastLapDuration[i];
       json += ",\"bestLap\":";
@@ -37,7 +44,7 @@ void handleGetLaps(AsyncWebServerRequest *request) {
   request->send(200, "application/json", json);
 }
 
-// NEU: Liefert den Online/Offline Status der Sektorstationen SZ1, SZ2, SZ3
+// Liefert den Online/Offline Status der Sektorstationen SZ1, SZ2, SZ3[cite: 12]
 void handleGetStationsStatus(AsyncWebServerRequest *request) {
   static String json;
   json = "";
@@ -55,8 +62,8 @@ void handlePostSession(AsyncWebServerRequest *request) {
     int mode = request->getParam("mode")->value().toInt();
     currentMode = (RaceMode)mode;
     
-    uint16_t duration = request->getParam("duration")->value().toInt();
-    targetRounds = request->getParam("laps")->value().toInt();
+    uint16_t duration = request->hasParam("duration") ? request->getParam("duration")->value().toInt() : 0;
+    targetRounds = request->hasParam("laps") ? request->getParam("laps")->value().toInt() : 0;
 
     if (duration > 0) {
       modeEndTimeMs = millis() + ((uint32_t)duration * 60000UL);
@@ -255,6 +262,33 @@ void handlePostSaveSessionResult(AsyncWebServerRequest *request) {
   } else {
     request->send(400, "text/plain", "Bad Request");
   }
+}
+
+// API Abfrage: /api/sectorconfig[cite: 12]
+void handleGetSectorConfig(AsyncWebServerRequest *request) {
+  static String json;
+  json = "";
+  json.reserve(128);
+  json = "{";
+  json += "\"useSz1\":" + String(useSz1 ? "true" : "false") + ",";
+  json += "\"useSz2\":" + String(useSz2 ? "true" : "false") + ",";
+  json += "\"useSz3\":" + String(useSz3 ? "true" : "false") + ",";
+  json += "\"checkpointMode\":" + String(checkpointMode ? "true" : "false") + ",";
+  json += "\"dragraceMode\":" + String(dragraceMode ? "true" : "false");
+  json += "}";
+  request->send(200, "application/json", json);
+}
+
+// API Speichern: /api/setsectorconfig[cite: 12]
+void handlePostSetSectorConfig(AsyncWebServerRequest *request) {
+  if (request->hasParam("sz1")) useSz1 = (request->getParam("sz1")->value() == "1");
+  if (request->hasParam("sz2")) useSz2 = (request->getParam("sz2")->value() == "1");
+  if (request->hasParam("sz3")) useSz3 = (request->getParam("sz3")->value() == "1");
+  if (request->hasParam("cp"))  checkpointMode = (request->getParam("cp")->value() == "1");
+  if (request->hasParam("dr"))  dragraceMode = (request->getParam("dr")->value() == "1");
+
+  saveSectorConfigToEEPROM(useSz1, useSz2, useSz3, checkpointMode, dragraceMode);
+  request->send(200, "text/plain", "OK");
 }
 
 void handlePostDeleteSession(AsyncWebServerRequest *request) {
