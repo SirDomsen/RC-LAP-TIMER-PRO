@@ -51,7 +51,7 @@
 
     .hero-header {
       position: relative;
-      max-width: 900px;
+      max-width: 950px;
       margin: 0 auto 15px auto;
       border-radius: 12px;
       overflow: hidden;
@@ -82,7 +82,7 @@
       backdrop-filter: blur(10px);
       padding: 18px;
       border-radius: 12px;
-      max-width: 900px;
+      max-width: 950px;
       margin: 15px auto;
       border: 1px solid var(--card-border);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -126,7 +126,7 @@
 
     .control-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 10px;
       margin-bottom: 15px;
     }
@@ -281,7 +281,7 @@
     }
 
     footer {
-      max-width: 900px;
+      max-width: 950px;
       margin: 20px auto 10px auto;
       padding: 15px;
       font-size: 13px;
@@ -354,6 +354,11 @@
           </div>
           <button class="btn btn-success" onclick="startRaceTime()">Start Zeit</button>
         </div>
+
+        <div class="control-group">
+          <div class="control-group-title">DRAGRACE</div>
+          <button class="btn btn-warning" onclick="startDragrace()">Start Dragrace</button>
+        </div>
       </div>
 
       <div>
@@ -377,12 +382,15 @@
             <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
             <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
             <th class="sortable" onclick="sortTable('laps')">Runde <span id="sort-icon-laps" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz1')">SZ1 <span id="sort-icon-sz1" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz2')">SZ2 <span id="sort-icon-sz2" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz3')">SZ3 <span id="sort-icon-sz3" class="sort-icon"></span></th>
             <th class="sortable" onclick="sortTable('lastLap')">Letzte Zeit <span id="sort-icon-lastLap" class="sort-icon"></span></th>
             <th class="sortable" onclick="sortTable('bestLap')">Beste Zeit <span id="sort-icon-bestLap" class="sort-icon"></span></th>
           </tr>
         </thead>
         <tbody id="lapTable">
-          <tr><td colspan="5">Warte auf Signal...</td></tr>
+          <tr><td colspan="8">Warte auf Signal...</td></tr>
         </tbody>
       </table>
     </div>
@@ -473,10 +481,29 @@
       </div>
       
       <div class="modal-body">
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-cyan);">
+          <h4 style="color:var(--neon-cyan); margin:0 0 8px 0; font-family:var(--font-display);">Sektorstationen & Modi</h4>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz1" style="transform: scale(1.2); margin-right: 8px;"> SZ1 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz2" style="transform: scale(1.2); margin-right: 8px;"> SZ2 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz3" style="transform: scale(1.2); margin-right: 8px;"> SZ3 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_checkpoint_mode" style="transform: scale(1.2); margin-right: 8px;"> Checkpoint-Modus (Alle aktiven SZ Pflicht)
+          </label>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="cfg_dragrace_mode" style="transform: scale(1.2); margin-right: 8px;"> Dragrace-Modus (Letzter SZ ist Ziel, davor Splits)
+          </label>
+        </div>
+
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
           <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
-            Wähle, welche Fahrzeuge auf <strong>diesem Gerät</strong> angesagt werden sollen:
+            Wähle, welche Fahrzeuge auf <strong>diesem Gerät</strong> angesagt werden sollen:[cite: 11]
           </p>
           <div style="margin-bottom: 8px;">
             <button class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" onclick="selectAllTTS(true)">Alle anhaken</button>
@@ -497,7 +524,7 @@
           </label>
           <label style="cursor:pointer; display: block;">
             <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
-            <strong>Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>
+            <strong>Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>[cite: 11]
           </label>
         </div>
 
@@ -522,9 +549,8 @@
     const MAX_CARS = 15;
     let ttsEnabled = true;
     let countdownTimeouts = [];
-    const UI_VERSION = "v1.4.1"; // Hier kannst du deine UI-Version direkt anpassen
+    const UI_VERSION = "v1.5.1";
 
-    // --- Einmaliger ressourcenschonender Uhrzeit-Sync ---
     function syncTimeWithServerOnce() {
       let nowSec = Math.floor(Date.now() / 1000);
       fetch('/api/synctime?ts=' + nowSec, { 
@@ -533,25 +559,23 @@
     }
 
     async function loadVersion() {
-  const fwElem = document.getElementById('firmware-version');
-  const uiElem = document.getElementById('ui-version');
+      const fwElem = document.getElementById('firmware-version');
+      const uiElem = document.getElementById('ui-version');
+      if (uiElem) uiElem.textContent = UI_VERSION;
 
-  // UI-Version direkt aus der Konstanten setzen
-  if (uiElem) uiElem.textContent = UI_VERSION;
-
-  try {
-    const response = await fetch('/api/version');
-    if (response.ok) {
-      const data = await response.json();
-      if (fwElem) fwElem.textContent = data.firmware;
-    } else {
-      if (fwElem) fwElem.textContent = "error";
+      try {
+        let response = await fetch('/api/version');
+        if (response.ok) {
+          let data = await response.json();
+          if (fwElem) fwElem.textContent = data.firmware;
+        } else {
+          if (fwElem) fwElem.textContent = "error";
+        }
+      } catch (err) {
+        console.error('Fehler beim Laden der Firmware-Version:', err);
+        if (fwElem) fwElem.textContent = "error";
+      }
     }
-  } catch (err) {
-    console.error('Fehler beim Laden der Firmware-Version:', err);
-    if (fwElem) fwElem.textContent = "error";
-  }
-}
 
     let currentMode = 0;
     let targetLaps = 0;
@@ -767,6 +791,13 @@
       });
     }
 
+    function startDragrace() {
+      cancelRaceCountdown();
+      startRaceCountdown(() => {
+        sendSession(4, 0, 1, "Dragrace Modus gestartet!");
+      });
+    }
+
     function sendSession(mode, duration, laps, speakText) {
       currentMode = mode;
       targetLaps = laps;
@@ -911,7 +942,7 @@
         }
         speak(restText, false);
       }
-      autoSaveSessionResult(currentMode, "Rennen");
+      autoSaveSessionResult(currentMode, currentMode === 4 ? "Dragrace" : "Rennen");
     }
 
     function sortTable(column) {
@@ -926,7 +957,7 @@
     }
 
     function updateSortIcons() {
-      const columns = ['default', 'driver', 'laps', 'lastLap', 'bestLap'];
+      const columns = ['default', 'driver', 'laps', 'sz1', 'sz2', 'sz3', 'lastLap', 'bestLap'];
       columns.forEach(col => {
         let iconElem = document.getElementById('sort-icon-' + col);
         if (!iconElem) return;
@@ -967,6 +998,15 @@
         } else if (currentSortColumn === 'laps') {
           valA = a.completedLaps || 0;
           valB = b.completedLaps || 0;
+        } else if (currentSortColumn === 'sz1') {
+          valA = a.sz1 > 0 ? a.sz1 : 99999999;
+          valB = b.sz1 > 0 ? b.sz1 : 99999999;
+        } else if (currentSortColumn === 'sz2') {
+          valA = a.sz2 > 0 ? a.sz2 : 99999999;
+          valB = b.sz2 > 0 ? b.sz2 : 99999999;
+        } else if (currentSortColumn === 'sz3') {
+          valA = a.sz3 > 0 ? a.sz3 : 99999999;
+          valB = b.sz3 > 0 ? b.sz3 : 99999999;
         } else if (currentSortColumn === 'lastLap') {
           valA = a.lastLap > 0 ? a.lastLap : 99999999;
           valB = b.lastLap > 0 ? b.lastLap : 99999999;
@@ -1043,6 +1083,7 @@
         let modeStr = "Training";
         if (l.mode === 1) modeStr = "Quali";
         if (l.mode === 2 || l.mode === 3) modeStr = "Rennen (P" + (l.pos || '-') + ")";
+        if (l.mode === 4) modeStr = "Dragrace (P" + (l.pos || '-') + ")";
 
         let timeSec = (l.time / 1000).toFixed(2) + 's';
         let dateStr = formatTimestamp(l.ts);
@@ -1068,7 +1109,7 @@
         lastLapsData = data;
         let html = '';
         if (data.length === 0) {
-          html = '<tr><td colspan="5">Keine Autos erfasst</td></tr>';
+          html = '<tr><td colspan="8">Keine Autos erfasst</td></tr>';
           currentLeaderId = null;
         } else {
           let leaderSearch = [...data];
@@ -1082,7 +1123,7 @@
           document.getElementById('leaderLapDisplay').innerText = leaderLaps;
 
           let newLeader = leaderSearch[0];
-          if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
+          if ((currentMode === 2 || currentMode === 3 || currentMode === 4) && isSessionActive && !isSessionFinished) {
             if (currentLeaderId === null && newLeader && newLeader.completedLaps > 0) {
               currentLeaderId = newLeader.id;
             }
@@ -1109,7 +1150,7 @@
             }
 
             let lastDisplay = '---';
-            let isRaceMode = (currentMode === 2 || currentMode === 3);
+            let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
             let currentStatus = statusCarsMap[row.id];
 
             if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
@@ -1125,11 +1166,17 @@
             }
 
             let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
+            let sz1Disp = row.sz1 > 0 ? (row.sz1 / 1000).toFixed(2) + 's' : '---';
+            let sz2Disp = row.sz2 > 0 ? (row.sz2 / 1000).toFixed(2) + 's' : '---';
+            let sz3Disp = row.sz3 > 0 ? (row.sz3 / 1000).toFixed(2) + 's' : '---';
             
             html += `<tr>
               <td><strong>P${defaultPosition}</strong></td>
               <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
               <td>${row.completedLaps} ${targetLaps > 0 ? '/ ' + targetLaps : ''}</td>
+              <td style="color:var(--neon-cyan);">${sz1Disp}</td>
+              <td style="color:var(--neon-cyan);">${sz2Disp}</td>
+              <td style="color:var(--neon-cyan);">${sz3Disp}</td>
               <td>${lastDisplay}</td>
               <td style="color:var(--neon-green); font-weight:bold;">${bestDisplay}</td>
             </tr>`;
@@ -1141,7 +1188,6 @@
         console.error("Error fetching lap data:", err);
       }
 
-      // Sektorstationen-Status abrufen
       try {
         let resStations = await fetch('/api/stations');
         if (resStations.ok) {
@@ -1167,6 +1213,7 @@
         if (currentMode === 1) modeText = "Qualifying";
         if (currentMode === 2) modeText = "Rennen (Runden)";
         if (currentMode === 3) modeText = "Rennen (Zeit)";
+        if (currentMode === 4) modeText = "Dragrace";
         document.getElementById('modeDisplay').innerText = modeText;
 
         let secondsLeft = info.secondsLeft;
@@ -1216,7 +1263,7 @@
                   speak("Das Qualifying ist beendet!", true);
                 }
                 autoSaveSessionResult(1, "Qualifying");
-              } else if (currentMode === 2 || currentMode === 3) {
+              } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
                 announceRaceResults();
               } else {
                 speak("Die Zeit ist abgelaufen! Durchgang beendet!", true);
@@ -1302,7 +1349,7 @@
               speak(driverName + " wieder gestartet");
             }
           } 
-          else if (currentMode === 2 || currentMode === 3) {
+          else if (currentMode >= 2) {
             statusCarsMap[carId] = 'box';
             if (isCarAllowedForTTS(carId)) {
               speak(driverName + " verlässt die Box");
@@ -1328,22 +1375,8 @@
           return;
         }
 
-        let remainingLapsText = "";
-        if (currentMode === 2 && targetLaps > 0 && currentLeaderLaps > maxLapInRace) {
-          maxLapInRace = currentLeaderLaps;
-          let remainingLaps = targetLaps - currentLeaderLaps;
-
-          if (remainingLaps > 0 && remainingLaps <= 5) {
-            if (remainingLaps === 1) { 
-              remainingLapsText = "Letzte Runde! "; 
-            } else { 
-              remainingLapsText = "Noch " + remainingLaps + " Runden! "; 
-            }
-          }
-        }
-
         let leadChangeOccurred = false;
-        if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
+        if (currentMode >= 2 && isSessionActive && !isSessionFinished) {
           if (currentLeaderId !== null && currentLeaderId !== carId) {
             let leaderCar = lastLapsData.find(c => c.id === currentLeaderId);
             if (leaderCar && currentLaps > leaderCar.completedLaps) {
@@ -1378,7 +1411,7 @@
           }
 
           let lapAnnouncement = "";
-          let isRaceMode = (currentMode === 2 || currentMode === 3);
+          let isRaceMode = (currentMode >= 2);
 
           if (isRaceMode && !announceLapTimesInRace) {
             if (isAbsoluteBest) {
@@ -1398,7 +1431,7 @@
             }
           }
 
-          speak(remainingLapsText + lapAnnouncement);
+          speak(lapAnnouncement);
         }
       }
     }
@@ -1781,6 +1814,14 @@
         if (cb) cb.checked = data.enabled;
       }).catch(e => console.error(e));
 
+      fetch('/api/sectorconfig').then(r => r.json()).then(data => {
+        if (document.getElementById('cfg_use_sz1')) document.getElementById('cfg_use_sz1').checked = data.useSz1;
+        if (document.getElementById('cfg_use_sz2')) document.getElementById('cfg_use_sz2').checked = data.useSz2;
+        if (document.getElementById('cfg_use_sz3')) document.getElementById('cfg_use_sz3').checked = data.useSz3;
+        if (document.getElementById('cfg_checkpoint_mode')) document.getElementById('cfg_checkpoint_mode').checked = data.checkpointMode;
+        if (document.getElementById('cfg_dragrace_mode')) document.getElementById('cfg_dragrace_mode').checked = data.dragraceMode;
+      }).catch(e => console.error(e));
+
       fetch('/api/names').then(r => r.json()).then(names => {
         container.innerHTML = '';
         ttsContainer.innerHTML = '';
@@ -1849,6 +1890,14 @@
         if (filterCb) {
           await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
         }
+
+        let sz1 = document.getElementById('cfg_use_sz1').checked ? "1" : "0";
+        let sz2 = document.getElementById('cfg_use_sz2').checked ? "1" : "0";
+        let sz3 = document.getElementById('cfg_use_sz3').checked ? "1" : "0";
+        let cp = document.getElementById('cfg_checkpoint_mode').checked ? "1" : "0";
+        let dr = document.getElementById('cfg_dragrace_mode').checked ? "1" : "0";
+        await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}`, { method: 'POST' });
+
         for (let i = 1; i <= MAX_CARS; i++) {
           let driverElem = document.getElementById('cfg_driver_' + i);
           let carElem = document.getElementById('cfg_car_' + i);
