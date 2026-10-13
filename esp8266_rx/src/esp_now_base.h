@@ -23,4 +23,9 @@ void initESPNowBase();
 void handleTimeSyncBroadcast();
 bool isStationOnline(uint8_t stationId);
 
+// Debug-Steuerung & Export
+void setDebugMode(bool active);
+bool getDebugMode();
+String getDebugPacketsJSON();
+
 #endif

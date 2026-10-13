@@ -1,0 +1,148 @@
+<!DOCTYPE HTML>
+<html lang="de">
+<head>
+  <title>RC Lap Timer Pro - Debug Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0c10;
+      --card-bg: rgba(22, 27, 34, 0.9);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --neon-green: #00ff66;
+      --neon-cyan: #00e5ff;
+      --neon-orange: #ff9900;
+      --neon-red: #ff3366;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+    }
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      margin: 0;
+      padding: 15px;
+      text-align: center;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-family: 'Orbitron', sans-serif; color: var(--neon-cyan); }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+      text-align: left;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: monospace; font-size: 14px; }
+    th, td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: center; }
+    th { background: rgba(0, 229, 255, 0.1); color: var(--neon-cyan); font-family: 'Orbitron', sans-serif; font-size: 12px; }
+    .badge-sz { color: var(--neon-orange); font-weight: bold; }
+    .badge-base { color: var(--neon-green); font-weight: bold; }
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      background: #111827; color: var(--neon-cyan); border: 1px solid var(--neon-cyan);
+      padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;
+    }
+    .btn:hover { background: var(--neon-cyan); color: #000; }
+    .toggle-box { font-size: 18px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle-box input { transform: scale(1.4); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📡 ESP-NOW DEBUG CONSOLE</h1>
+    <div style="margin-bottom: 15px;">
+      <button class="btn" onclick="location.href='/'">← Zurück zur Startseite</button>
+    </div>
+
+    <div class="card">
+      <label class="toggle-box">
+        <input type="checkbox" id="debugToggle" onchange="toggleDebugMode(this)">
+        <span><strong>Live-Debugging (ESP-NOW Puffer) aktivieren</strong></span>
+      </label>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 8px 0 0 0;">
+        Wenn aktiv, werden eintreffende Funkpakete von Sektorstationen im RAM gepuffert und hier live angezeigt. Schont Ressourcen, wenn deaktiviert.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3 style="font-family: 'Orbitron'; margin-top:0; color: var(--neon-orange);">Eintreffende Funkpakete (Live-Log)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Uhrzeit (ESP ms)</th>
+            <th>Typ / Station</th>
+            <th>Auto-ID</th>
+            <th>Rohdaten / TS</th>
+            <th>RSSI</th>
+          </tr>
+        </thead>
+        <tbody id="packetTable">
+          <tr><td colspan="5">Debug-Modus ist deaktiviert. Bitte oben aktivieren.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function fetchDebugStatus() {
+      try {
+        let res = await fetch('/api/debug/status');
+        let data = await res.json();
+        document.getElementById('debugToggle').checked = data.debug;
+      } catch (e) {
+        console.error("Fehler beim Laden des Debug-Status:", e);
+      }
+    }
+
+    async function toggleDebugMode(cb) {
+      let active = cb.checked ? "1" : "0";
+      await fetch('/api/debug/set?active=' + active, { method: 'POST' });
+      if (!cb.checked) {
+        document.getElementById('packetTable').innerHTML = '<tr><td colspan="5">Debug-Modus ist deaktiviert.</td></tr>';
+      }
+    }
+
+    async function fetchDebugPackets() {
+      let isChecked = document.getElementById('debugToggle').checked;
+      if (!isChecked) return;
+
+      try {
+        let res = await fetch('/api/debug/packets');
+        let packets = await res.json();
+        let tbody = document.getElementById('packetTable');
+
+        if (!packets || packets.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5">Warte auf Pakete...</td></tr>';
+          return;
+        }
+
+        let html = '';
+        packets.slice().reverse().forEach(p => {
+          let typeStr = `<span class="badge-base">Heartbeat / Basis</span>`;
+          if (p.st === 1) typeStr = `<span class="badge-sz">Sektorstation 1 (SZ1)</span>`;
+          if (p.st === 2) typeStr = `<span class="badge-sz">Sektorstation 2 (SZ2)</span>`;
+          if (p.st === 3) typeStr = `<span class="badge-sz">Sektorstation 3 (SZ3)</span>`;
+
+          html += `<tr>
+            <td>${p.time} ms</td>
+            <td>${typeStr}</td>
+            <td style="color:var(--neon-green); font-weight:bold;">ID ${p.car}</td>
+            <td>${p.raw}</td>
+            <td>${p.rssi} dBm</td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      } catch (e) {
+        console.error("Fehler beim Abrufen der Debug-Pakete:", e);
+      }
+    }
+
+    fetchDebugStatus();
+    setInterval(fetchDebugPackets, 1000);
+  </script>
+</body>
+</html>

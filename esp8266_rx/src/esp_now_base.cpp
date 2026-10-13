@@ -13,7 +13,69 @@ static unsigned long sz1LastSeen = 0;
 static unsigned long sz2LastSeen = 0;
 static unsigned long sz3LastSeen = 0;
 
-// Cache zur Duplikaterkennung (verhindert mehrfaches Verarbeiten von Relay-Paketen)
+static bool debugModeEnabled = false;
+
+// Debug Paket Ringpuffer (nur aktiv, wenn debugModeEnabled == true)
+#define MAX_DEBUG_PACKETS 20
+struct DebugPacketLog {
+  uint32_t timestampMs;
+  uint8_t stationId; // 0 = Basis/Auto direkt, 1-3 = SZ
+  uint8_t carId;
+  uint32_t rawData;
+  int8_t rssi;
+};
+
+static DebugPacketLog debugPackets[MAX_DEBUG_PACKETS];
+static uint8_t debugPacketIndex = 0;
+static uint8_t debugPacketCount = 0;
+
+void setDebugMode(bool active) {
+  debugModeEnabled = active;
+  Serial.printf("[ESP-NOW] Debug-Modus %s\n", active ? "AKTIVIERT" : "DEAKTIVIERT");
+}
+
+bool getDebugMode() {
+  return debugModeEnabled;
+}
+
+void logDebugPacket(uint8_t stationId, uint8_t carId, uint32_t rawData, int8_t rssi) {
+  if (!debugModeEnabled) return;
+  
+  debugPackets[debugPacketIndex].timestampMs = millis();
+  debugPackets[debugPacketIndex].stationId = stationId;
+  debugPackets[debugPacketIndex].carId = carId;
+  debugPackets[debugPacketIndex].rawData = rawData;
+  debugPackets[debugPacketIndex].rssi = rssi;
+
+  debugPacketIndex = (debugPacketIndex + 1) % MAX_DEBUG_PACKETS;
+  if (debugPacketCount < MAX_DEBUG_PACKETS) debugPacketCount++;
+}
+
+String getDebugPacketsJSON() {
+  String json = "[";
+  if (debugModeEnabled && debugPacketCount > 0) {
+    uint8_t start = (debugPacketCount < MAX_DEBUG_PACKETS) ? 0 : debugPacketIndex;
+    for (uint8_t i = 0; i < debugPacketCount; i++) {
+      uint8_t idx = (start + i) % MAX_DEBUG_PACKETS;
+      if (i > 0) json += ",";
+      json += "{\"time\":";
+      json += debugPackets[idx].timestampMs;
+      json += ",\"st\":";
+      json += debugPackets[idx].stationId;
+      json += ",\"car\":";
+      json += debugPackets[idx].carId;
+      json += ",\"raw\":";
+      json += debugPackets[idx].rawData;
+      json += ",\"rssi\":";
+      json += debugPackets[idx].rssi;
+      json += "}";
+    }
+  }
+  json += "]";
+  return json;
+}
+
+// Cache zur Duplikaterkennung
 #define RECENT_EVENTS_MAX 10
 struct RecentEvent {
   uint32_t eventId;
@@ -30,7 +92,6 @@ bool isDuplicateEvent(uint32_t eventId) {
       return true;
     }
   }
-  // Neu eintragen
   recentEvents[recentEventIndex] = {eventId, now};
   recentEventIndex = (recentEventIndex + 1) % RECENT_EVENTS_MAX;
   return false;
@@ -41,6 +102,8 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, 1, NULL, 0);
   }
 
+  int8_t rssi = WiFi.RSSI();
+
   // 1. Heartbeat verarbeiten
   if (len == sizeof(AlivePacket)) {
     AlivePacket packet;
@@ -50,6 +113,8 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     if (packet.stationId == 1) sz1LastSeen = now;
     if (packet.stationId == 2) sz2LastSeen = now;
     if (packet.stationId == 3) sz3LastSeen = now;
+
+    logDebugPacket(packet.stationId, 0, 0, rssi);
     return;
   }
 
@@ -58,7 +123,8 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     SectorPacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
 
-    // Duplikatprüfung anhand der Event-ID
+    logDebugPacket(packet.stationId, packet.carId, packet.timestamp, rssi);
+
     if (isDuplicateEvent(packet.eventId)) {
       return; 
     }
@@ -66,7 +132,6 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     Serial.printf("[ESP-NOW] Sektor SZ%d -> Auto ID %d bei %u ms (Relay: %d)\n", 
                   packet.stationId, packet.carId, packet.timestamp, packet.relayed);
 
-    // Übergabe an die zentrale Runden- und Sektorlogik
     processSectorPacket(packet.stationId, packet.carId, packet.timestamp);
   }
 }

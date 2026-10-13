@@ -16,8 +16,11 @@ void handlePostSetDeadtime(AsyncWebServerRequest *request);
 void handlePostRename(AsyncWebServerRequest *request);
 void handlePostReset(AsyncWebServerRequest *request);
 
-// Neu: Sektorstationen-Status abfragen
+// Sektorstationen-Status & Debug
 void handleGetStationsStatus(AsyncWebServerRequest *request);
+void handleGetDebugPackets(AsyncWebServerRequest *request);
+void handleGetDebugStatus(AsyncWebServerRequest *request);
+void handlePostSetDebugMode(AsyncWebServerRequest *request);
 
 // Zeit-Synchronisierung, Session-Historie & Statistik
 void handlePostSyncTime(AsyncWebServerRequest *request);
@@ -31,6 +34,5 @@ void handlePostDeleteSession(AsyncWebServerRequest *request);
 void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleGetSectorConfig(AsyncWebServerRequest *request);
 void handlePostSetSectorConfig(AsyncWebServerRequest *request);
-
 
 #endif

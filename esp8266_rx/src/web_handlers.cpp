@@ -303,6 +303,23 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
 
 static File uploadFile;
 
+// --- DEBUG API ---
+void handleGetDebugPackets(AsyncWebServerRequest *request) {
+  request->send(200, "application/json", getDebugPacketsJSON());
+}
+
+void handleGetDebugStatus(AsyncWebServerRequest *request) {
+  request->send(200, "application/json", getDebugMode() ? "{\"debug\":true}" : "{\"debug\":false}");
+}
+
+void handlePostSetDebugMode(AsyncWebServerRequest *request) {
+  if (request->hasParam("active")) {
+    bool active = (request->getParam("active")->value() == "1");
+    setDebugMode(active);
+  }
+  request->send(200, "text/plain", "OK");
+}
+
 void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
   if (!index) {
     if (!filename.startsWith("/")) {

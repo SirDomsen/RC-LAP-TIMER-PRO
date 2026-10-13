@@ -126,7 +126,13 @@ void initNetworkAndServer() {
 
   // --- API Endpunkte ---
   server.on("/api/laps", HTTP_GET, handleGetLaps);
-  server.on("/api/stations", HTTP_GET, handleGetStationsStatus); // <--- HIER EINGEFÜGT
+  server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
+  server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
+  server.on("/api/debug/status", HTTP_GET, handleGetDebugStatus);
+  server.on("/api/debug/set", HTTP_POST, handlePostSetDebugMode);
+  server.on("/debug", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/debug.html", "html");
+  });
   server.on("/api/session", HTTP_POST, handlePostSession);
   server.on("/api/timeleft", HTTP_GET, handleGetTimeLeft);
   server.on("/api/recent", HTTP_GET, handleGetRecent);
