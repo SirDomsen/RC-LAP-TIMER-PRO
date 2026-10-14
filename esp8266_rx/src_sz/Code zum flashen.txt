@@ -1,0 +1,1 @@
+pio run -e sz1 -t upload; pio run -e sz2 -t upload; pio run -e sz3 -t upload

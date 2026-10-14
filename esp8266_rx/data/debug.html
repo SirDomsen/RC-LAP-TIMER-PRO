@@ -47,8 +47,9 @@
       padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;
     }
     .btn:hover { background: var(--neon-cyan); color: #000; }
-    .toggle-box { font-size: 18px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
-    .toggle-box input { transform: scale(1.4); cursor: pointer; }
+    .toggle-container { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; }
+    .toggle-box { font-size: 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle-box input { transform: scale(1.3); cursor: pointer; }
   </style>
 </head>
 <body>
@@ -59,12 +60,18 @@
     </div>
 
     <div class="card">
-      <label class="toggle-box">
-        <input type="checkbox" id="debugToggle" onchange="toggleDebugMode(this)">
-        <span><strong>Live-Debugging (ESP-NOW Puffer) aktivieren</strong></span>
-      </label>
-      <p style="color: var(--text-muted); font-size: 13px; margin: 8px 0 0 0;">
-        Wenn aktiv, werden eintreffende Funkpakete von Sektorstationen im RAM gepuffert und hier live angezeigt. Schont Ressourcen, wenn deaktiviert.
+      <div class="toggle-container">
+        <label class="toggle-box">
+          <input type="checkbox" id="debugToggle" onchange="toggleDebugMode(this)">
+          <span><strong>Live-Debugging (Backend)</strong></span>
+        </label>
+        <label class="toggle-box" style="color: var(--neon-orange);">
+          <input type="checkbox" id="freezeToggle">
+          <span><strong>Ansicht einfrieren (Freeze)</strong></span>
+        </label>
+      </div>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 10px 0 0 0;">
+        Live-Debugging steuert die Paket-Aufzeichnung im RAM. Mit „Freeze“ wird die Ansicht temporär angehalten, ohne Daten zu löschen.
       </p>
     </div>
 
@@ -108,7 +115,10 @@
 
     async function fetchDebugPackets() {
       let isChecked = document.getElementById('debugToggle').checked;
-      if (!isChecked) return;
+      let isFrozen = document.getElementById('freezeToggle').checked;
+
+      // Wenn Debug aus ist oder die Ansicht eingefroren ist, laden wir keine neuen Pakete nach
+      if (!isChecked || isFrozen) return;
 
       try {
         let res = await fetch('/api/debug/packets');
@@ -137,7 +147,7 @@
         });
         tbody.innerHTML = html;
       } catch (e) {
-        console.error("Fehler beim Abrufen der Debug-Pakete:", e);
+        console.error("Fehler abrufen der Debug-Pakete:", e);
       }
     }
 

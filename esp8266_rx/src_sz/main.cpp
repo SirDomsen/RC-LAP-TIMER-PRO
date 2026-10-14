@@ -42,6 +42,7 @@ struct AlivePacket {
 uint32_t localSyncOffsetMs = 0;
 bool timeSynced = false;
 bool wifiConnected = false;
+bool batteryLow = false; // Status für Unterspannung
 
 // Tracking für die Standzeit-Unterdrückung
 static uint32_t lastSeenSignalTime[MAX_CARS + 1] = {0};
@@ -83,7 +84,18 @@ uint32_t getSynchronizedTimeMs() {
 
 void setup() {
   pinMode(LED_SIGNAL, OUTPUT);
-  digitalWrite(LED_SIGNAL, LOW); // Bereitschaft (Active LOW)
+  
+  // TX (GPIO1) als dauerhafte "intelligente Masse" für den Spannungsteiler konfigurieren
+  pinMode(1, OUTPUT);
+  digitalWrite(1, LOW);
+
+  // GPIO0 als digitaler Eingang für die Auswertung mit internem Pullup
+  pinMode(0, INPUT_PULLUP);
+
+  // 1. Kurzer Blink beim Einschalten (Active LOW: LOW = an, HIGH = aus)[cite: 1]
+  digitalWrite(LED_SIGNAL, LOW);
+  delay(200);
+  digitalWrite(LED_SIGNAL, HIGH);
 
   WiFi.mode(WIFI_STA);
   IPAddress gateway(192, 168, 0, 1);
@@ -98,9 +110,9 @@ void setup() {
 
   if (WiFi.status() != WL_CONNECTED) {
     for (int i = 0; i < 3; i++) {
-      digitalWrite(LED_SIGNAL, HIGH);
+      digitalWrite(LED_SIGNAL, LOW);  // Blinken bei Verbindungsversuch[cite: 1]
       delay(150);
-      digitalWrite(LED_SIGNAL, LOW);
+      digitalWrite(LED_SIGNAL, HIGH);
       delay(150);
     }
     WiFi.disconnect();
@@ -119,6 +131,7 @@ void setup() {
     wifi_set_channel(1);
   }
 
+  // 2. Ab hier bleibt die LED permanent AN (Active LOW -> LOW)[cite: 1]
   digitalWrite(LED_SIGNAL, LOW);
 
   if (esp_now_init() == 0) {
@@ -137,6 +150,15 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
+  // 1. Regelmäßige Akkuspannungsprüfung alle 10 Sekunden über GPIO0 (BC337 Schwellenwert)
+  static uint32_t lastBatteryCheckMs = 0;
+  if (millis() - lastBatteryCheckMs > 10000) {
+    lastBatteryCheckMs = millis();
+    // Wenn die Akkuspannung sinkt, sperrt der BC337 und der Pullup zieht GPIO0 auf HIGH
+    batteryLow = (digitalRead(0) == HIGH);
+  }
+
+  // 2. Alive-Pakete an die Basis senden
   static uint32_t lastAliveMs = 0;
   if (millis() - lastAliveMs > 4000) {
     lastAliveMs = millis();
@@ -145,6 +167,14 @@ void loop() {
     esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
   }
 
+  // 3. LED-Steuerung (Normalbetrieb vs. 0.5Hz Unterspannungs-Blinken)
+  if (batteryLow) {
+    // 0.5 Hz Blinken: 1000ms an / 1000ms aus (Periode = 2000ms)
+    bool blinkState = (millis() / 1000) % 2 == 0;
+    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH); // Active LOW: LOW = an
+  }
+
+  // 4. IR-Signale verarbeiten
   if (newCodeAvailable) {
     newCodeAvailable = false;
     
@@ -156,18 +186,20 @@ void loop() {
     if (detectedCarId >= 1 && detectedCarId <= MAX_CARS) {
       uint32_t nowMs = millis();
 
-      // LED-Flackern bei JEDEM eintreffenden, validen IR-Signal (Ideal für spätere Buzzer-Anbindung)
-      digitalWrite(LED_SIGNAL, HIGH);
-      delayMicroseconds(40000);
-      digitalWrite(LED_SIGNAL, LOW);
+      // LED flackert kurz bei IR-Empfang (nur wenn Akku ok ist, sonst blinkt er ohnehin langsam im 0.5Hz-Takt)[cite: 1]
+      if (!batteryLow) {
+        digitalWrite(LED_SIGNAL, HIGH);
+        delayMicroseconds(40000);
+        digitalWrite(LED_SIGNAL, LOW);
+      }
 
-      // Prüfen, ob das Auto länger als SECTOR_CLEARANCE_MS KEIN Signal gesendet hat 
+      // Prüfen, ob das Auto länger als SECTOR_CLEARANCE_MS KEIN Signal gesendet hat[cite: 1]
       bool isNewPass = (nowMs - lastSeenSignalTime[detectedCarId] > SECTOR_CLEARANCE_MS);
 
-      // Letztmaligen Signal-Zeitpunkt aktualisieren
+      // Letztmaligen Signal-Zeitpunkt aktualisieren[cite: 1]
       lastSeenSignalTime[detectedCarId] = nowMs;
 
-      // Nur bei einer echten Neuanfahrt ein Paket an die Basis funken
+      // Nur bei einer echten Neuanfahrt ein Paket an die Basis funken[cite: 1]
       if (isNewPass) {
         SectorPacket pkt;
         pkt.stationId = STATION_ID;
