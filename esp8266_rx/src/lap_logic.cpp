@@ -163,10 +163,16 @@ uint8_t getCurrentPosition(uint8_t carId) {
   uint8_t pos = 1;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (i == carId) continue;
-    if (lapCounter[i] > lapCounter[carId]) {
-      pos++;
-    } else if (lapCounter[i] == lapCounter[carId] && lastCrossTime[i] < lastCrossTime[carId] && lapCounter[i] > 0) {
-      pos++;
+    if (currentMode == MODE_DRAGRACE || currentMode == MODE_QUALIFYING) {
+      if (bestLapDuration[i] > 0 && (bestLapDuration[carId] == 0 || bestLapDuration[i] < bestLapDuration[carId])) {
+        pos++;
+      }
+    } else {
+      if (lapCounter[i] > lapCounter[carId]) {
+        pos++;
+      } else if (lapCounter[i] == lapCounter[carId] && lastCrossTime[i] < lastCrossTime[carId] && lapCounter[i] > 0) {
+        pos++;
+      }
     }
   }
   return pos;
@@ -184,17 +190,84 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   lastSeenMs[carId] = millis();
   addRecentID(carId);
 
-  // Im Dragrace-Modus fungiert der letzte aktive Sektor als Ziellinie
-  if (currentMode == MODE_DRAGRACE && dragraceMode && stationId == getActiveTargetSector()) {
-    processValidLap(carId, (uint64_t)timestampMs * 1000UL);
-    return;
-  }
-
-  // Sektoren nur berechnen, wenn das Auto bereits über Start/Ziel gefahren ist
+  // Sektoren / Zwischenzeiten nur berechnen, wenn das Auto bereits an der Basis gestartet ist
   if (lastCrossTime[carId] == 0) return;
 
   uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
 
+  // --- DRAGRACE LOGIK ---
+  if (currentMode == MODE_DRAGRACE) {
+    uint8_t targetSector = getActiveTargetSector();
+    if (targetSector == 0) return;
+
+    if (timestampMs > lapStartMs) {
+      uint32_t elapsedMs = timestampMs - lapStartMs;
+      if (elapsedMs < 200 || elapsedMs > 600000) return;
+
+      // Wenn die Station das Ziel ist:
+      if (stationId == targetSector) {
+        if (targetSector == 3) sz3TimeMs[carId] = elapsedMs;
+        else if (targetSector == 2) sz2TimeMs[carId] = elapsedMs;
+        else if (targetSector == 1) sz1TimeMs[carId] = elapsedMs;
+
+        lastLapDuration[carId] = elapsedMs;
+        bool isPB = false;
+        bool isOverall = false;
+
+        if (bestLapDuration[carId] == 0 || elapsedMs < bestLapDuration[carId]) {
+          bestLapDuration[carId] = elapsedMs;
+          isPB = true;
+        }
+
+        uint32_t currentOverall = 0;
+        for (uint8_t c = 1; c <= MAX_CARS; c++) {
+          if (bestLapDuration[c] > 0 && (currentOverall == 0 || bestLapDuration[c] < currentOverall)) {
+            currentOverall = bestLapDuration[c];
+          }
+        }
+        if (elapsedMs <= currentOverall) {
+          isOverall = true;
+        }
+
+        uint16_t completedRun = lapCounter[carId];
+        lapCounter[carId]++;
+        readyForNextLap[carId] = false;
+
+        uint64_t currentTsMs = getCurrentTimestampMs();
+        uint8_t pos = getCurrentPosition(carId);
+        queueLapForStorage(carId, completedRun, elapsedMs, pos, (uint8_t)currentMode, currentTsMs);
+
+        digitalWrite(LED_READY, LOW);
+        readyLedBlinking = true;
+        readyLedOffTime = millis() + 200;
+
+        String finishJson = "{\"type\":\"drag_finish\",\"carId\":";
+        finishJson += carId;
+        finishJson += ",\"driver\":\"" + driverNames[carId] + "\"";
+        finishJson += ",\"time\":" + String(elapsedMs);
+        finishJson += ",\"isPB\":" + String(isPB ? "true" : "false");
+        finishJson += ",\"isOverallBest\":" + String(isOverall ? "true" : "false");
+        finishJson += "}";
+        broadcastWebSocket(finishJson);
+        broadcastLapEvent(carId, completedRun, elapsedMs, isPB, isOverall);
+        return;
+      }
+
+      // Zwischenzeiten vor dem Ziel:
+      if (stationId < targetSector) {
+        if (stationId == 1 && useSz1) {
+          sz1TimeMs[carId] = elapsedMs;
+          broadcastSectorEvent(carId, 1, elapsedMs, false, false, 0);
+        } else if (stationId == 2 && useSz2) {
+          sz2TimeMs[carId] = elapsedMs;
+          broadcastSectorEvent(carId, 2, elapsedMs, false, false, 0);
+        }
+      }
+    }
+    return;
+  }
+
+  // --- NORMALE RUNDENRENNEN-LOGIK ---
   if (stationId == 1 && useSz1) {
     if (checkpointMode && currentExpectedSector[carId] != 1) return;
 
@@ -296,6 +369,31 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 }
 
 void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
+  uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
+  uint32_t nowMs = exactMicros / 1000UL;
+
+  // Im Dragrace-Modus fungiert die Basis immer als Startlinie!
+  if (currentMode == MODE_DRAGRACE) {
+    lapCounter[carId] = (lapCounter[carId] == 0) ? 1 : lapCounter[carId];
+    lastCrossTime[carId] = exactMicros;
+    lastSectorTimeMs[carId] = nowMs;
+    readyForNextLap[carId] = true;
+    currentExpectedSector[carId] = 1;
+    sz1TimeMs[carId] = 0;
+    sz2TimeMs[carId] = 0;
+    sz3TimeMs[carId] = 0;
+
+    digitalWrite(LED_READY, LOW);
+    readyLedBlinking = true;
+    readyLedOffTime = millis() + 200;
+
+    String startJson = "{\"type\":\"drag_start\",\"carId\":";
+    startJson += carId;
+    startJson += ",\"driver\":\"" + driverNames[carId] + "\"}";
+    broadcastWebSocket(startJson);
+    return;
+  }
+
   if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
   if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
 
@@ -312,8 +410,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     currentExpectedSector[carId] = 1;
   }
 
-  uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
-  uint32_t nowMs = exactMicros / 1000UL;
   bool lapCounted = false;
 
   if (lapCounter[carId] == 0) {
@@ -444,7 +540,7 @@ void updateLapLogicTasks() {
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (!readyForNextLap[i] && (now - lastSeenMs[i] > CLEARANCE_TIMEOUT_MS)) {
       readyForNextLap[i] = true; 
-      if (lapCounter[i] == 1) {
+      if (lapCounter[i] == 1 && currentMode != MODE_DRAGRACE) {
         lastCrossTime[i] = micros(); 
       }
     }

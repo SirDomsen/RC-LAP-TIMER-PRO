@@ -424,12 +424,12 @@
           <tr>
             <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
             <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('laps')">Runde <span id="sort-icon-laps" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz1')">SZ1 <span id="sort-icon-sz1" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz2')">SZ2 <span id="sort-icon-sz2" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz3')">SZ3 <span id="sort-icon-sz3" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('lastLap')">Letzte Zeit <span id="sort-icon-lastLap" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('bestLap')">Beste Zeit <span id="sort-icon-bestLap" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('laps')"><span id="th-laps-label">Runde</span> <span id="sort-icon-laps" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz1')"><span id="th-sz1-label">SZ1</span> <span id="sort-icon-sz1" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz2')"><span id="th-sz2-label">SZ2</span> <span id="sort-icon-sz2" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('sz3')"><span id="th-sz3-label">SZ3</span> <span id="sort-icon-sz3" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('lastLap')"><span id="th-last-label">Letzte Zeit</span> <span id="sort-icon-lastLap" class="sort-icon"></span></th>
+            <th class="sortable" onclick="sortTable('bestLap')"><span id="th-best-label">Beste Zeit</span> <span id="sort-icon-bestLap" class="sort-icon"></span></th>
           </tr>
         </thead>
         <tbody id="lapTable">
@@ -640,9 +640,38 @@
         onSectorLiveEvent(msg);
       } else if (msg.type === 'lap') {
         onLapLiveEvent(msg);
+      } else if (msg.type === 'drag_start') {
+        onDragStartEvent(msg);
+      } else if (msg.type === 'drag_finish') {
+        onDragFinishEvent(msg);
       } else if (msg.type === 'reset') {
         resetLapsDataSilent();
       }
+    }
+
+    function onDragStartEvent(msg) {
+      if (isCarAllowedForTTS(msg.carId)) {
+        let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+        speak(driver + " gestartet!");
+      }
+      updateData();
+    }
+
+    function onDragFinishEvent(msg) {
+      if (isCarAllowedForTTS(msg.carId)) {
+        let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+        let timeSec = (msg.time / 1000).toFixed(2).replace('.', ',');
+        let text = "";
+        if (msg.isOverallBest) {
+          text = driver + ", neue absolute Bestzeit! " + timeSec + " Sekunden!";
+        } else if (msg.isPB) {
+          text = driver + ", persönliche Bestzeit! " + timeSec + " Sekunden!";
+        } else {
+          text = driver + ", Ziel! " + timeSec + " Sekunden!";
+        }
+        speak(text);
+      }
+      updateData();
     }
 
     function onSectorLiveEvent(msg) {
@@ -912,9 +941,7 @@
 
     function startDragrace() {
       cancelRaceCountdown();
-      startRaceCountdown(() => {
-        sendSession(4, 0, 1, "Dragrace Modus gestartet!");
-      });
+      sendSession(4, 0, 0, "Dragrace gestartet! Zeiterfassung startet bei Überfahrt der Basis.");
     }
 
     function sendSession(mode, duration, laps, speakText) {
@@ -1090,7 +1117,7 @@
 
     function sortLapData(data) {
       let defaultSorted = [...data];
-      if (currentMode === 1) {
+      if (currentMode === 1 || currentMode === 4) {
         defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
       } else {
         defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -1232,7 +1259,7 @@
           currentLeaderId = null;
         } else {
           let leaderSearch = [...data];
-          if (currentMode === 1) {
+          if (currentMode === 1 || currentMode === 4) {
             leaderSearch.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
           } else {
             leaderSearch.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -1242,13 +1269,18 @@
           document.getElementById('leaderLapDisplay').innerText = leaderLaps;
 
           let newLeader = leaderSearch[0];
-          if ((currentMode === 2 || currentMode === 3 || currentMode === 4) && isSessionActive && !isSessionFinished) {
+          if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
             if (currentLeaderId === null && newLeader && newLeader.completedLaps > 0) {
               currentLeaderId = newLeader.id;
             }
           }
 
           let displayData = sortLapData(data);
+
+          let thLapsLabel = document.getElementById('th-laps-label');
+          if (thLapsLabel) thLapsLabel.innerText = (currentMode === 4 ? "Läufe" : "Runde");
+          let thLastLabel = document.getElementById('th-last-label');
+          if (thLastLabel) thLastLabel.innerText = (currentMode === 4 ? "Laufzeit" : "Letzte Zeit");
 
           let minSz1 = 0, minSz2 = 0, minSz3 = 0;
           data.forEach(r => {
@@ -1285,15 +1317,17 @@
             let currentStatus = statusCarsMap[row.id];
 
             if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
-              if (isRaceMode) {
+              if (isRaceMode && currentMode !== 4) {
                 statusCarsMap[row.id] = 'box';
                 lastDisplay = '<span class="pit-badge">Box</span>';
-              } else {
+              } else if (currentMode !== 4) {
                 statusCarsMap[row.id] = 'pause';
                 lastDisplay = '<span class="pause-badge">Pause</span>';
               }
             } else if (row.lastLap > 0) {
               lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            } else if (currentMode === 4 && (row.sz1 > 0 || row.sz2 > 0)) {
+              lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
             }
 
             let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
@@ -1330,10 +1364,17 @@
             let titleSz2 = row.bestSz2 > 0 ? `PB: ${(row.bestSz2 / 1000).toFixed(2)}s` : '';
             let titleSz3 = row.bestSz3 > 0 ? `PB: ${(row.bestSz3 / 1000).toFixed(2)}s` : '';
 
+            let lapsDisplay = row.completedLaps;
+            if (currentMode === 4) {
+              lapsDisplay = row.completedLaps > 0 ? (row.completedLaps + ' Lauf') : '0';
+            } else if (targetLaps > 0) {
+              lapsDisplay += ' / ' + targetLaps;
+            }
+
             html += `<tr>
               <td><strong>P${defaultPosition}</strong></td>
               <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
-              <td>${row.completedLaps} ${targetLaps > 0 ? '/ ' + targetLaps : ''}</td>
+              <td>${lapsDisplay}</td>
               <td id="sz-cell-${row.id}-1" class="${sz1Class}" title="${titleSz1}">${sz1Disp}</td>
               <td id="sz-cell-${row.id}-2" class="${sz2Class}" title="${titleSz2}">${sz2Disp}</td>
               <td id="sz-cell-${row.id}-3" class="${sz3Class}" title="${titleSz3}">${sz3Disp}</td>
