@@ -5,7 +5,7 @@
 
 // --- Versionsnummern ---
 #define FIRMWARE_VERSION  "v1.6.0"
-//#define UI_VERSION        "v1.4.0" obsolede. placed in frontend now
+//#define UI_VERSION        "v1.4.0" obsolete. placed in frontend (index.html) now
 
 #if __has_include("secrets.h")
   #include "secrets.h"
