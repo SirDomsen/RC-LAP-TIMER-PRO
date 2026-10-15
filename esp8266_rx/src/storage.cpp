@@ -96,6 +96,7 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(306, 1); // useSz3 = true
     EEPROM.write(307, 0); // checkpointMode = false
     EEPROM.write(308, 0); // dragraceMode = false
+    EEPROM.write(309, 1); // sectorAudioFeedback = true
 
     EEPROM.commit();
     
@@ -106,6 +107,7 @@ void loadSettingsFromEEPROM() {
     useSz3 = true;
     checkpointMode = false;
     dragraceMode = false;
+    sectorAudioFeedback = true;
   } else {
     uint16_t low = EEPROM.read(301);
     uint16_t high = EEPROM.read(302);
@@ -122,6 +124,7 @@ void loadSettingsFromEEPROM() {
     useSz3 = (EEPROM.read(306) != 0);
     checkpointMode = (EEPROM.read(307) != 0);
     dragraceMode = (EEPROM.read(308) != 0);
+    sectorAudioFeedback = (EEPROM.read(309) != 0);
   }
 }
 
@@ -147,12 +150,13 @@ void saveFilterToEEPROM(bool enable) {
 }
 
 
-void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr) {
+void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio) {
   EEPROM.write(304, s1 ? 1 : 0);
   EEPROM.write(305, s2 ? 1 : 0);
   EEPROM.write(306, s3 ? 1 : 0);
   EEPROM.write(307, cp ? 1 : 0);
   EEPROM.write(308, dr ? 1 : 0);
+  EEPROM.write(309, audio ? 1 : 0);
   EEPROM.commit();
 }
 

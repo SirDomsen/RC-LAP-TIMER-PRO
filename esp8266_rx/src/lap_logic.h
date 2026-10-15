@@ -21,11 +21,25 @@ extern bool useSz2;
 extern bool useSz3;
 extern bool checkpointMode;
 extern bool dragraceMode;
+extern bool sectorAudioFeedback;
 
-// Aktuelle Zwischenzeiten (Splits) pro Auto in Millisekunden
+// Aktuelle Sektorzeiten pro Auto in Millisekunden
 extern uint32_t sz1TimeMs[MAX_CARS + 1];
 extern uint32_t sz2TimeMs[MAX_CARS + 1];
 extern uint32_t sz3TimeMs[MAX_CARS + 1];
+
+// Persönliche Bestzeiten pro Sektor
+extern uint32_t bestSz1TimeMs[MAX_CARS + 1];
+extern uint32_t bestSz2TimeMs[MAX_CARS + 1];
+extern uint32_t bestSz3TimeMs[MAX_CARS + 1];
+
+// Absolute Bestzeiten (Purple Sectors) der aktuellen Session
+extern uint32_t overallBestSz1Ms;
+extern uint32_t overallBestSz2Ms;
+extern uint32_t overallBestSz3Ms;
+
+// Letzter Durchgangszeitstempel (in ms) für Sektorintervall-Berechnung
+extern uint32_t lastSectorTimeMs[MAX_CARS + 1];
 
 extern uint32_t lastCrossTime[MAX_CARS + 1];
 extern uint32_t lastLapDuration[MAX_CARS + 1];

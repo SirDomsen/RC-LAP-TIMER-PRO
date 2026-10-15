@@ -8,5 +8,6 @@ extern DNSServer dnsServer;
 
 void initNetworkAndServer();
 void handleNetworkTasks();
+void broadcastWebSocket(const String& msg);
 
 #endif

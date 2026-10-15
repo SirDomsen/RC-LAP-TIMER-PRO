@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v1.5.1"
+#define FIRMWARE_VERSION  "v1.6.0"
 //#define UI_VERSION        "v1.4.0" obsolede. placed in frontend now
 
 #if __has_include("secrets.h")

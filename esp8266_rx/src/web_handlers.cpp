@@ -8,13 +8,13 @@
 void handleGetLaps(AsyncWebServerRequest *request) {
   static String json;
   json = "";
-  json.reserve(1536);
+  json.reserve(2048);
 
   json = "[";
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     // Autos anzeigen, wenn sie Runden haben oder Sektorzeiten gemessen wurden
-    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0) {
+    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0) {
       if (!first) json += ",";
       json += "{\"id\":";
       json += i;
@@ -30,6 +30,12 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       json += sz2TimeMs[i];
       json += ",\"sz3\":";
       json += sz3TimeMs[i];
+      json += ",\"bestSz1\":";
+      json += bestSz1TimeMs[i];
+      json += ",\"bestSz2\":";
+      json += bestSz2TimeMs[i];
+      json += ",\"bestSz3\":";
+      json += bestSz3TimeMs[i];
       json += ",\"lastLap\":";
       json += lastLapDuration[i];
       json += ",\"bestLap\":";
@@ -264,30 +270,32 @@ void handlePostSaveSessionResult(AsyncWebServerRequest *request) {
   }
 }
 
-// API Abfrage: /api/sectorconfig[cite: 12]
+// API Abfrage: /api/sectorconfig
 void handleGetSectorConfig(AsyncWebServerRequest *request) {
   static String json;
   json = "";
-  json.reserve(128);
+  json.reserve(160);
   json = "{";
   json += "\"useSz1\":" + String(useSz1 ? "true" : "false") + ",";
   json += "\"useSz2\":" + String(useSz2 ? "true" : "false") + ",";
   json += "\"useSz3\":" + String(useSz3 ? "true" : "false") + ",";
   json += "\"checkpointMode\":" + String(checkpointMode ? "true" : "false") + ",";
-  json += "\"dragraceMode\":" + String(dragraceMode ? "true" : "false");
+  json += "\"dragraceMode\":" + String(dragraceMode ? "true" : "false") + ",";
+  json += "\"sectorAudio\":" + String(sectorAudioFeedback ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
 
-// API Speichern: /api/setsectorconfig[cite: 12]
+// API Speichern: /api/setsectorconfig
 void handlePostSetSectorConfig(AsyncWebServerRequest *request) {
-  if (request->hasParam("sz1")) useSz1 = (request->getParam("sz1")->value() == "1");
-  if (request->hasParam("sz2")) useSz2 = (request->getParam("sz2")->value() == "1");
-  if (request->hasParam("sz3")) useSz3 = (request->getParam("sz3")->value() == "1");
-  if (request->hasParam("cp"))  checkpointMode = (request->getParam("cp")->value() == "1");
-  if (request->hasParam("dr"))  dragraceMode = (request->getParam("dr")->value() == "1");
+  if (request->hasParam("sz1"))   useSz1 = (request->getParam("sz1")->value() == "1");
+  if (request->hasParam("sz2"))   useSz2 = (request->getParam("sz2")->value() == "1");
+  if (request->hasParam("sz3"))   useSz3 = (request->getParam("sz3")->value() == "1");
+  if (request->hasParam("cp"))    checkpointMode = (request->getParam("cp")->value() == "1");
+  if (request->hasParam("dr"))    dragraceMode = (request->getParam("dr")->value() == "1");
+  if (request->hasParam("audio")) sectorAudioFeedback = (request->getParam("audio")->value() == "1");
 
-  saveSectorConfigToEEPROM(useSz1, useSz2, useSz3, checkpointMode, dragraceMode);
+  saveSectorConfigToEEPROM(useSz1, useSz2, useSz3, checkpointMode, dragraceMode, sectorAudioFeedback);
   request->send(200, "text/plain", "OK");
 }
 

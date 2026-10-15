@@ -25,7 +25,7 @@ void saveFilterToEEPROM(bool enable);
 // LittleFS Statistik-Funktionen
 void initFS();
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
-void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr);
+void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio);
 
 // Freies Training Puffer & Langzeit-Speicher Transfer
 void savePracticeLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);

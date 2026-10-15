@@ -11,10 +11,19 @@
 #include <DNSServer.h>
 
 static AsyncWebServer server(80);
+static AsyncWebSocket ws("/ws");
 DNSServer dnsServer;
 
 const byte DNS_PORT = 53;
 static IPAddress currentActiveIP(192, 168, 0, 8);
+
+static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  if (type == WS_EVT_CONNECT) {
+    Serial.printf("[WebSocket] Client #%u verbunden von %s\n", client->id(), client->remoteIP().toString().c_str());
+  } else if (type == WS_EVT_DISCONNECT) {
+    Serial.printf("[WebSocket] Client #%u getrennt\n", client->id());
+  }
+}
 
 // Fallback HTML für das Captive Portal (falls captive.html nicht in LittleFS liegt)
 const char CAPTIVE_HTML_FALLBACK[] PROGMEM = R"rawliteral(
@@ -204,6 +213,9 @@ void initNetworkAndServer() {
     }
   });
 
+  ws.onEvent(onWsEvent);
+  server.addHandler(&ws);
+
   server.begin();
 }
 
@@ -211,4 +223,11 @@ void handleNetworkTasks() {
   dnsServer.processNextRequest(); // Verarbeitet DNS-Anfragen für das Captive Portal
   ArduinoOTA.handle();
   MDNS.update();
+  ws.cleanupClients();
+}
+
+void broadcastWebSocket(const String& msg) {
+  if (ws.count() > 0) {
+    ws.textAll(msg);
+  }
 }

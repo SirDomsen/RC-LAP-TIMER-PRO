@@ -246,6 +246,49 @@
     .pause-badge { color: var(--neon-orange); font-weight: bold; background: rgba(255, 152, 0, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--neon-orange); font-size: 13px; }
     .pit-badge { color: var(--neon-cyan); font-weight: bold; background: rgba(0, 229, 255, 0.15); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--neon-cyan); font-size: 13px; }
 
+    /* Sektor Animationen & Bestzeiten Styles */
+    @keyframes flashPurpleAnim {
+      0% { background-color: #b532ff; color: #fff; transform: scale(1.08); }
+      50% { background-color: rgba(181, 50, 255, 0.45); }
+      100% { background-color: transparent; }
+    }
+    @keyframes flashGreenAnim {
+      0% { background-color: #00ff66; color: #000; transform: scale(1.08); }
+      50% { background-color: rgba(0, 255, 102, 0.45); }
+      100% { background-color: transparent; }
+    }
+    @keyframes flashYellowAnim {
+      0% { background-color: #ff9900; color: #000; transform: scale(1.04); }
+      50% { background-color: rgba(255, 153, 0, 0.35); }
+      100% { background-color: transparent; }
+    }
+    .sector-flash-purple {
+      animation: flashPurpleAnim 2.5s ease-out;
+      color: var(--neon-purple) !important;
+      font-weight: 700;
+    }
+    .sector-flash-green {
+      animation: flashGreenAnim 2.5s ease-out;
+      color: var(--neon-green) !important;
+      font-weight: 700;
+    }
+    .sector-flash-yellow {
+      animation: flashYellowAnim 1.8s ease-out;
+      color: var(--neon-orange) !important;
+    }
+    .sector-best-purple {
+      color: var(--neon-purple) !important;
+      font-weight: 700;
+      text-shadow: 0 0 6px rgba(181, 50, 255, 0.6);
+    }
+    .sector-best-green {
+      color: var(--neon-green) !important;
+      font-weight: 700;
+    }
+    .sector-cyan {
+      color: var(--neon-cyan);
+    }
+
     .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); }
     .modal-content { background: #161b22; margin: 3% auto; padding: 20px; border-radius: 12px; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--card-border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
     .modal-body { overflow-y: auto; padding-right: 5px; flex-grow: 1; }
@@ -495,8 +538,11 @@
           <label style="cursor:pointer; display: block; margin-bottom: 6px;">
             <input type="checkbox" id="cfg_checkpoint_mode" style="transform: scale(1.2); margin-right: 8px;"> Checkpoint-Modus (Alle aktiven SZ Pflicht)
           </label>
-          <label style="cursor:pointer; display: block;">
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
             <input type="checkbox" id="cfg_dragrace_mode" style="transform: scale(1.2); margin-right: 8px;"> Dragrace-Modus (Letzter SZ ist Ziel, davor Splits)
+          </label>
+          <label style="cursor:pointer; display: block; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15);">
+            <input type="checkbox" id="cfg_sector_audio" style="transform: scale(1.2); margin-right: 8px;"> 📢 Sektor-Bestzeiten Sprachansage
           </label>
         </div>
 
@@ -549,13 +595,85 @@
     const MAX_CARS = 15;
     let ttsEnabled = true;
     let countdownTimeouts = [];
-    const UI_VERSION = "v1.5.1";
+    const UI_VERSION = "v1.6.0";
+    let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
+    let socket = null;
 
     function syncTimeWithServerOnce() {
       let nowSec = Math.floor(Date.now() / 1000);
       fetch('/api/synctime?ts=' + nowSec, { 
         method: 'POST'
       }).catch(e => console.error("Einmaliger Zeit-Sync fehlgeschlagen:", e));
+    }
+
+    function initWebSocket() {
+      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let wsUrl = wsProtocol + '//' + window.location.host + '/ws';
+      try {
+        socket = new WebSocket(wsUrl);
+        socket.onopen = function() {
+          console.log("[WebSocket] Verbunden mit Basis");
+        };
+        socket.onmessage = function(event) {
+          try {
+            let msg = JSON.parse(event.data);
+            handleLiveEvent(msg);
+          } catch (e) {
+            console.error("[WebSocket] Parse-Fehler:", e);
+          }
+        };
+        socket.onclose = function() {
+          console.log("[WebSocket] Getrennt, verbinde neu in 2s...");
+          setTimeout(initWebSocket, 2000);
+        };
+        socket.onerror = function(err) {
+          console.error("[WebSocket] Fehler:", err);
+          socket.close();
+        };
+      } catch (e) {
+        console.error("[WebSocket] Setup-Fehler:", e);
+      }
+    }
+
+    function handleLiveEvent(msg) {
+      if (msg.type === 'sector') {
+        onSectorLiveEvent(msg);
+      } else if (msg.type === 'lap') {
+        onLapLiveEvent(msg);
+      } else if (msg.type === 'reset') {
+        resetLapsDataSilent();
+      }
+    }
+
+    function onSectorLiveEvent(msg) {
+      let cell = document.getElementById(`sz-cell-${msg.carId}-${msg.sector}`);
+      if (cell) {
+        cell.innerText = (msg.time / 1000).toFixed(2) + 's';
+        cell.classList.remove('sector-flash-purple', 'sector-flash-green', 'sector-flash-yellow');
+        void cell.offsetWidth;
+        if (msg.isOverallBest) {
+          cell.classList.add('sector-flash-purple');
+        } else if (msg.isPB) {
+          cell.classList.add('sector-flash-green');
+        } else {
+          cell.classList.add('sector-flash-yellow');
+        }
+      }
+
+      if (sectorAudioEnabled && isCarAllowedForTTS(msg.carId) && (msg.isPB || msg.isOverallBest)) {
+        let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+        let text = "";
+        if (msg.isOverallBest) {
+          text = driver + ", absolute Bestzeit Sektor " + msg.sector + "!";
+        } else if (msg.isPB) {
+          text = driver + ", Bestzeit Sektor " + msg.sector + "!";
+        }
+        if (text) speak(text);
+      }
+    }
+
+    function onLapLiveEvent(msg) {
+      updateData();
     }
 
     async function loadVersion() {
@@ -618,6 +736,7 @@
     window.addEventListener('DOMContentLoaded', () => {
       loadVersion();
       syncTimeWithServerOnce();
+      initWebSocket();
     });
 
     window.onclick = function(event) {
@@ -1131,6 +1250,18 @@
 
           let displayData = sortLapData(data);
 
+          let minSz1 = 0, minSz2 = 0, minSz3 = 0;
+          data.forEach(r => {
+            if (r.bestSz1 > 0 && (minSz1 === 0 || r.bestSz1 < minSz1)) minSz1 = r.bestSz1;
+            else if (r.sz1 > 0 && (minSz1 === 0 || r.sz1 < minSz1)) minSz1 = r.sz1;
+
+            if (r.bestSz2 > 0 && (minSz2 === 0 || r.bestSz2 < minSz2)) minSz2 = r.bestSz2;
+            else if (r.sz2 > 0 && (minSz2 === 0 || r.sz2 < minSz2)) minSz2 = r.sz2;
+
+            if (r.bestSz3 > 0 && (minSz3 === 0 || r.bestSz3 < minSz3)) minSz3 = r.bestSz3;
+            else if (r.sz3 > 0 && (minSz3 === 0 || r.sz3 < minSz3)) minSz3 = r.sz3;
+          });
+
           displayData.forEach((row) => {
             carNamesMap[row.id] = { driver: row.driver, car: row.car };
             let defaultPosition = row._defaultPos;
@@ -1170,13 +1301,42 @@
             let sz2Disp = row.sz2 > 0 ? (row.sz2 / 1000).toFixed(2) + 's' : '---';
             let sz3Disp = row.sz3 > 0 ? (row.sz3 / 1000).toFixed(2) + 's' : '---';
             
+            let sz1Class = 'sector-cyan';
+            if (row.sz1 > 0) {
+              if (minSz1 > 0 && (row.sz1 <= minSz1 || (row.bestSz1 > 0 && row.bestSz1 <= minSz1))) {
+                sz1Class = 'sector-best-purple';
+              } else if (row.bestSz1 > 0 && row.sz1 <= row.bestSz1) {
+                sz1Class = 'sector-best-green';
+              }
+            }
+            let sz2Class = 'sector-cyan';
+            if (row.sz2 > 0) {
+              if (minSz2 > 0 && (row.sz2 <= minSz2 || (row.bestSz2 > 0 && row.bestSz2 <= minSz2))) {
+                sz2Class = 'sector-best-purple';
+              } else if (row.bestSz2 > 0 && row.sz2 <= row.bestSz2) {
+                sz2Class = 'sector-best-green';
+              }
+            }
+            let sz3Class = 'sector-cyan';
+            if (row.sz3 > 0) {
+              if (minSz3 > 0 && (row.sz3 <= minSz3 || (row.bestSz3 > 0 && row.bestSz3 <= minSz3))) {
+                sz3Class = 'sector-best-purple';
+              } else if (row.bestSz3 > 0 && row.sz3 <= row.bestSz3) {
+                sz3Class = 'sector-best-green';
+              }
+            }
+
+            let titleSz1 = row.bestSz1 > 0 ? `PB: ${(row.bestSz1 / 1000).toFixed(2)}s` : '';
+            let titleSz2 = row.bestSz2 > 0 ? `PB: ${(row.bestSz2 / 1000).toFixed(2)}s` : '';
+            let titleSz3 = row.bestSz3 > 0 ? `PB: ${(row.bestSz3 / 1000).toFixed(2)}s` : '';
+
             html += `<tr>
               <td><strong>P${defaultPosition}</strong></td>
               <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
               <td>${row.completedLaps} ${targetLaps > 0 ? '/ ' + targetLaps : ''}</td>
-              <td style="color:var(--neon-cyan);">${sz1Disp}</td>
-              <td style="color:var(--neon-cyan);">${sz2Disp}</td>
-              <td style="color:var(--neon-cyan);">${sz3Disp}</td>
+              <td id="sz-cell-${row.id}-1" class="${sz1Class}" title="${titleSz1}">${sz1Disp}</td>
+              <td id="sz-cell-${row.id}-2" class="${sz2Class}" title="${titleSz2}">${sz2Disp}</td>
+              <td id="sz-cell-${row.id}-3" class="${sz3Class}" title="${titleSz3}">${sz3Disp}</td>
               <td>${lastDisplay}</td>
               <td style="color:var(--neon-green); font-weight:bold;">${bestDisplay}</td>
             </tr>`;
@@ -1820,6 +1980,11 @@
         if (document.getElementById('cfg_use_sz3')) document.getElementById('cfg_use_sz3').checked = data.useSz3;
         if (document.getElementById('cfg_checkpoint_mode')) document.getElementById('cfg_checkpoint_mode').checked = data.checkpointMode;
         if (document.getElementById('cfg_dragrace_mode')) document.getElementById('cfg_dragrace_mode').checked = data.dragraceMode;
+        if (data.sectorAudio !== undefined) {
+          sectorAudioEnabled = data.sectorAudio;
+          localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
+        }
+        if (document.getElementById('cfg_sector_audio')) document.getElementById('cfg_sector_audio').checked = sectorAudioEnabled;
       }).catch(e => console.error(e));
 
       fetch('/api/names').then(r => r.json()).then(names => {
@@ -1896,7 +2061,13 @@
         let sz3 = document.getElementById('cfg_use_sz3').checked ? "1" : "0";
         let cp = document.getElementById('cfg_checkpoint_mode').checked ? "1" : "0";
         let dr = document.getElementById('cfg_dragrace_mode').checked ? "1" : "0";
-        await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}`, { method: 'POST' });
+        let audioCb = document.getElementById('cfg_sector_audio');
+        if (audioCb) {
+          sectorAudioEnabled = audioCb.checked;
+          localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
+        }
+        let audio = sectorAudioEnabled ? "1" : "0";
+        await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}`, { method: 'POST' });
 
         for (let i = 1; i <= MAX_CARS; i++) {
           let driverElem = document.getElementById('cfg_driver_' + i);
