@@ -27,6 +27,8 @@ function initWebSocket() {
   }
 }
 
+let lastResetTimestamp = 0;
+
 function handleLiveEvent(msg) {
   if (msg.type === 'sector') {
     onSectorLiveEvent(msg);
@@ -37,10 +39,13 @@ function handleLiveEvent(msg) {
   } else if (msg.type === 'drag_finish') {
     onDragFinishEvent(msg);
   } else if (msg.type === 'reset') {
-    resetLapsDataSilent();
+    let now = Date.now();
+    if (now - lastResetTimestamp > 3000) { // Sperre: Mindestens 3 Sekunden Abstand
+      lastResetTimestamp = now;
+      resetLapsDataSilent();
+    }
   }
 }
-
 function onDragStartEvent(msg) {
   if (isCarAllowedForTTS(msg.carId)) {
     let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);

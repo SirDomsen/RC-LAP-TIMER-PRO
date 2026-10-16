@@ -91,23 +91,26 @@
     </div>
 
     <div class="card">
-      <table>
-        <thead>
-          <tr>
-            <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('laps')"><span id="th-laps-label">Runde</span> <span id="sort-icon-laps" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz1')"><span id="th-sz1-label">SZ1</span> <span id="sort-icon-sz1" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz2')"><span id="th-sz2-label">SZ2</span> <span id="sort-icon-sz2" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('sz3')"><span id="th-sz3-label">SZ3</span> <span id="sort-icon-sz3" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('lastLap')"><span id="th-last-label">Letzte Zeit</span> <span id="sort-icon-lastLap" class="sort-icon"></span></th>
-            <th class="sortable" onclick="sortTable('bestLap')"><span id="th-best-label">Beste Zeit</span> <span id="sort-icon-bestLap" class="sort-icon"></span></th>
-          </tr>
-        </thead>
-        <tbody id="lapTable">
-          <tr><td colspan="8">Warte auf Signal...</td></tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('laps')"><span id="th-laps-label">Runde</span> <span id="sort-icon-laps" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('sz1')"><span id="th-sz1-label">SZ1</span> <span id="sort-icon-sz1" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('sz2')"><span id="th-sz2-label">SZ2</span> <span id="sort-icon-sz2" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('sz3')"><span id="th-sz3-label">SZ3</span> <span id="sort-icon-sz3" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('sz4')"><span id="th-sz4-label">SZ4</span> <span id="sort-icon-sz4" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('lastLap')"><span id="th-last-label">Letzte Zeit</span> <span id="sort-icon-lastLap" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('bestLap')"><span id="th-best-label">Beste Zeit</span> <span id="sort-icon-bestLap" class="sort-icon"></span></th>
+            </tr>
+          </thead>
+          <tbody id="lapTable">
+            <tr><td colspan="9">Warte auf Signal...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card" style="background: rgba(13, 17, 23, 0.9);">
@@ -122,7 +125,7 @@
     </div>
   </div>
 
-  <!-- STATISTIKEN ÜBERSICHT MODAL -->
+  <!-- STATISTIKEN ÜBERSICHT MODAL (4 BEREICHE + FAHRER) -->
   <div id="statsOverviewModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -135,19 +138,25 @@
         <div>
           <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="downloadStatsBackup()">💾 Backup herunterladen</button>
           <button class="btn btn-warning" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="triggerRestoreBackup()">📂 Wiederherstellen</button>
-          <input type="file" id="backupFileInput" accept=".json" style="display:none;" onchange="handleRestoreBackup(event)">
+          <input type="file" id="backupFileInput" accept=".json" style="display:none;" onclick="event.stopPropagation()" onchange="handleRestoreBackup(event)">
         </div>
       </div>
 
       <div class="tab-container">
-        <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer-Statistik</button>
-        <button class="tab-btn" id="tabSessionsBtn" onclick="switchStatsTab('sessions')">🏆 Rennen & Qualifying</button>
+        <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
+        <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freie Trainings</button>
+        <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifyings</button>
+        <button class="tab-btn" id="tabRaceBtn" onclick="switchStatsTab('race')">🏎️ Rennen</button>
+        <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
       </div>
       
       <div class="modal-body" id="statsTabDrivers"></div>
-      <div class="modal-body" id="statsTabSessions" style="display:none;"></div>
+      <div class="modal-body" id="statsTabTraining" style="display:none;"></div>
+      <div class="modal-body" id="statsTabQuali" style="display:none;"></div>
+      <div class="modal-body" id="statsTabRace" style="display:none;"></div>
+      <div class="modal-body" id="statsTabDrag" style="display:none;"></div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
         <button class="btn btn-danger" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
         <button class="btn btn-warning" onclick="closeStatsOverviewModal()">Schließen</button>
       </div>
@@ -164,23 +173,25 @@
       </div>
       
       <div class="modal-body">
-        <table>
-          <thead>
-            <tr>
-              <th class="sortable" onclick="sortStatsTable('lap')">Runde <span id="sort-stats-icon-lap" class="sort-icon"></span></th>
-              <th class="sortable" onclick="sortStatsTable('time')">Zeit <span id="sort-stats-icon-time" class="sort-icon"></span></th>
-              <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
-              <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody id="statsTableBody">
-            <tr><td colspan="5">Lade Statistik...</td></tr>
-          </tbody>
-        </table>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortStatsTable('lap')">Runde <span id="sort-stats-icon-lap" class="sort-icon"></span></th>
+                <th class="sortable" onclick="sortStatsTable('time')">Zeit <span id="sort-stats-icon-time" class="sort-icon"></span></th>
+                <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
+                <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
+                <th>Aktion</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody">
+              <tr><td colspan="5">Lade Statistik...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
         <button class="btn btn-danger" id="deleteDriverStatsBtn" onclick="confirmDeleteDriverStats()">Alle Statistiken dieses Fahrers löschen</button>
         <button class="btn btn-warning" onclick="closeStatsModal()">Schließen</button>
       </div>

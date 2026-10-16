@@ -77,7 +77,15 @@ void handleGetStationsStatus(AsyncWebServerRequest *request) {
 void handlePostSession(AsyncWebServerRequest *request) {
   if (request->hasParam("mode")) {
     int mode = request->getParam("mode")->value().toInt();
-    currentMode = (RaceMode)mode;
+    RaceMode newMode = (RaceMode)mode;
+
+    // IMMER beim Moduswechsel einen harten Reset ausführen, 
+    // damit sich Dragrace und normale Modi niemals ins Quere kommen!
+    if (newMode != currentMode) {
+      resetAllLaps();
+    }
+
+    currentMode = newMode;
     
     uint16_t duration = request->hasParam("duration") ? request->getParam("duration")->value().toInt() : 0;
     targetRounds = request->hasParam("laps") ? request->getParam("laps")->value().toInt() : 0;

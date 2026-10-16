@@ -91,7 +91,7 @@ function sortTable(column) {
 }
 
 function updateSortIcons() {
-  const columns = ['default', 'driver', 'laps', 'sz1', 'sz2', 'sz3', 'lastLap', 'bestLap'];
+  const columns = ['default', 'driver', 'laps', 'sz1', 'sz2', 'sz3', 'sz4', 'lastLap', 'bestLap'];
   columns.forEach(col => {
     let iconElem = document.getElementById('sort-icon-' + col);
     if (!iconElem) return;
@@ -141,6 +141,9 @@ function sortLapData(data) {
     } else if (currentSortColumn === 'sz3') {
       valA = a.sz3 > 0 ? a.sz3 : 99999999;
       valB = b.sz3 > 0 ? b.sz3 : 99999999;
+    } else if (currentSortColumn === 'sz4') {
+      valA = a.lastLap > 0 ? a.lastLap : 99999999;
+      valB = b.lastLap > 0 ? b.lastLap : 99999999;
     } else if (currentSortColumn === 'lastLap') {
       valA = a.lastLap > 0 ? a.lastLap : 99999999;
       valB = b.lastLap > 0 ? b.lastLap : 99999999;
@@ -238,14 +241,27 @@ function renderDriverStatsTable() {
 function switchStatsTab(tab) {
   currentTab = tab;
   document.getElementById('tabDriversBtn').classList.toggle('active', tab === 'drivers');
-  document.getElementById('tabSessionsBtn').classList.toggle('active', tab === 'sessions');
+  document.getElementById('tabTrainingBtn').classList.toggle('active', tab === 'training');
+  document.getElementById('tabQualiBtn').classList.toggle('active', tab === 'quali');
+  document.getElementById('tabRaceBtn').classList.toggle('active', tab === 'race');
+  document.getElementById('tabDragBtn').classList.toggle('active', tab === 'drag');
+
   document.getElementById('statsTabDrivers').style.display = (tab === 'drivers') ? 'block' : 'none';
-  document.getElementById('statsTabSessions').style.display = (tab === 'sessions') ? 'block' : 'none';
+  document.getElementById('statsTabTraining').style.display = (tab === 'training') ? 'block' : 'none';
+  document.getElementById('statsTabQuali').style.display = (tab === 'quali') ? 'block' : 'none';
+  document.getElementById('statsTabRace').style.display = (tab === 'race') ? 'block' : 'none';
+  document.getElementById('statsTabDrag').style.display = (tab === 'drag') ? 'block' : 'none';
 
   if (tab === 'drivers') {
     renderDriversOverview();
   } else {
-    loadSessionsOverview();
+    let modeFilter = 0;
+    if (tab === 'training') modeFilter = 0;
+    else if (tab === 'quali') modeFilter = 1;
+    else if (tab === 'race') modeFilter = [2, 3];
+    else if (tab === 'drag') modeFilter = 4;
+
+    loadSessionsOverviewByMode(modeFilter, 'statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
   }
 }
 
@@ -290,29 +306,49 @@ async function renderDriversOverview() {
   list.innerHTML = html;
 }
 
-async function loadSessionsOverview() {
-  let container = document.getElementById('statsTabSessions');
-  container.innerHTML = '<p style="color:var(--text-muted);">Lade Renn-Historie...</p>';
+async function loadSessionsOverviewByMode(modeFilter, containerId) {
+  let container = document.getElementById(containerId);
+  container.innerHTML = '<p style="color:var(--text-muted);">Lade Historie...</p>';
 
   try {
     let res = await fetch('/api/sessions');
     let data = await res.json();
     
     if (!data.sessions || data.sessions.length === 0) {
-      container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine absolvierten Rennen oder Qualifyings gespeichert.</p>';
+      container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Einträge in diesem Bereich gespeichert.</p>';
+      return;
+    }
+
+    let filteredSessions = data.sessions.filter(s => {
+      if (Array.isArray(modeFilter)) {
+        return modeFilter.includes(s.mode);
+      }
+      return s.mode === modeFilter;
+    });
+
+    if (filteredSessions.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Einträge für diesen Modus vorhanden.</p>';
       return;
     }
 
     let html = '';
-    data.sessions.slice().reverse().forEach(s => {
+    filteredSessions.slice().reverse().forEach(s => {
       let isQuali = (s.mode === 1);
-      let badgeClass = isQuali ? 'session-card quali' : 'session-card';
+      let isRace = (s.mode === 2 || s.mode === 3);
+      let isDrag = (s.mode === 4);
+      
+      let badgeClass = 'session-card';
+      let headerColor = 'var(--neon-green)';
+      if (isQuali) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
+      else if (isRace) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
+      else if (isDrag) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
+
       let dateStr = formatTimestamp(s.ts);
 
       html += `<div class="${badgeClass}">
         <div style="display:flex; justify-content:space-between; align-items:center;" onclick="toggleSessionDetails(${s.ts})">
           <div>
-            <strong style="color:${isQuali ? 'var(--neon-purple)' : 'var(--neon-green)'}; font-size:16px;">${s.modeName}</strong>
+            <strong style="color:${headerColor}; font-size:16px;">${s.modeName}</strong>
             <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">📅 ${dateStr}</span>
           </div>
           <div>
@@ -322,11 +358,12 @@ async function loadSessionsOverview() {
         </div>
         
         <div id="session_detail_${s.ts}" class="session-details">
-          <table>
-            <thead>
-              <tr><th>Pos</th><th>Fahrer</th><th>Fahrzeug</th><th>Runden</th><th>Beste Zeit</th><th>Aktion</th></tr>
-            </thead>
-            <tbody>`;
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr><th>Pos</th><th>Fahrer</th><th>Fahrzeug</th><th>Runden</th><th>Beste Zeit</th><th>Aktion</th></tr>
+              </thead>
+              <tbody>`;
 
       s.results.forEach(r => {
         let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
@@ -348,13 +385,13 @@ async function loadSessionsOverview() {
         </tr>`;
       });
 
-      html += `</tbody></table></div></div>`;
+      html += `</tbody></table></div></div></div>`;
     });
 
     container.innerHTML = html;
   } catch(e) {
     console.error(e);
-    container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Rennstatistik.</p>';
+    container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Statistik.</p>';
   }
 }
 
@@ -398,7 +435,7 @@ async function toggleDriverLapsInSession(elemId, carId, sessionTs) {
     let minTime = Math.min(...filteredLaps.map(l => l.time));
     let maxTime = Math.max(...filteredLaps.map(l => l.time));
 
-    let html = `<table style="margin:0; font-size:12px;">
+    let html = `<div class="table-responsive"><table style="margin:0; font-size:12px;">
       <thead>
         <tr><th>Runde</th><th>Zeit</th><th>Platz</th><th>Datum / Uhrzeit</th></tr>
       </thead>
@@ -426,7 +463,7 @@ async function toggleDriverLapsInSession(elemId, carId, sessionTs) {
       </tr>`;
     });
 
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     contentElem.innerHTML = html;
   } catch (e) {
     console.error(e);
@@ -442,7 +479,7 @@ function toggleSessionDetails(ts) {
 function deleteSession(ts) {
   if (confirm("Möchtest du diese Rennstatistik wirklich löschen?")) {
     fetch('/api/deletesession?ts=' + ts, { method: 'POST' })
-      .then(() => loadSessionsOverview())
+      .then(() => switchStatsTab(currentTab))
       .catch(e => console.error(e));
   }
 }
@@ -528,7 +565,7 @@ function confirmDeleteAllStats() {
 
 async function downloadStatsBackup() {
   let backupData = {
-    version: 1,
+    version: 2,
     exportedAt: Math.floor(Date.now() / 1000),
     driverStats: {},
     sessions: []

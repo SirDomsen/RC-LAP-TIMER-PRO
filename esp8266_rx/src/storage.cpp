@@ -14,7 +14,7 @@ static const String defaultDrivers[MAX_CARS + 1] = {
 };
 
 static const String defaultCars[MAX_CARS + 1] = {
-  "-", "Arrma Gorgon", "Arrma Typhon Grom", "Auto 3", "Auto 4", "Auto 5",
+  "-", "Auto 1", "auto 2", "Auto 3", "Auto 4", "Auto 5",
   "Auto 6", "Auto 7", "Auto 8", "Auto 9", "Auto 10",
   "Auto 11", "Auto 12", "Auto 13", "Auto 14", "Auto 15"
 };

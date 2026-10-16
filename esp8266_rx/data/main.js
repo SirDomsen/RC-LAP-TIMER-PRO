@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.0.0';
+window.UI_VERSION = '2.1.0';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -51,11 +51,11 @@ async function loadVersion() {
       let data = await response.json();
       if (fwElem) fwElem.textContent = data.firmware;
     } else {
-      if (fwElem) fwElem.textContent = "--"; // Dezent statt "error"
+      if (fwElem) fwElem.textContent = "--";
     }
   } catch (err) {
     console.warn('Firmware-Version konnte nicht geladen werden:', err);
-    if (fwElem) fwElem.textContent = "--"; // Bleibt dezent
+    if (fwElem) fwElem.textContent = "--";
   }
 }
 
@@ -79,7 +79,7 @@ async function updateData() {
     lastLapsData = data;
     let html = '';
     if (data.length === 0) {
-      html = '<tr><td colspan="8">Keine Autos erfasst</td></tr>';
+      html = '<tr><td colspan="9">Keine Autos erfasst</td></tr>';
       currentLeaderId = null;
     } else {
       let leaderSearch = [...data];
@@ -106,7 +106,7 @@ async function updateData() {
       let thLastLabel = document.getElementById('th-last-label');
       if (thLastLabel) thLastLabel.innerText = (currentMode === 4 ? "Laufzeit" : "Letzte Zeit");
 
-      let minSz1 = 0, minSz2 = 0, minSz3 = 0;
+      let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0;
       data.forEach(r => {
         if (r.bestSz1 > 0 && (minSz1 === 0 || r.bestSz1 < minSz1)) minSz1 = r.bestSz1;
         else if (r.sz1 > 0 && (minSz1 === 0 || r.sz1 < minSz1)) minSz1 = r.sz1;
@@ -155,10 +155,23 @@ async function updateData() {
         }
 
         let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
-        let sz1Disp = row.sz1 > 0 ? (row.sz1 / 1000).toFixed(2) + 's' : '---';
-        let sz2Disp = row.sz2 > 0 ? (row.sz2 / 1000).toFixed(2) + 's' : '---';
-        let sz3Disp = row.sz3 > 0 ? (row.sz3 / 1000).toFixed(2) + 's' : '---';
-        
+
+        // 4 Sektorzeiten formatieren (mit parallelem Dragrace Split/Sektor Support)
+        let formatSectorCell = (sectorNum, szVal, splitVal) => {
+          let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
+          if (currentMode === 4) {
+            let splitDisp = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+            return `<div class="drag-cell"><span class="drag-split">Spl: ${splitDisp}</span><span class="drag-sector">${valDisp}</span></div>`;
+          }
+          return valDisp;
+        };
+
+        let sz1Disp = formatSectorCell(1, row.sz1, row.split1);
+        let sz2Disp = formatSectorCell(2, row.sz2, row.split2);
+        let sz3Disp = formatSectorCell(3, row.sz3, row.split3);
+        let sz4Val = row.lastLap > 0 ? row.lastLap : 0;
+        let sz4Disp = sz4Val > 0 ? (sz4Val / 1000).toFixed(2) + 's' : '---';
+
         let sz1Class = 'sector-cyan';
         if (row.sz1 > 0) {
           if (minSz1 > 0 && (row.sz1 <= minSz1 || (row.bestSz1 > 0 && row.bestSz1 <= minSz1))) {
@@ -183,10 +196,7 @@ async function updateData() {
             sz3Class = 'sector-best-green';
           }
         }
-
-        let titleSz1 = row.bestSz1 > 0 ? `PB: ${(row.bestSz1 / 1000).toFixed(2)}s` : '';
-        let titleSz2 = row.bestSz2 > 0 ? `PB: ${(row.bestSz2 / 1000).toFixed(2)}s` : '';
-        let titleSz3 = row.bestSz3 > 0 ? `PB: ${(row.bestSz3 / 1000).toFixed(2)}s` : '';
+        let sz4Class = 'sector-cyan';
 
         let lapsDisplay = row.completedLaps;
         if (currentMode === 4) {
@@ -199,9 +209,10 @@ async function updateData() {
           <td><strong>P${defaultPosition}</strong></td>
           <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
           <td>${lapsDisplay}</td>
-          <td id="sz-cell-${row.id}-1" class="${sz1Class}" title="${titleSz1}">${sz1Disp}</td>
-          <td id="sz-cell-${row.id}-2" class="${sz2Class}" title="${titleSz2}">${sz2Disp}</td>
-          <td id="sz-cell-${row.id}-3" class="${sz3Class}" title="${titleSz3}">${sz3Disp}</td>
+          <td id="sz-cell-${row.id}-1" class="${sz1Class}">${sz1Disp}</td>
+          <td id="sz-cell-${row.id}-2" class="${sz2Class}">${sz2Disp}</td>
+          <td id="sz-cell-${row.id}-3" class="${sz3Class}">${sz3Disp}</td>
+          <td id="sz-cell-${row.id}-4" class="${sz4Class}">${sz4Disp}</td>
           <td>${lastDisplay}</td>
           <td style="color:var(--neon-green); font-weight:bold;">${bestDisplay}</td>
         </tr>`;
@@ -320,15 +331,21 @@ async function updateData() {
   }
 }
 
+
+let pollTimeout = null;
 let isPolling = false;
+
 async function pollData() {
   if (isPolling) return;
   isPolling = true;
   try {
     await updateData();
+  } catch (e) {
+    console.error("Polling-Fehler:", e);
   } finally {
     isPolling = false;
-    setTimeout(pollData, 1000); 
+    clearTimeout(pollTimeout);
+    pollTimeout = setTimeout(pollData, 1000); // Sauberer einzelner Timer
   }
 }
 
