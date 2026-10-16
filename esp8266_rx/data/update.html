@@ -47,7 +47,7 @@
     .hero-header {
       position: relative;
       width: 100%;
-      max-width: 600px;
+      max-width: 650px;
       margin: 0 auto 15px auto;
       border-radius: 12px;
       overflow: hidden;
@@ -78,7 +78,7 @@
       padding: 24px 20px;
       border-radius: 12px;
       width: 100%;
-      max-width: 600px;
+      max-width: 650px;
       border: 1px solid var(--card-border);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     }
@@ -98,27 +98,87 @@
       line-height: 1.4;
     }
 
-    .file-input-wrapper {
-      margin-bottom: 18px;
+    .upload-options {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .upload-box {
+      flex: 1;
+      padding: 15px;
+      background: #0d1117;
+      border: 2px dashed var(--card-border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .upload-box:hover {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+    }
+
+    .upload-box label {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      color: var(--neon-cyan);
+      cursor: pointer;
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .upload-box span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
 
     input[type="file"] {
-      width: 100%;
-      padding: 12px;
-      background: #0d1117;
-      border: 1px dashed var(--card-border);
-      border-radius: 8px;
-      color: var(--text-main);
-      font-family: var(--font-body);
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.2s ease;
+      display: none;
     }
 
-    input[type="file"]:hover {
-      border-color: var(--neon-cyan);
-      box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+    .file-list {
+      max-height: 180px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      margin-bottom: 18px;
+      padding: 8px;
+      text-align: left;
+      display: none;
     }
+
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .file-item:last-child {
+      border-bottom: none;
+    }
+
+    .file-name {
+      color: var(--text-main);
+      word-break: break-all;
+    }
+
+    .file-status {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      white-space: nowrap;
+      margin-left: 10px;
+    }
+
+    .status-pending { color: var(--text-muted); }
+    .status-uploading { color: var(--neon-orange); }
+    .status-success { color: var(--neon-green); }
+    .status-error { color: var(--neon-red); }
 
     .btn {
       width: 100%;
@@ -176,7 +236,7 @@
       transition: width 0.2s ease;
     }
 
-    #status {
+    #overallStatus {
       margin-top: 10px;
       font-family: var(--font-display);
       font-size: 0.9rem;
@@ -205,72 +265,115 @@
 
   <main class="card">
     <h2>WEB-UPDATE</h2>
-    <p class="info">Lade eine neue Web-Datei (z. B. <code>index.html</code>) in das LittleFS hoch. Die Runden- und Session-Daten bleiben erhalten.</p>
+    <p class="info">Wähle mehrere Dateien (z.B. <code>index.html</code>, <code>style.css</code>, <code>main.js</code> usw.) aus, um sie nacheinander ins LittleFS hochzuladen.</p>
 
     <form id="uploadForm">
-      <div class="file-input-wrapper">
-        <input type="file" id="fileInput" name="data" required>
+      <div class="upload-options">
+        <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+          <label>📄 DATEIEN AUSWÄHLEN</label>
+          <span>Mehrere Web-Dateien markieren</span>
+        </div>
       </div>
-      <button type="submit" id="subBtn" class="btn">Datei Hochladen</button>
+
+      <input type="file" id="fileInput" multiple>
+
+      <div class="file-list" id="fileList"></div>
+
+      <button type="submit" id="subBtn" class="btn" disabled>Dateien Hochladen</button>
     </form>
 
     <div class="progress-container" id="progressContainer">
       <div class="progress-bar">
         <div class="progress-fill" id="progressFill"></div>
       </div>
-      <div id="status">Upload läuft...</div>
+      <div id="overallStatus">Upload bereit...</div>
     </div>
   </main>
 
   <a href="/" class="nav-back">← Zurück zur Hauptseite</a>
 
   <script>
-    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    let selectedFiles = [];
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      selectedFiles = Array.from(e.target.files);
+      const fileListDiv = document.getElementById('fileList');
+      const subBtn = document.getElementById('subBtn');
+
+      if (selectedFiles.length > 0) {
+        fileListDiv.style.display = 'block';
+        subBtn.disabled = false;
+        
+        let html = '';
+        selectedFiles.forEach((file, index) => {
+          html += `<div class="file-item">
+            <span class="file-name">${file.name}</span>
+            <span class="file-status status-pending" id="status_${index}">Wartet</span>
+          </div>`;
+        });
+        fileListDiv.innerHTML = html;
+      } else {
+        fileListDiv.style.display = 'none';
+        subBtn.disabled = true;
+      }
+    });
+
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const fileInput = document.getElementById('fileInput');
-      if (!fileInput.files.length) return;
+      if (selectedFiles.length === 0) return;
 
-      const formData = new FormData();
-      formData.append('data', fileInput.files[0]);
-
-      const xhr = new XMLHttpRequest();
       const btn = document.getElementById('subBtn');
       const progressContainer = document.getElementById('progressContainer');
       const progressFill = document.getElementById('progressFill');
-      const statusText = document.getElementById('status');
+      const statusText = document.getElementById('overallStatus');
 
       btn.disabled = true;
       progressContainer.style.display = 'block';
-      statusText.style.color = 'var(--text-main)';
-      statusText.innerText = 'Upload läuft...';
 
-      xhr.upload.addEventListener('progress', function(e) {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          progressFill.style.width = percent + '%';
-          statusText.innerText = 'Upload: ' + percent + '%';
+      let successCount = 0;
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        let file = selectedFiles[i];
+        let statusSpan = document.getElementById(`status_${i}`);
+        
+        statusSpan.className = 'file-status status-uploading';
+        statusSpan.innerText = 'Lädt...';
+        statusText.innerText = `Lade ${file.name} (${i + 1}/${selectedFiles.length})...`;
+
+        let formData = new FormData();
+        formData.append('data', file);
+
+        try {
+          let response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (response.ok) {
+            statusSpan.className = 'file-status status-success';
+            statusSpan.innerText = '✓ Fertig';
+            successCount++;
+          } else {
+            statusSpan.className = 'file-status status-error';
+            statusSpan.innerText = '✕ Fehler';
+          }
+        } catch (err) {
+          statusSpan.className = 'file-status status-error';
+          statusSpan.innerText = '✕ Netzzugang';
         }
-      });
 
-      xhr.addEventListener('load', function() {
-        if (xhr.status === 200) {
-          statusText.style.color = 'var(--neon-green)';
-          statusText.innerText = '✓ ERFOLGREICH HOCHGELADEN!';
-        } else {
-          statusText.style.color = 'var(--neon-red)';
-          statusText.innerText = '✕ FEHLER BEIM UPLOAD!';
-        }
-        btn.disabled = false;
-      });
+        let totalPercent = Math.round(((i + 1) / selectedFiles.length) * 100);
+        progressFill.style.width = totalPercent + '%';
+      }
 
-      xhr.addEventListener('error', function() {
-        statusText.style.color = 'var(--neon-red)';
-        statusText.innerText = '✕ NETZWERKFEHLER!';
-        btn.disabled = false;
-      });
-
-      xhr.open('POST', '/api/upload', true);
-      xhr.send(formData);
+      if (successCount === selectedFiles.length) {
+        statusText.style.color = 'var(--neon-green)';
+        statusText.innerText = '✓ ALLE DATEIEN ERFOLGREICH HOCHGELADEN!';
+      } else {
+        statusText.style.color = 'var(--neon-orange)';
+        statusText.innerText = `⚠ ${successCount} von ${selectedFiles.length} Dateien hochgeladen.`;
+      }
+      btn.disabled = false;
     });
   </script>
 </body>
