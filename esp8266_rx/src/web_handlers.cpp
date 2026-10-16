@@ -393,12 +393,16 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
                   for (JsonObject lapObj : kv.value()["laps"].as<JsonArray>()) {
                     uint16_t lap = lapObj["lap"] | 0;
                     uint32_t timeMs = lapObj["time"] | 0;
+                    uint32_t sz1 = lapObj["sz1"] | 0;
+                    uint32_t sz2 = lapObj["sz2"] | 0;
+                    uint32_t sz3 = lapObj["sz3"] | 0;
+                    uint32_t sz4 = lapObj["sz4"] | 0;
                     uint8_t mode = lapObj["mode"] | 0;
                     uint64_t ts = lapObj["ts"] | 0;
                     uint8_t pos = lapObj["pos"] | 1;
                     
                     if (lap > 0 && timeMs > 0) {
-                      saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
+                      saveLapToHistory(carId, lap, timeMs, sz1, sz2, sz3, sz4, pos, mode, ts);
                     }
                   }
                 }

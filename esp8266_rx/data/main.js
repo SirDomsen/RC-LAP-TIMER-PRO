@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.2.2';
+window.UI_VERSION = '2.4.0';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -30,7 +30,7 @@ let lapHistoryMap = {};
 let statusCarsMap = {};
 let activeStatsCarId = null;
 let serverMillisOffset = 0;
-let currentTab = 'drivers';
+let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
 function syncTimeWithServerOnce() {
@@ -135,25 +135,13 @@ async function updateData() {
         
         checkLapEvents(row, leaderLaps, defaultPosition);
 
-        let isPaused = false;
-        let history = lapHistoryMap[row.id] || [];
-        if (row.lastSeenMs && row.lastSeenMs > 0 && serverMillisOffset > 0) {
-          let timeSinceLastSignal = serverMillisOffset - row.lastSeenMs;
-          let avgMs = history.length > 0 ? (history.reduce((a, b) => a + b, 0) / history.length) : 0;
-          let thresholdMs = Math.max(avgMs * 3.0, 15000);
-
-          if (timeSinceLastSignal > thresholdMs) {
-            isPaused = true;
-          }
-        }
-
         let lastDisplay = '---';
         let lastClass = 'lap-time-neutral';
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
 
         if (awaitingBaseCrossMap[row.id]) {
           lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
-        } else if (isPaused || statusCarsMap[row.id] === 'pause' || statusCarsMap[row.id] === 'box') {
+        } else if (statusCarsMap[row.id] === 'pause' || statusCarsMap[row.id] === 'box') {
           if (isRaceMode && currentMode !== 4) {
             statusCarsMap[row.id] = 'box';
             lastDisplay = '<span class="pit-badge">Box</span>';
@@ -313,7 +301,6 @@ async function updateData() {
             } else {
               speak("Das Qualifying ist beendet!", true);
             }
-            autoSaveSessionResult(1, "Qualifying");
           } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
             announceRaceResults();
           } else {
@@ -373,7 +360,6 @@ function handleBaseCrossEvent(msg) {
 function handleSectorTrackEntryTTS(carId) {
   let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
 
-  // Sobald das Auto auf der Runde zur Basis ist, NICHT erneut sprechen!
   if (awaitingBaseCrossMap[carId]) {
     return;
   }

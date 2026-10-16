@@ -14,7 +14,7 @@ static const String defaultDrivers[MAX_CARS + 1] = {
 };
 
 static const String defaultCars[MAX_CARS + 1] = {
-  "-", "Auto 1", "auto 2", "Auto 3", "Auto 4", "Auto 5",
+  "-", "Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5",
   "Auto 6", "Auto 7", "Auto 8", "Auto 9", "Auto 10",
   "Auto 11", "Auto 12", "Auto 13", "Auto 14", "Auto 15"
 };
@@ -23,10 +23,6 @@ static const String defaultCars[MAX_CARS + 1] = {
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;
-
-static PendingLap practiceQueue[QUEUE_MAX];
-static uint8_t practiceQueueHead = 0;
-static uint8_t practiceQueueTail = 0;
 
 void initFS() {
   if (!LittleFS.begin()) {
@@ -82,22 +78,19 @@ void saveAllNamesToFS() {
 
 void loadSettingsFromEEPROM() {
   EEPROM.begin(EEPROM_SIZE);
-
   loadNamesFromFS();
 
   if (EEPROM.read(0) != EEPROM_MAGIC) {
     EEPROM.write(0, EEPROM_MAGIC);
-    
     EEPROM.write(301, (uint8_t)(DEFAULT_MIN_LAP_MS & 0xFF));
     EEPROM.write(302, (uint8_t)((DEFAULT_MIN_LAP_MS >> 8) & 0xFF));
     EEPROM.write(303, 1);
-    EEPROM.write(304, 1); // useSz1 = true
-    EEPROM.write(305, 1); // useSz2 = true
-    EEPROM.write(306, 1); // useSz3 = true
-    EEPROM.write(307, 0); // checkpointMode = false
-    EEPROM.write(308, 0); // dragraceMode = false
-    EEPROM.write(309, 1); // sectorAudioFeedback = true
-
+    EEPROM.write(304, 1);
+    EEPROM.write(305, 1);
+    EEPROM.write(306, 1);
+    EEPROM.write(307, 0);
+    EEPROM.write(308, 0);
+    EEPROM.write(309, 1);
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;
@@ -116,9 +109,7 @@ void loadSettingsFromEEPROM() {
       minLapTimeMs = DEFAULT_MIN_LAP_MS;
     }
 
-    uint8_t filterVal = EEPROM.read(303);
-    requireTwoFrames = (filterVal != 0);
-
+    requireTwoFrames = (EEPROM.read(303) != 0);
     useSz1 = (EEPROM.read(304) != 0);
     useSz2 = (EEPROM.read(305) != 0);
     useSz3 = (EEPROM.read(306) != 0);
@@ -149,7 +140,6 @@ void saveFilterToEEPROM(bool enable) {
   EEPROM.commit();
 }
 
-
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio) {
   EEPROM.write(304, s1 ? 1 : 0);
   EEPROM.write(305, s2 ? 1 : 0);
@@ -160,36 +150,28 @@ void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool 
   EEPROM.commit();
 }
 
-void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs) {
   uint8_t nextHead = (queueHead + 1) % QUEUE_MAX;
   if (nextHead != queueTail) { 
-    lapQueue[queueHead] = {carId, lapNum, lapTimeMs, position, mode, timestampMs};
+    lapQueue[queueHead] = {carId, lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, mode, timestampMs};
     queueHead = nextHead;
   }
 }
 
-void queuePracticeLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
-  uint8_t nextHead = (practiceQueueHead + 1) % QUEUE_MAX;
-  if (nextHead != practiceQueueTail) { 
-    practiceQueue[practiceQueueHead] = {carId, lapNum, lapTimeMs, position, mode, timestampMs};
-    practiceQueueHead = nextHead;
-  }
-}
-
 void processStorageQueue() {
+  static uint32_t lastStorageWrite = 0;
+  // Nutze freie CPU-Zeit: Maximal alle 120 ms einen Datensatz schreiben
+  if (millis() - lastStorageWrite < 120) return;
+
   if (queueHead != queueTail) { 
     PendingLap lap = lapQueue[queueTail];
     queueTail = (queueTail + 1) % QUEUE_MAX;
-    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.position, lap.mode, lap.timestampMs);
-  }
-  if (practiceQueueHead != practiceQueueTail) {
-    PendingLap lap = practiceQueue[practiceQueueTail];
-    practiceQueueTail = (practiceQueueTail + 1) % QUEUE_MAX;
-    savePracticeLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.position, lap.mode, lap.timestampMs);
+    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.sz1, lap.sz2, lap.sz3, lap.sz4, lap.position, lap.mode, lap.timestampMs);
+    lastStorageWrite = millis();
   }
 }
 
-void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs) {
   String filepath = "/stats_" + String(carId) + ".json";
   
   JsonDocument doc;
@@ -206,21 +188,23 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
     laps = doc["laps"].to<JsonArray>();
   }
 
-  // Duplikatsprüfung
   for (JsonObject existingLap : laps) {
-    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs) {
+    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs && existingLap["mode"] == mode) {
       return; 
     }
   }
 
-  // Erhöht auf 300 Runden Limit
-  if (laps.size() >= 300) {
+  if (laps.size() >= 200) {
     laps.remove(0);
   }
 
   JsonObject newLap = laps.add<JsonObject>();
   newLap["lap"] = lapNum;
   newLap["time"] = lapTimeMs;
+  newLap["sz1"] = sz1;
+  newLap["sz2"] = sz2;
+  newLap["sz3"] = sz3;
+  newLap["sz4"] = sz4;
   newLap["mode"] = mode;
   newLap["ts"] = timestampMs;
   newLap["pos"] = position;
@@ -229,91 +213,6 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_
   if (f) {
     serializeJson(doc, f);
     f.close();
-  }
-}
-
-void savePracticeLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs) {
-  String filepath = "/practice_" + String(carId) + ".json";
-  
-  JsonDocument doc;
-  if (LittleFS.exists(filepath)) {
-    File f = LittleFS.open(filepath, "r");
-    if (f) {
-      deserializeJson(doc, f);
-      f.close();
-    }
-  }
-
-  JsonArray laps = doc["laps"].as<JsonArray>();
-  if (!laps) {
-    laps = doc["laps"].to<JsonArray>();
-  }
-
-  for (JsonObject existingLap : laps) {
-    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs) {
-      return; 
-    }
-  }
-
-  if (laps.size() >= 300) {
-    laps.remove(0);
-  }
-
-  JsonObject newLap = laps.add<JsonObject>();
-  newLap["lap"] = lapNum;
-  newLap["time"] = lapTimeMs;
-  newLap["mode"] = mode;
-  newLap["ts"] = timestampMs;
-  newLap["pos"] = position;
-
-  File f = LittleFS.open(filepath, "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
-}
-
-void flushPracticeToHistory(uint8_t carId) {
-  String practicePath = "/practice_" + String(carId) + ".json";
-  if (!LittleFS.exists(practicePath)) return;
-
-  File f = LittleFS.open(practicePath, "r");
-  if (!f) return;
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, f);
-  f.close();
-
-  if (!err && doc["laps"].is<JsonArray>()) {
-    for (JsonObject lapObj : doc["laps"].as<JsonArray>()) {
-      uint16_t lap = lapObj["lap"] | 0;
-      uint32_t timeMs = lapObj["time"] | 0;
-      uint8_t mode = lapObj["mode"] | 0;
-      uint64_t ts = lapObj["ts"] | 0;
-      uint8_t pos = lapObj["pos"] | 1;
-      if (lap > 0 && timeMs > 0) {
-        saveLapToHistory(carId, lap, timeMs, pos, mode, ts);
-      }
-    }
-  }
-  LittleFS.remove(practicePath);
-}
-
-void flushAllPracticeToHistory() {
-  for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    flushPracticeToHistory(i);
-  }
-}
-
-void clearPracticeBuffer(uint8_t carId) {
-  String practicePath = "/practice_" + String(carId) + ".json";
-  if (LittleFS.exists(practicePath)) {
-    LittleFS.remove(practicePath);
-  }
-}
-
-void clearAllPracticeBuffers() {
-  for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    clearPracticeBuffer(i);
   }
 }
 
@@ -361,7 +260,6 @@ void deleteDriverHistory(uint8_t carId) {
   if (LittleFS.exists(filepath)) {
     LittleFS.remove(filepath);
   }
-  clearPracticeBuffer(carId);
 }
 
 void deleteAllHistory() {

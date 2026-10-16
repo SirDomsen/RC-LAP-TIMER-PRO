@@ -15,14 +15,12 @@ static unsigned long sz3LastSeen = 0;
 
 static bool debugModeEnabled = false;
 
-// Debug Paket Ringpuffer (nur aktiv, wenn debugModeEnabled == true)
 #define MAX_DEBUG_PACKETS 20
 struct DebugPacketLog {
   uint32_t timestampMs;
-  uint8_t stationId; // 0 = Basis/Auto direkt, 1-3 = SZ
+  uint8_t stationId;
   uint8_t carId;
   uint32_t rawData;
-  int8_t rssi;
 };
 
 static DebugPacketLog debugPackets[MAX_DEBUG_PACKETS];
@@ -31,21 +29,19 @@ static uint8_t debugPacketCount = 0;
 
 void setDebugMode(bool active) {
   debugModeEnabled = active;
-  Serial.printf("[ESP-NOW] Debug-Modus %s\n", active ? "AKTIVIERT" : "DEAKTIVIERT");
 }
 
 bool getDebugMode() {
   return debugModeEnabled;
 }
 
-void logDebugPacket(uint8_t stationId, uint8_t carId, uint32_t rawData, int8_t rssi) {
+void logDebugPacket(uint8_t stationId, uint8_t carId, uint32_t rawData) {
   if (!debugModeEnabled) return;
   
   debugPackets[debugPacketIndex].timestampMs = millis();
   debugPackets[debugPacketIndex].stationId = stationId;
   debugPackets[debugPacketIndex].carId = carId;
   debugPackets[debugPacketIndex].rawData = rawData;
-  debugPackets[debugPacketIndex].rssi = rssi;
 
   debugPacketIndex = (debugPacketIndex + 1) % MAX_DEBUG_PACKETS;
   if (debugPacketCount < MAX_DEBUG_PACKETS) debugPacketCount++;
@@ -66,8 +62,6 @@ String getDebugPacketsJSON() {
       json += debugPackets[idx].carId;
       json += ",\"raw\":";
       json += debugPackets[idx].rawData;
-      json += ",\"rssi\":";
-      json += debugPackets[idx].rssi;
       json += "}";
     }
   }
@@ -75,8 +69,7 @@ String getDebugPacketsJSON() {
   return json;
 }
 
-// Cache zur Duplikaterkennung
-#define RECENT_EVENTS_MAX 10
+#define RECENT_EVENTS_MAX 16
 struct RecentEvent {
   uint32_t eventId;
   unsigned long receivedAt;
@@ -88,7 +81,7 @@ bool isDuplicateEvent(uint32_t eventId) {
   if (eventId == 0) return false;
   unsigned long now = millis();
   for (int i = 0; i < RECENT_EVENTS_MAX; i++) {
-    if (recentEvents[i].eventId == eventId && (now - recentEvents[i].receivedAt < 3000)) {
+    if (recentEvents[i].eventId == eventId && (now - recentEvents[i].receivedAt < 2500)) {
       return true;
     }
   }
@@ -99,12 +92,9 @@ bool isDuplicateEvent(uint32_t eventId) {
 
 void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
   if (!esp_now_is_peer_exist(mac)) {
-    esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, 1, NULL, 0);
+    esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
   }
 
-  int8_t rssi = WiFi.RSSI();
-
-  // 1. Heartbeat verarbeiten
   if (len == sizeof(AlivePacket)) {
     AlivePacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
@@ -114,58 +104,62 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     if (packet.stationId == 2) sz2LastSeen = now;
     if (packet.stationId == 3) sz3LastSeen = now;
 
-    logDebugPacket(packet.stationId, 0, 0, rssi);
+    logDebugPacket(packet.stationId, 0, 0);
     return;
   }
 
-  // 2. Sektor-Paket verarbeiten
   if (len == sizeof(SectorPacket)) {
     SectorPacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
 
-    logDebugPacket(packet.stationId, packet.carId, packet.timestamp, rssi);
+    logDebugPacket(packet.stationId, packet.carId, packet.timestamp);
 
     if (isDuplicateEvent(packet.eventId)) {
       return; 
     }
-
-    Serial.printf("[ESP-NOW] Sektor SZ%d -> Auto ID %d bei %u ms (Relay: %d)\n", 
-                  packet.stationId, packet.carId, packet.timestamp, packet.relayed);
 
     processSectorPacket(packet.stationId, packet.carId, packet.timestamp);
   }
 }
 
 void initESPNowBase() {
-  WiFi.mode(WIFI_AP_STA);
-  
   if (esp_now_init() != 0) {
-    Serial.println("[ESP-NOW] Fehler beim Initialisieren an der Basis!");
+    Serial.println("[ESP-NOW] Fehler bei Initialisierung!");
     return;
   }
 
   esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
   esp_now_register_recv_cb(onESPNowDataRecv);
+
+  // Broadcast-Peer fest registrieren, damit Sync-Pakete versendet werden dürfen
+  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  if (!esp_now_is_peer_exist(broadcastAddress)) {
+    esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
+  }
   
-  Serial.println("[ESP-NOW] Basisstation erfolgreich als Master/Receiver gestartet.");
+  Serial.printf("[ESP-NOW] Bereit auf Funkkanal %d\n", WiFi.channel());
 }
 
 void handleTimeSyncBroadcast() {
   static uint32_t lastSyncTime = 0;
-  if (millis() - lastSyncTime > 30000UL) {
+  // Alle 3 Sekunden Basis-Uhrzeit per Broadcast senden
+  if (millis() - lastSyncTime > 3000UL) {
     lastSyncTime = millis();
     
     SyncPacket syncPkt;
     syncPkt.baseTimeMs = millis();
 
     uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (!esp_now_is_peer_exist(broadcastAddress)) {
+      esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
+    }
     esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
   }
 }
 
 bool isStationOnline(uint8_t stationId) {
   unsigned long now = millis();
-  unsigned long timeout = 8000; 
+  unsigned long timeout = 6000; 
 
   if (stationId == 1) return (now - sz1LastSeen < timeout);
   if (stationId == 2) return (now - sz2LastSeen < timeout);

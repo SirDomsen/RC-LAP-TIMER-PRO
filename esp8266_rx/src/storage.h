@@ -6,11 +6,15 @@
 extern String driverNames[MAX_CARS + 1];
 extern String carNames[MAX_CARS + 1];
 
-// Puffer-Struktur für asynchrones Flash-Schreiben mit MS-Zeitstempel
+// Puffer-Struktur mit vollständigen Sektorzeiten
 struct PendingLap {
   uint8_t carId;
   uint16_t lapNum;
   uint32_t lapTimeMs;
+  uint32_t sz1;
+  uint32_t sz2;
+  uint32_t sz3;
+  uint32_t sz4;
   uint8_t position;
   uint8_t mode;
   uint64_t timestampMs;
@@ -22,21 +26,11 @@ void saveNamesToEEPROM(int id, const String& driver, const String& car);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 
-// LittleFS Statistik-Funktionen
 void initFS();
-void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio);
 
-// Freies Training Puffer & Langzeit-Speicher Transfer
-void savePracticeLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
-void flushPracticeToHistory(uint8_t carId);
-void flushAllPracticeToHistory();
-void clearPracticeBuffer(uint8_t carId);
-void clearAllPracticeBuffers();
-
-// Puffer-Queue für Flash-Schreibvorgänge
-void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
-void queuePracticeLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
 void processStorageQueue();
 
 String getDriverHistoryJson(uint8_t carId);
@@ -44,7 +38,6 @@ void deleteLapFromHistory(uint8_t carId, uint16_t lapNum);
 void deleteDriverHistory(uint8_t carId);
 void deleteAllHistory();
 
-// Session / Event Historie
 void saveSessionToHistory(const String& sessionJsonStr);
 String getSessionsJson();
 void deleteSessionFromHistory(uint64_t sessionTs);
