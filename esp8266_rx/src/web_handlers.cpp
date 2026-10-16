@@ -30,12 +30,23 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       json += sz2TimeMs[i];
       json += ",\"sz3\":";
       json += sz3TimeMs[i];
+
+
       json += ",\"bestSz1\":";
       json += bestSz1TimeMs[i];
       json += ",\"bestSz2\":";
       json += bestSz2TimeMs[i];
       json += ",\"bestSz3\":";
       json += bestSz3TimeMs[i];
+
+      //Splits für das Frontend ---
+      json += ",\"split1\":";
+      json += split1TimeMs[i];
+      json += ",\"split2\":";
+      json += split2TimeMs[i];
+      json += ",\"split3\":";
+      json += split3TimeMs[i];
+
       json += ",\"lastLap\":";
       json += lastLapDuration[i];
       json += ",\"bestLap\":";

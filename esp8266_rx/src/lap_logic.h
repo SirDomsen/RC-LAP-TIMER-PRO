@@ -28,6 +28,11 @@ extern uint32_t sz1TimeMs[MAX_CARS + 1];
 extern uint32_t sz2TimeMs[MAX_CARS + 1];
 extern uint32_t sz3TimeMs[MAX_CARS + 1];
 
+// Aktuelle Split-Zeiten pro Auto in Millisekunden (kumuliert ab Start)
+extern uint32_t split1TimeMs[MAX_CARS + 1];
+extern uint32_t split2TimeMs[MAX_CARS + 1];
+extern uint32_t split3TimeMs[MAX_CARS + 1];
+
 // Persönliche Bestzeiten pro Sektor
 extern uint32_t bestSz1TimeMs[MAX_CARS + 1];
 extern uint32_t bestSz2TimeMs[MAX_CARS + 1];
