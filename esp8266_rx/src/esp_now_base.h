@@ -3,25 +3,28 @@
 
 #include <Arduino.h>
 
-struct SectorPacket {
+struct __attribute__((packed)) SectorPacket {
   uint8_t stationId;
   uint8_t carId;
   uint32_t timestamp;
-  uint8_t relayed;      // 0 = direkt, 1 = via Relay weitergeleitet
-  uint32_t eventId;     // Eindeutige ID zur Duplikaterkennung
+  uint8_t relayed;
+  uint32_t eventId;
 };
 
-struct SyncPacket {
+struct __attribute__((packed)) SyncPacket {
   uint32_t baseTimeMs;
+  uint8_t stratum; // 0 = Basis, 1 = SZ1, 2 = SZ2
 };
 
-struct AlivePacket {
+struct __attribute__((packed)) AlivePacket {
   uint8_t stationId;
+  uint8_t batteryLow; // 0 = OK, 1 = Akku leer
 };
 
 void initESPNowBase();
 void handleTimeSyncBroadcast();
 bool isStationOnline(uint8_t stationId);
+bool isStationBatteryLow(uint8_t stationId);
 
 // Debug-Steuerung & Export
 void setDebugMode(bool active);

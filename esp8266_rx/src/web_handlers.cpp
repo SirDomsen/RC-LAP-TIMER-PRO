@@ -65,11 +65,14 @@ void handleGetLaps(AsyncWebServerRequest *request) {
 void handleGetStationsStatus(AsyncWebServerRequest *request) {
   static String json;
   json = "";
-  json.reserve(64);
+  json.reserve(160);
   json = "{";
-  json += "\"sz1\": " + String(isStationOnline(1) ? "true" : "false") + ",";
-  json += "\"sz2\": " + String(isStationOnline(2) ? "true" : "false") + ",";
-  json += "\"sz3\": " + String(isStationOnline(3) ? "true" : "false");
+  json += "\"sz1\":" + String(isStationOnline(1) ? "true" : "false") + ",";
+  json += "\"sz2\":" + String(isStationOnline(2) ? "true" : "false") + ",";
+  json += "\"sz3\":" + String(isStationOnline(3) ? "true" : "false") + ",";
+  json += "\"sz1Bat\":" + String(isStationBatteryLow(1) ? "true" : "false") + ",";
+  json += "\"sz2Bat\":" + String(isStationBatteryLow(2) ? "true" : "false") + ",";
+  json += "\"sz3Bat\":" + String(isStationBatteryLow(3) ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }

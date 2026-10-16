@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.6.0';
+window.UI_VERSION = '2.7.0';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -104,7 +104,6 @@ function updateTimerDisplayString(sec) {
   }
 }
 
-// Autonomer Client-Ticker: Läuft exakt jede Sekunde unabhängig von Netzwerk-Latenzen
 function startLocalTimerTicker() {
   if (localTimerInterval) clearInterval(localTimerInterval);
 
@@ -292,6 +291,7 @@ async function updateData() {
     console.error("Error fetching lap data:", err);
   }
 
+  // Sektorstationen Status mit Akku-Warnung (Gelb bei Unterspannung)
   try {
     let resStations = await fetch('/api/stations');
     if (resStations.ok) {
@@ -299,9 +299,16 @@ async function updateData() {
       let sz1 = document.getElementById('sz1Status');
       let sz2 = document.getElementById('sz2Status');
       let sz3 = document.getElementById('sz3Status');
-      if (sz1) sz1.style.color = stations.sz1 ? 'var(--neon-green)' : 'var(--neon-red)';
-      if (sz2) sz2.style.color = stations.sz2 ? 'var(--neon-green)' : 'var(--neon-red)';
-      if (sz3) sz3.style.color = stations.sz3 ? 'var(--neon-green)' : 'var(--neon-red)';
+      
+      let getStatusColor = (online, batLow) => {
+        if (!online) return 'var(--neon-red)';
+        if (batLow) return 'var(--neon-orange)';
+        return 'var(--neon-green)';
+      };
+
+      if (sz1) sz1.style.color = getStatusColor(stations.sz1, stations.sz1Bat);
+      if (sz2) sz2.style.color = getStatusColor(stations.sz2, stations.sz2Bat);
+      if (sz3) sz3.style.color = getStatusColor(stations.sz3, stations.sz3Bat);
     }
   } catch (err) {
     console.error("Error fetching station status:", err);
@@ -323,7 +330,6 @@ async function updateData() {
     let serverSecondsLeft = info.secondsLeft;
 
     if (serverSecondsLeft >= 0) {
-      // Nur synchronisieren, wenn lokale Uhr um mehr als 1 Sekunde abweicht
       if (localSecondsLeft === -1 || Math.abs(localSecondsLeft - serverSecondsLeft) > 1) {
         localSecondsLeft = serverSecondsLeft;
         updateTimerDisplayString(localSecondsLeft);
@@ -408,8 +414,6 @@ function finishSessionNow() {
 let pollTimeout = null;
 let isPolling = false;
 
-// ... [Rest bleibt identisch zu Version 2.6.0] ...
-
 async function pollData() {
   if (isPolling) return;
   isPolling = true;
@@ -420,7 +424,6 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    // 2500 ms statt 1000 ms reduziert HTTP-Last auf dem ESP um 60%
     pollTimeout = setTimeout(pollData, 2500);
   }
 }
