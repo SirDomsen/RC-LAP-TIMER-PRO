@@ -114,6 +114,11 @@ void initLapLogic() {
   digitalWrite(LED_SIGNAL, LOW);
   digitalWrite(LED_ONBOARD, HIGH);
   
+  // Sofort beim Bootup im Freien Training starten, ohne Klick!
+  currentMode = MODE_PRACTICE;
+  modeEndTimeMs = 0;
+  targetRounds = 0;
+  
   resetAllLaps();
 }
 
@@ -201,6 +206,9 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   lastSeenMs[carId] = millis();
   addRecentID(carId);
 
+
+  // Sobald das Auto an einer SZ erfasst wird, ist es wieder aktiv auf der Strecke
+  readyForNextLap[carId] = true;
   // Zeiten nur berechnen, wenn das Auto bereits an der Basis gestartet ist
   if (lastCrossTime[carId] == 0) return;
 

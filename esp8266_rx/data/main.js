@@ -140,6 +140,7 @@ async function updateData() {
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
         let currentStatus = statusCarsMap[row.id];
 
+        // Status "Box" oder "Pause" wird jetzt sauber in der Spalte "Letzte Zeit" angezeigt
         if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
           if (isRaceMode && currentMode !== 4) {
             statusCarsMap[row.id] = 'box';
@@ -156,7 +157,7 @@ async function updateData() {
 
         let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
 
-        // 4 Sektorzeiten formatieren (mit parallelem Dragrace Split/Sektor Support)
+        // Hilfsfunktion für Dragrace-Ansicht (Splits oben, Sektor unten)
         let formatSectorCell = (sectorNum, szVal, splitVal) => {
           let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
           if (currentMode === 4) {
@@ -169,34 +170,31 @@ async function updateData() {
         let sz1Disp = formatSectorCell(1, row.sz1, row.split1);
         let sz2Disp = formatSectorCell(2, row.sz2, row.split2);
         let sz3Disp = formatSectorCell(3, row.sz3, row.split3);
+        
         let sz4Val = row.lastLap > 0 ? row.lastLap : 0;
         let sz4Disp = sz4Val > 0 ? (sz4Val / 1000).toFixed(2) + 's' : '---';
 
-        let sz1Class = 'sector-cyan';
-        if (row.sz1 > 0) {
-          if (minSz1 > 0 && (row.sz1 <= minSz1 || (row.bestSz1 > 0 && row.bestSz1 <= minSz1))) {
-            sz1Class = 'sector-best-purple';
-          } else if (row.bestSz1 > 0 && row.sz1 <= row.bestSz1) {
-            sz1Class = 'sector-best-green';
+        // Farb-Logik: Grün = PB, Purple = Absolute Best (erst ab 2. Durchgang / wenn Bestwert existiert), Gelb = Langsamer
+        let getSectorClass = (val, bestVal, overallMin) => {
+          if (val === 0) return 'sector-cyan';
+          if (bestVal === 0) return 'sector-cyan'; // 1. Durchgang neutral (kein erzwungenes Purple)
+
+          if (overallMin > 0 && val <= overallMin) {
+            return 'sector-best-purple'; // Absolute Bestzeit (Lila/Purple)
+          } else if (bestVal > 0 && val <= bestVal) {
+            return 'sector-best-green';  // Persönliche Bestzeit (Grün)
           }
-        }
-        let sz2Class = 'sector-cyan';
-        if (row.sz2 > 0) {
-          if (minSz2 > 0 && (row.sz2 <= minSz2 || (row.bestSz2 > 0 && row.bestSz2 <= minSz2))) {
-            sz2Class = 'sector-best-purple';
-          } else if (row.bestSz2 > 0 && row.sz2 <= row.bestSz2) {
-            sz2Class = 'sector-best-green';
-          }
-        }
-        let sz3Class = 'sector-cyan';
-        if (row.sz3 > 0) {
-          if (minSz3 > 0 && (row.sz3 <= minSz3 || (row.bestSz3 > 0 && row.bestSz3 <= minSz3))) {
-            sz3Class = 'sector-best-purple';
-          } else if (row.bestSz3 > 0 && row.sz3 <= row.bestSz3) {
-            sz3Class = 'sector-best-green';
-          }
-        }
-        let sz4Class = 'sector-cyan';
+          return 'sector-flash-yellow';    // Langsamer (Gelb/Orange)
+        };
+
+        let sz1Class = getSectorClass(row.sz1, row.bestSz1, minSz1);
+        let sz2Class = getSectorClass(row.sz2, row.bestSz2, minSz2);
+        let sz3Class = getSectorClass(row.sz3, row.bestSz3, minSz3);
+        
+        // SZ4 (Zielsektor) Färbung basierend auf Rundenzeiten
+        let minLastLap = 0;
+        lastLapsData.forEach(r => { if (r.lastLap > 0 && (minLastLap === 0 || r.lastLap < minLastLap)) minLastLap = r.lastLap; });
+        let sz4Class = getSectorClass(sz4Val, row.bestLap, minLastLap);
 
         let lapsDisplay = row.completedLaps;
         if (currentMode === 4) {
