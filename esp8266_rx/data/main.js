@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.1.0';
+window.UI_VERSION = '2.2.1';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -107,15 +107,25 @@ async function updateData() {
       if (thLastLabel) thLastLabel.innerText = (currentMode === 4 ? "Laufzeit" : "Letzte Zeit");
 
       let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0;
+      let minBestLap = 0;
+      let activeCarsWithLaps = 0;
+
       data.forEach(r => {
-        if (r.bestSz1 > 0 && (minSz1 === 0 || r.bestSz1 < minSz1)) minSz1 = r.bestSz1;
-        else if (r.sz1 > 0 && (minSz1 === 0 || r.sz1 < minSz1)) minSz1 = r.sz1;
+        if (r.completedLaps > 0 || r.bestLap > 0) activeCarsWithLaps++;
 
-        if (r.bestSz2 > 0 && (minSz2 === 0 || r.bestSz2 < minSz2)) minSz2 = r.bestSz2;
-        else if (r.sz2 > 0 && (minSz2 === 0 || r.sz2 < minSz2)) minSz2 = r.sz2;
+        let b1 = r.bestSz1 > 0 ? r.bestSz1 : r.sz1;
+        if (b1 > 0 && (minSz1 === 0 || b1 < minSz1)) minSz1 = b1;
 
-        if (r.bestSz3 > 0 && (minSz3 === 0 || r.bestSz3 < minSz3)) minSz3 = r.bestSz3;
-        else if (r.sz3 > 0 && (minSz3 === 0 || r.sz3 < minSz3)) minSz3 = r.sz3;
+        let b2 = r.bestSz2 > 0 ? r.bestSz2 : r.sz2;
+        if (b2 > 0 && (minSz2 === 0 || b2 < minSz2)) minSz2 = b2;
+
+        let b3 = r.bestSz3 > 0 ? r.bestSz3 : r.sz3;
+        if (b3 > 0 && (minSz3 === 0 || b3 < minSz3)) minSz3 = b3;
+
+        let b4 = r.bestSz4 > 0 ? r.bestSz4 : r.sz4;
+        if (b4 > 0 && (minSz4 === 0 || b4 < minSz4)) minSz4 = b4;
+
+        if (r.bestLap > 0 && (minBestLap === 0 || r.bestLap < minBestLap)) minBestLap = r.bestLap;
       });
 
       displayData.forEach((row) => {
@@ -137,10 +147,10 @@ async function updateData() {
         }
 
         let lastDisplay = '---';
+        let lastClass = 'lap-time-neutral';
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
         let currentStatus = statusCarsMap[row.id];
 
-        // Status "Box" oder "Pause" wird jetzt sauber in der Spalte "Letzte Zeit" angezeigt
         if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
           if (isRaceMode && currentMode !== 4) {
             statusCarsMap[row.id] = 'box';
@@ -151,13 +161,27 @@ async function updateData() {
           }
         } else if (row.lastLap > 0) {
           lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+          
+          let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
+          let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
+
+          if (isOverall && isPB) {
+            lastClass = 'lap-time-purple';
+          } else if (isPB) {
+            lastClass = 'lap-time-green';
+          } else {
+            lastClass = 'lap-time-neutral';
+          }
         } else if (currentMode === 4 && (row.sz1 > 0 || row.sz2 > 0)) {
           lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
         }
 
         let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
+        let bestClass = 'lap-time-green';
+        if (activeCarsWithLaps > 1 && minBestLap > 0 && row.bestLap > 0 && row.bestLap <= minBestLap) {
+          bestClass = 'lap-time-purple';
+        }
 
-        // Hilfsfunktion für Dragrace-Ansicht (Splits oben, Sektor unten)
         let formatSectorCell = (sectorNum, szVal, splitVal) => {
           let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
           if (currentMode === 4) {
@@ -170,31 +194,22 @@ async function updateData() {
         let sz1Disp = formatSectorCell(1, row.sz1, row.split1);
         let sz2Disp = formatSectorCell(2, row.sz2, row.split2);
         let sz3Disp = formatSectorCell(3, row.sz3, row.split3);
-        
-        let sz4Val = row.lastLap > 0 ? row.lastLap : 0;
-        let sz4Disp = sz4Val > 0 ? (sz4Val / 1000).toFixed(2) + 's' : '---';
+        let sz4Disp = formatSectorCell(4, row.sz4, 0);
 
-        // Farb-Logik: Grün = PB, Purple = Absolute Best (erst ab 2. Durchgang / wenn Bestwert existiert), Gelb = Langsamer
         let getSectorClass = (val, bestVal, overallMin) => {
           if (val === 0) return 'sector-cyan';
-          if (bestVal === 0) return 'sector-cyan'; // 1. Durchgang neutral (kein erzwungenes Purple)
-
           if (overallMin > 0 && val <= overallMin) {
-            return 'sector-best-purple'; // Absolute Bestzeit (Lila/Purple)
+            return 'sector-best-purple';
           } else if (bestVal > 0 && val <= bestVal) {
-            return 'sector-best-green';  // Persönliche Bestzeit (Grün)
+            return 'sector-best-green';
           }
-          return 'sector-flash-yellow';    // Langsamer (Gelb/Orange)
+          return 'sector-yellow';
         };
 
         let sz1Class = getSectorClass(row.sz1, row.bestSz1, minSz1);
         let sz2Class = getSectorClass(row.sz2, row.bestSz2, minSz2);
         let sz3Class = getSectorClass(row.sz3, row.bestSz3, minSz3);
-        
-        // SZ4 (Zielsektor) Färbung basierend auf Rundenzeiten
-        let minLastLap = 0;
-        lastLapsData.forEach(r => { if (r.lastLap > 0 && (minLastLap === 0 || r.lastLap < minLastLap)) minLastLap = r.lastLap; });
-        let sz4Class = getSectorClass(sz4Val, row.bestLap, minLastLap);
+        let sz4Class = getSectorClass(row.sz4, row.bestSz4, minSz4);
 
         let lapsDisplay = row.completedLaps;
         if (currentMode === 4) {
@@ -211,8 +226,8 @@ async function updateData() {
           <td id="sz-cell-${row.id}-2" class="${sz2Class}">${sz2Disp}</td>
           <td id="sz-cell-${row.id}-3" class="${sz3Class}">${sz3Disp}</td>
           <td id="sz-cell-${row.id}-4" class="${sz4Class}">${sz4Disp}</td>
-          <td>${lastDisplay}</td>
-          <td style="color:var(--neon-green); font-weight:bold;">${bestDisplay}</td>
+          <td class="${lastClass}">${lastDisplay}</td>
+          <td class="${bestClass}" style="font-weight:bold;">${bestDisplay}</td>
         </tr>`;
       });
     }
@@ -329,7 +344,6 @@ async function updateData() {
   }
 }
 
-
 let pollTimeout = null;
 let isPolling = false;
 
@@ -343,7 +357,30 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 1000); // Sauberer einzelner Timer
+    pollTimeout = setTimeout(pollData, 1000);
+  }
+}
+
+function handleSectorTrackEntryTTS(carId) {
+  let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
+  if (previousLaps[carId] === undefined) {
+    previousLaps[carId] = 0;
+    previousBestLaps[carId] = 0;
+    lapHistoryMap[carId] = [];
+    statusCarsMap[carId] = null;
+    if (isCarAllowedForTTS(carId)) {
+      speak(driverName + " gestartet!");
+    }
+  } else if (statusCarsMap[carId] === 'pause') {
+    statusCarsMap[carId] = null;
+    if (isCarAllowedForTTS(carId)) {
+      speak(driverName + " wieder gestartet");
+    }
+  } else if (statusCarsMap[carId] === 'box') {
+    statusCarsMap[carId] = null;
+    if (isCarAllowedForTTS(carId)) {
+      speak(driverName + " verlässt die Box");
+    }
   }
 }
 
@@ -367,6 +404,7 @@ function checkLapEvents(car, currentLeaderLaps, position) {
   }
 
   if (currentLaps > prevLaps) {
+    let completedLapNum = currentLaps;
     previousLaps[carId] = currentLaps;
     let lastLapMs = car.lastLap;
 
@@ -431,13 +469,19 @@ function checkLapEvents(car, currentLeaderLaps, position) {
       let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
       
       let isAbsoluteBest = false;
-      if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
-        sessionBestLap = car.lastLap;
-        isAbsoluteBest = true;
+      if (completedLapNum > 1) {
+        if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
+          sessionBestLap = car.lastLap;
+          isAbsoluteBest = true;
+        }
+      } else {
+        if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
+          sessionBestLap = car.lastLap;
+        }
       }
 
       let isPersonalBest = false;
-      if (currentLaps > 1 && car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
+      if (completedLapNum > 1 && car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
         isPersonalBest = true;
       }
       

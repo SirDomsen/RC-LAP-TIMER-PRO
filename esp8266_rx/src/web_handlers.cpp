@@ -1,7 +1,7 @@
 #include "web_handlers.h"
 #include "storage.h"
 #include "lap_logic.h"
-#include "esp_now_base.h" // Wichtig für isStationOnline()
+#include "esp_now_base.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
@@ -13,8 +13,7 @@ void handleGetLaps(AsyncWebServerRequest *request) {
   json = "[";
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    // Autos anzeigen, wenn sie Runden haben oder Sektorzeiten gemessen wurden
-    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0) {
+    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0) {
       if (!first) json += ",";
       json += "{\"id\":";
       json += i;
@@ -30,7 +29,8 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       json += sz2TimeMs[i];
       json += ",\"sz3\":";
       json += sz3TimeMs[i];
-
+      json += ",\"sz4\":";
+      json += sz4TimeMs[i];
 
       json += ",\"bestSz1\":";
       json += bestSz1TimeMs[i];
@@ -38,8 +38,9 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       json += bestSz2TimeMs[i];
       json += ",\"bestSz3\":";
       json += bestSz3TimeMs[i];
+      json += ",\"bestSz4\":";
+      json += bestSz4TimeMs[i];
 
-      //Splits für das Frontend ---
       json += ",\"split1\":";
       json += split1TimeMs[i];
       json += ",\"split2\":";
@@ -61,7 +62,6 @@ void handleGetLaps(AsyncWebServerRequest *request) {
   request->send(200, "application/json", json);
 }
 
-// Liefert den Online/Offline Status der Sektorstationen SZ1, SZ2, SZ3[cite: 12]
 void handleGetStationsStatus(AsyncWebServerRequest *request) {
   static String json;
   json = "";
@@ -79,8 +79,6 @@ void handlePostSession(AsyncWebServerRequest *request) {
     int mode = request->getParam("mode")->value().toInt();
     RaceMode newMode = (RaceMode)mode;
 
-    // IMMER beim Moduswechsel einen harten Reset ausführen, 
-    // damit sich Dragrace und normale Modi niemals ins Quere kommen!
     if (newMode != currentMode) {
       resetAllLaps();
     }
@@ -289,7 +287,6 @@ void handlePostSaveSessionResult(AsyncWebServerRequest *request) {
   }
 }
 
-// API Abfrage: /api/sectorconfig
 void handleGetSectorConfig(AsyncWebServerRequest *request) {
   static String json;
   json = "";
@@ -305,7 +302,6 @@ void handleGetSectorConfig(AsyncWebServerRequest *request) {
   request->send(200, "application/json", json);
 }
 
-// API Speichern: /api/setsectorconfig
 void handlePostSetSectorConfig(AsyncWebServerRequest *request) {
   if (request->hasParam("sz1"))   useSz1 = (request->getParam("sz1")->value() == "1");
   if (request->hasParam("sz2"))   useSz2 = (request->getParam("sz2")->value() == "1");
@@ -330,7 +326,6 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
 
 static File uploadFile;
 
-// --- DEBUG API ---
 void handleGetDebugPackets(AsyncWebServerRequest *request) {
   request->send(200, "application/json", getDebugPacketsJSON());
 }

@@ -32,6 +32,8 @@ let lastResetTimestamp = 0;
 function handleLiveEvent(msg) {
   if (msg.type === 'sector') {
     onSectorLiveEvent(msg);
+  } else if (msg.type === 'track_seen') {
+    handleSectorTrackEntryTTS(msg.carId);
   } else if (msg.type === 'lap') {
     onLapLiveEvent(msg);
   } else if (msg.type === 'drag_start') {
@@ -40,12 +42,13 @@ function handleLiveEvent(msg) {
     onDragFinishEvent(msg);
   } else if (msg.type === 'reset') {
     let now = Date.now();
-    if (now - lastResetTimestamp > 3000) { // Sperre: Mindestens 3 Sekunden Abstand
+    if (now - lastResetTimestamp > 3000) {
       lastResetTimestamp = now;
       resetLapsDataSilent();
     }
   }
 }
+
 function onDragStartEvent(msg) {
   if (isCarAllowedForTTS(msg.carId)) {
     let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
@@ -72,20 +75,23 @@ function onDragFinishEvent(msg) {
 }
 
 function onSectorLiveEvent(msg) {
+  handleSectorTrackEntryTTS(msg.carId);
+
   let cell = document.getElementById(`sz-cell-${msg.carId}-${msg.sector}`);
   if (cell) {
     cell.innerText = (msg.time / 1000).toFixed(2) + 's';
-    cell.classList.remove('sector-flash-purple', 'sector-flash-green', 'sector-flash-yellow');
-    void cell.offsetWidth;
+    cell.className = '';
+    
     if (msg.isOverallBest) {
-      cell.classList.add('sector-flash-purple');
+      cell.className = 'sector-best-purple';
     } else if (msg.isPB) {
-      cell.classList.add('sector-flash-green');
+      cell.className = 'sector-best-green';
     } else {
-      cell.classList.add('sector-flash-yellow');
+      cell.className = 'sector-yellow';
     }
   }
 
+  // Bestzeitenansage nur wenn es tatsächlich eine PB oder Overall Best ist
   if (sectorAudioEnabled && isCarAllowedForTTS(msg.carId) && (msg.isPB || msg.isOverallBest)) {
     let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
     let text = "";
