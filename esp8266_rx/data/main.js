@@ -408,6 +408,8 @@ function finishSessionNow() {
 let pollTimeout = null;
 let isPolling = false;
 
+// ... [Rest bleibt identisch zu Version 2.6.0] ...
+
 async function pollData() {
   if (isPolling) return;
   isPolling = true;
@@ -418,7 +420,8 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 1000);
+    // 2500 ms statt 1000 ms reduziert HTTP-Last auf dem ESP um 60%
+    pollTimeout = setTimeout(pollData, 2500);
   }
 }
 

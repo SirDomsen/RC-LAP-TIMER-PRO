@@ -14,6 +14,7 @@
       --neon-cyan: #00e5ff;
       --neon-orange: #ff9900;
       --neon-red: #ff3366;
+      --neon-purple: #b532ff;
       --text-main: #f0f6fc;
       --text-muted: #8b949e;
     }
@@ -36,6 +37,21 @@
       box-shadow: 0 5px 15px rgba(0,0,0,0.5);
       text-align: left;
     }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .metric-box {
+      background: #0d1117;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      text-align: center;
+    }
+    .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-family: 'Orbitron', sans-serif; }
+    .metric-val { font-size: 18px; font-weight: bold; margin-top: 4px; font-family: monospace; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: monospace; font-size: 14px; }
     th, td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: center; }
     th { background: rgba(0, 229, 255, 0.1); color: var(--neon-cyan); font-family: 'Orbitron', sans-serif; font-size: 12px; }
@@ -54,25 +70,49 @@
 </head>
 <body>
   <div class="container">
-    <h1>📡 ESP-NOW DEBUG CONSOLE</h1>
+    <h1>📡 SYSTEM & ESP-NOW DEBUG</h1>
     <div style="margin-bottom: 15px;">
       <button class="btn" onclick="location.href='/'">← Zurück zur Startseite</button>
+    </div>
+
+    <!-- SYSTEM RESSOURCEN METRIKEN -->
+    <div class="card">
+      <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-cyan);">ESP8266 Systemlast & Latenz</h3>
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <div class="metric-label">CPU Takt</div>
+          <div class="metric-val" id="valCpu" style="color:var(--neon-green);">-- MHz</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Freier Heap</div>
+          <div class="metric-val" id="valHeap" style="color:var(--neon-cyan);">-- KB</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Fragmentierung</div>
+          <div class="metric-val" id="valFrag" style="color:var(--neon-green);">-- %</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Max. Loop-Dauer</div>
+          <div class="metric-val" id="valMaxLoop" style="color:var(--neon-orange);">-- ms</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">WS-Ping (Latenz)</div>
+          <div class="metric-val" id="valPing" style="color:var(--neon-purple);">-- ms</div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
       <div class="toggle-container">
         <label class="toggle-box">
           <input type="checkbox" id="debugToggle" onchange="toggleDebugMode(this)">
-          <span><strong>Live-Debugging (Backend)</strong></span>
+          <span><strong>ESP-NOW Paket-Aufzeichnung</strong></span>
         </label>
         <label class="toggle-box" style="color: var(--neon-orange);">
           <input type="checkbox" id="freezeToggle">
           <span><strong>Ansicht einfrieren (Freeze)</strong></span>
         </label>
       </div>
-      <p style="color: var(--text-muted); font-size: 13px; margin: 10px 0 0 0;">
-        Live-Debugging steuert die Paket-Aufzeichnung im RAM. Mit „Freeze“ wird die Ansicht temporär angehalten, ohne Daten zu löschen.
-      </p>
     </div>
 
     <div class="card">
@@ -84,40 +124,80 @@
             <th>Typ / Station</th>
             <th>Auto-ID</th>
             <th>Rohdaten / TS</th>
-            <th>RSSI</th>
           </tr>
         </thead>
         <tbody id="packetTable">
-          <tr><td colspan="5">Debug-Modus ist deaktiviert. Bitte oben aktivieren.</td></tr>
+          <tr><td colspan="4">Debug-Modus ist deaktiviert.</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
   <script>
+    let ws = null;
+    let pingSentTime = 0;
+
+    function initDebugWebSocket() {
+      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(wsProtocol + '//' + window.location.host + '/ws');
+      ws.onmessage = function(e) {
+        try {
+          let data = JSON.parse(e.data);
+          if (data.ping) {
+            let rtt = Date.now() - data.ping;
+            document.getElementById('valPing').innerText = rtt + ' ms';
+            console.log(`[WebSocket RTT] Latenz: ${rtt} ms`);
+          }
+        } catch(err) {}
+      };
+      ws.onclose = () => setTimeout(initDebugWebSocket, 2000);
+    }
+
+    function sendWsPing() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ ping: Date.now() }));
+      }
+    }
+
+    async function fetchSystemMetrics() {
+      try {
+        let res = await fetch('/api/debug/system');
+        if (res.ok) {
+          let data = await res.json();
+          document.getElementById('valCpu').innerText = data.cpuMhz + ' MHz';
+          document.getElementById('valHeap').innerText = (data.freeHeap / 1024).toFixed(1) + ' KB';
+          
+          let fragElem = document.getElementById('valFrag');
+          fragElem.innerText = data.frag + ' %';
+          fragElem.style.color = data.frag > 30 ? 'var(--neon-red)' : 'var(--neon-green)';
+
+          let loopElem = document.getElementById('valMaxLoop');
+          let loopMs = (data.maxLoopUs / 1000).toFixed(1);
+          loopElem.innerText = loopMs + ' ms';
+          loopElem.style.color = data.maxLoopUs > 15000 ? 'var(--neon-red)' : (data.maxLoopUs > 5000 ? 'var(--neon-orange)' : 'var(--neon-green)');
+        }
+      } catch(e) {}
+    }
+
     async function fetchDebugStatus() {
       try {
         let res = await fetch('/api/debug/status');
         let data = await res.json();
         document.getElementById('debugToggle').checked = data.debug;
-      } catch (e) {
-        console.error("Fehler beim Laden des Debug-Status:", e);
-      }
+      } catch (e) {}
     }
 
     async function toggleDebugMode(cb) {
       let active = cb.checked ? "1" : "0";
       await fetch('/api/debug/set?active=' + active, { method: 'POST' });
       if (!cb.checked) {
-        document.getElementById('packetTable').innerHTML = '<tr><td colspan="5">Debug-Modus ist deaktiviert.</td></tr>';
+        document.getElementById('packetTable').innerHTML = '<tr><td colspan="4">Debug-Modus ist deaktiviert.</td></tr>';
       }
     }
 
     async function fetchDebugPackets() {
       let isChecked = document.getElementById('debugToggle').checked;
       let isFrozen = document.getElementById('freezeToggle').checked;
-
-      // Wenn Debug aus ist oder die Ansicht eingefroren ist, laden wir keine neuen Pakete nach
       if (!isChecked || isFrozen) return;
 
       try {
@@ -126,7 +206,7 @@
         let tbody = document.getElementById('packetTable');
 
         if (!packets || packets.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5">Warte auf Pakete...</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="4">Warte auf Pakete...</td></tr>';
           return;
         }
 
@@ -142,17 +222,17 @@
             <td>${typeStr}</td>
             <td style="color:var(--neon-green); font-weight:bold;">ID ${p.car}</td>
             <td>${p.raw}</td>
-            <td>${p.rssi} dBm</td>
           </tr>`;
         });
         tbody.innerHTML = html;
-      } catch (e) {
-        console.error("Fehler abrufen der Debug-Pakete:", e);
-      }
+      } catch (e) {}
     }
 
     fetchDebugStatus();
-    setInterval(fetchDebugPackets, 1000);
+    initDebugWebSocket();
+    setInterval(fetchSystemMetrics, 1500);
+    setInterval(sendWsPing, 2000);
+    setInterval(fetchDebugPackets, 1500);
   </script>
 </body>
 </html>

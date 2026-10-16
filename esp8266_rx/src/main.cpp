@@ -8,7 +8,15 @@
 #include <ESP8266mDNS.h>
 #include <espnow.h>
 
+// Globale Performance-Metriken
+uint32_t perfLoopCount = 0;
+uint32_t perfMaxLoopUs = 0;
+uint32_t perfAvgLoopUs = 0;
+
 void setup() {
+  // CPU-Takt auf 160 MHz setzen für maximale Rechenleistung
+  system_update_cpu_freq(160);
+
   Serial.begin(115200);
   delay(100);
 
@@ -17,28 +25,48 @@ void setup() {
   Serial.print(ESP.getCpuFreqMHz());
   Serial.println(" MHz");
 
-  
-  initESPNowBase();
   initFS();
   loadSettingsFromEEPROM();
   initIRDecoder();
   initLapLogic();
   initNetworkAndServer();
+  initESPNowBase();
 }
 
 void loop() {
+  uint32_t loopStart = micros();
+
   processLapLogic();
   updateLapLogicTasks();
-  processStorageQueue(); // Verarbeitet gepufferte Runden für die Flash-Speicherung
+  processStorageQueue();
   updateLEDs();
   handleNetworkTasks();
   handleTimeSyncBroadcast();
 
-  // Periodische Kontrolle des freien Arbeitsspeichers (Heap) zur Diagnose von Speicherlecks
+  uint32_t loopDuration = micros() - loopStart;
+  if (loopDuration > perfMaxLoopUs) {
+    perfMaxLoopUs = loopDuration;
+  }
+  perfLoopCount++;
+
+  // Jede Sekunde Performance-Durchschnitt berechnen & zurücksetzen
+  static uint32_t lastPerfCalc = 0;
+  if (millis() - lastPerfCalc >= 1000) {
+    perfAvgLoopUs = (perfLoopCount > 0) ? (1000000UL / perfLoopCount) : 0;
+    lastPerfCalc = millis();
+    perfLoopCount = 0;
+    // Max-Wert nach dem Auslesen sanft abklingen lassen
+    static uint8_t decay = 0;
+    if (++decay >= 3) {
+      perfMaxLoopUs = loopDuration;
+      decay = 0;
+    }
+  }
+
   static uint32_t lastHeapCheck = 0;
-  if (millis() - lastHeapCheck > 30000) { // Alle 30 Sekunden
+  if (millis() - lastHeapCheck > 30000) {
     lastHeapCheck = millis();
-    Serial.printf("[SYSTEM] Freier Heap: %u Bytes | Fragmentierung: %u%%\n", 
-                  ESP.getFreeHeap(), ESP.getHeapFragmentation());
+    Serial.printf("[SYSTEM] Freier Heap: %u Bytes | Fragmentierung: %u%% | Max Loop: %u us\n", 
+                  ESP.getFreeHeap(), ESP.getHeapFragmentation(), perfMaxLoopUs);
   }
 }

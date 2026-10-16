@@ -17,29 +17,38 @@ DNSServer dnsServer;
 const byte DNS_PORT = 53;
 static IPAddress currentActiveIP(192, 168, 0, 8);
 
+extern uint32_t perfMaxLoopUs;
+extern uint32_t perfAvgLoopUs;
+
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    Serial.printf("[WebSocket] Client #%u verbunden von %s\n", client->id(), client->remoteIP().toString().c_str());
-  } else if (type == WS_EVT_DISCONNECT) {
-    Serial.printf("[WebSocket] Client #%u getrennt\n", client->id());
+    Serial.printf("[WebSocket] Client #%u verbunden\n", client->id());
+  } else if (type == WS_EVT_DATA) {
+    AwsFrameInfo *info = (AwsFrameInfo*)arg;
+    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+      data[len] = 0;
+      // Ping/Pong Latenzmessung direkt beantworten
+      if (strncmp((char*)data, "{\"ping\":", 8) == 0) {
+        client->text((char*)data);
+      }
+    }
   }
 }
 
-// Fallback HTML für das Captive Portal (falls captive.html nicht in LittleFS liegt)
 const char CAPTIVE_HTML_FALLBACK[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RC Laptimer Pro</title>
+  <title>RC Lap Timer Pro</title>
   <style>
     body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 40px 20px; }
     .btn { display: block; padding: 16px; background: #00e676; color: #000; text-decoration: none; font-weight: bold; border-radius: 8px; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h2>RC Laptimer Pro</h2>
+  <h2>RC Lap Timer Pro</h2>
   <p>Für Sprachausgabe bitte im Browser öffnen:</p>
   <a id="lnk" href="#" class="btn">Zum RC Laptimer Pro</a>
   <script>
@@ -51,7 +60,6 @@ const char CAPTIVE_HTML_FALLBACK[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-// Template Processor ersetzt %LAPTIMER_IP% dynamisch durch die reale IP
 String captiveProcessor(const String& var) {
   if (var == "LAPTIMER_IP") {
     return currentActiveIP.toString();
@@ -64,47 +72,29 @@ static void setupWLAN() {
   IPAddress gateway(192, 168, 0, 1);
   IPAddress subnet(255, 255, 255, 0);
 
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
   if (!WiFi.config(local_IP, gateway, subnet)) Serial.println("[WLAN] STA Fehler!");
 
   WiFi.begin(HOME_SSID, HOME_PASS);
   int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 20) { delay(500); timeout++; }
+  while (WiFi.status() != WL_CONNECTED && timeout < 20) { delay(250); timeout++; }
 
   if (WiFi.status() == WL_CONNECTED) {
     currentActiveIP = WiFi.localIP();
-    Serial.println("[WLAN] IP: " + currentActiveIP.toString());
+    Serial.println("[WLAN] Verbunden! IP: " + currentActiveIP.toString());
   } else {
-    // Access Point starten, wenn keine Verbindung zum Heim-WLAN besteht
-    WiFi.mode(WIFI_AP);
     WiFi.softAPConfig(local_IP, gateway, subnet);
     WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
     currentActiveIP = local_IP;
-
-    // DNS-Server starten: Fängt alle Domain-Abfragen (*) ab und leitet sie auf den Laptimer um
     dnsServer.start(DNS_PORT, "*", currentActiveIP);
     Serial.println("[DNS] Captive Portal DNS-Server gestartet.");
   }
 
-  // --- mDNS Konfiguration ---
   if (MDNS.begin("laptimer")) {
     MDNS.addService("http", "tcp", 80);
-    Serial.println("[mDNS] Responder gestartet: http://laptimer.local");
-  } else {
-    Serial.println("[mDNS] Fehler beim Starten!");
   }
 
   ArduinoOTA.setHostname("LapTimer-Base");
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { 
-      type = "filesystem";
-      LittleFS.end(); 
-    }
-    Serial.println("OTA Start Update: " + type);
-  });
   ArduinoOTA.begin();
 
   digitalWrite(LED_READY, HIGH);
@@ -113,19 +103,13 @@ static void setupWLAN() {
 void initNetworkAndServer() {
   setupWLAN();
 
-  // 1. Statische Dateien aus LittleFS servieren
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
-  // Streamt /update direkt aus dem Dateisystem
   server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (LittleFS.exists("/update.html")) {
       request->send(LittleFS, "/update.html", "text/html");
     } else {
-      request->send(200, "text/html", 
-        "<html><body><h2>Update</h2>"
-        "<form method='POST' action='/api/upload' enctype='multipart/form-data'>"
-        "<input type='file' name='data'><input type='submit' value='Upload'>"
-        "</form></body></html>");
+      request->send(200, "text/html", "<h2>Update</h2><form method='POST' action='/api/upload' enctype='multipart/form-data'><input type='file' name='data'><input type='submit' value='Upload'></form>");
     }
   });
 
@@ -133,7 +117,24 @@ void initNetworkAndServer() {
     request->send(200, "text/plain", "OK");
   }, handleFileUpload);
 
-  // --- API Endpunkte ---
+  // System-Performance Endpunkt für Debug-Page
+  server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json;
+    json.reserve(160);
+    json = "{\"freeHeap\":";
+    json += ESP.getFreeHeap();
+    json += ",\"frag\":";
+    json += ESP.getHeapFragmentation();
+    json += ",\"maxLoopUs\":";
+    json += perfMaxLoopUs;
+    json += ",\"avgLoopUs\":";
+    json += perfAvgLoopUs;
+    json += ",\"cpuMhz\":";
+    json += ESP.getCpuFreqMHz();
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
   server.on("/api/laps", HTTP_GET, handleGetLaps);
   server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
@@ -165,19 +166,14 @@ void initNetworkAndServer() {
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
-  // --- Captive Portal & Connectivity-Checks Handler ---
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
-
-    // WICHTIG: API-Aufrufe dürfen NIEMALS im Captive Portal landen!
     if (url.startsWith("/api/")) {
       request->send(404, "application/json", "{\"error\":\"Not Found\"}");
       return;
     }
 
     String host = request->host();
-
-    // A) Wenn die Anfrage an die IP-Adresse des ESP oder laptimer.local geht:
     if (host == currentActiveIP.toString() || host == "laptimer.local" || host.indexOf("192.168.") >= 0) {
       if (LittleFS.exists(url)) {
         request->send(LittleFS, url, "text/html");
@@ -189,7 +185,6 @@ void initNetworkAndServer() {
       return;
     }
 
-    // B) Android Connectivity Probe
     if (url.indexOf("generate_204") >= 0 || url.indexOf("gen_204") >= 0) {
       if (LittleFS.exists("/captive.html")) {
         request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
@@ -199,13 +194,11 @@ void initNetworkAndServer() {
       return;
     }
     
-    // C) Apple Connectivity Probe
     if (url.indexOf("captive.apple.com") >= 0 || url.indexOf("hotspot-detect") >= 0) {
       request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
       return;
     }
 
-    // D) Alle sonstigen Captive-Portal Aufrufe
     if (LittleFS.exists("/captive.html")) {
       request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
     } else {
@@ -220,7 +213,7 @@ void initNetworkAndServer() {
 }
 
 void handleNetworkTasks() {
-  dnsServer.processNextRequest(); // Verarbeitet DNS-Anfragen für das Captive Portal
+  dnsServer.processNextRequest();
   ArduinoOTA.handle();
   MDNS.update();
   ws.cleanupClients();
