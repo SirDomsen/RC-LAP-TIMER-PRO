@@ -43,7 +43,44 @@ function announceRaceResults() {
     }
     speak(restText, false);
   }
+
+  autoSaveSessionResult(currentMode, (currentMode === 4 ? "Dragrace" : "Rennen"));
 }
+
+window.autoSaveSessionResult = function(mode, modeName) {
+  if (!lastLapsData || lastLapsData.length === 0) return;
+  let activeCars = lastLapsData.filter(car => car.completedLaps > 0 || car.bestLap > 0);
+  if (activeCars.length === 0) return;
+
+  let sorted = [...activeCars];
+  if (mode === 1 || mode === 4) {
+    sorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+  } else {
+    sorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+  }
+
+  let results = sorted.map((car, idx) => ({
+    pos: idx + 1,
+    id: car.id,
+    driver: car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id)),
+    car: car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id)),
+    laps: car.completedLaps || 0,
+    bestLap: car.bestLap || 0
+  }));
+
+  let sessionData = {
+    ts: Math.floor(Date.now() / 1000),
+    mode: mode,
+    modeName: modeName,
+    results: results
+  };
+
+  fetch('/api/savesessionresult', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(JSON.stringify(sessionData))
+  }).catch(err => console.error("Fehler beim Speichern der Session:", err));
+};
 
 function sortTable(column) {
   if (currentSortColumn === column) {
@@ -195,49 +232,45 @@ async function renderDriversOverview() {
   list.innerHTML = html;
 }
 
-function getDynamicColorStyle(val, personalBest, overallBest, worstVal) {
-  if (!val || val === 0) return 'color: var(--text-muted);';
-  if ((overallBest > 0 && val <= overallBest) || (overallBest === 0 && personalBest > 0 && val <= personalBest)) {
-    return 'color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 6px rgba(181, 50, 255, 0.6);';
-  }
-  if (personalBest > 0 && val <= personalBest) {
-    return 'color: var(--neon-green); font-weight: bold;';
-  }
-  if (worstVal > 0 && val >= worstVal) {
-    return 'color: var(--neon-red); font-weight: bold;';
-  }
-  return 'color: var(--text-main);';
-}
-
+// Lädt Sessions für den jeweiligen Modus und stellt alle Modi identisch dar
 async function loadSessionsOverviewByMode(modeFilter, containerId) {
   let container = document.getElementById(containerId);
   container.innerHTML = '<p style="color:var(--text-muted);">Lade Historie...</p>';
+
+  let isDrag = (modeFilter === 4);
+  let isQuali = (modeFilter === 1);
+  let isRace = Array.isArray(modeFilter) ? (modeFilter.includes(2) || modeFilter.includes(3)) : (modeFilter === 2 || modeFilter === 3);
 
   try {
     let res = await fetch('/api/sessions');
     let data = await res.json();
     
-    let filteredSessions = (data.sessions || []).filter(s => {
+    let sessions = (data.sessions || []).filter(s => {
       if (Array.isArray(modeFilter)) return modeFilter.includes(s.mode);
       return s.mode === modeFilter;
     });
 
-    if (filteredSessions.length === 0) {
-      await loadDirectLapsFallback(modeFilter, containerId);
+    // Falls in sessions.json keine Einträge für diesen Modus existieren (z.B. Freies Training),
+    // synthetisieren wir Sessions automatisch aus den gespeicherten Runden
+    if (sessions.length === 0) {
+      sessions = await synthesizeSessionsFromLaps(modeFilter);
+    }
+
+    if (sessions.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:25px;">Keine gespeicherten Durchgänge vorhanden.</p>';
       return;
     }
 
+    let roundWord = isDrag ? "Läufe" : "Runden";
+    let roundTimeWord = isDrag ? "Laufzeiten" : "Rundenzeiten";
+
     let html = '';
-    filteredSessions.slice().reverse().forEach(s => {
-      let isQuali = (s.mode === 1);
-      let isRace = (s.mode === 2 || s.mode === 3);
-      let isDrag = (s.mode === 4);
-      
+    sessions.slice().reverse().forEach(s => {
       let badgeClass = 'session-card';
       let headerColor = 'var(--neon-green)';
-      if (isQuali) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
-      else if (isRace) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
-      else if (isDrag) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
+      if (s.mode === 1) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
+      else if (s.mode === 2 || s.mode === 3) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
+      else if (s.mode === 4) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
 
       let dateStr = formatTimestamp(s.ts);
 
@@ -251,16 +284,16 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
       html += `<div class="${badgeClass}">
         <div style="display:flex; justify-content:space-between; align-items:center;" onclick="toggleSessionDetails(${s.ts})">
           <div>
-            <strong style="color:${headerColor}; font-size:16px;">${s.modeName}</strong>
+            <strong style="color:${headerColor}; font-size:16px;">${s.modeName || "Durchgang"}</strong>
             <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">📅 ${dateStr}</span>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
             <span id="session_arrow_${s.ts}" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">Details 🔽</span>
-            <button class="btn-icon" onclick="event.stopPropagation(); deleteSession(${s.ts})" title="Löschen">🗑</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteSession(${s.ts})" title="Durchgang löschen">🗑</button>
           </div>
         </div>
         
-        <div id="session_detail_${s.ts}" class="session-details">
+        <div id="session_detail_${s.ts}" class="session-details" style="display:none; margin-top:10px;">
           <div class="table-responsive">
             <table>
               <thead>
@@ -268,14 +301,14 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
                   <th>Pos</th>
                   <th>Fahrer</th>
                   <th>Fahrzeug</th>
-                  <th>${isDrag ? 'Läufe' : 'Runden'}</th>
+                  <th>${roundWord}</th>
                   <th>Beste Zeit</th>
-                  <th>Rundenzeiten</th>
+                  <th>${roundTimeWord}</th>
                 </tr>
               </thead>
               <tbody>`;
 
-      s.results.forEach(r => {
+      (s.results || []).forEach(r => {
         let isOverallWinner = (sessionOverallBest > 0 && r.bestLap > 0 && r.bestLap <= sessionOverallBest);
         let bestColor = isOverallWinner ? 'var(--neon-purple)' : 'var(--neon-green)';
         let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
@@ -288,12 +321,12 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
           <td>${r.laps}</td>
           <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
           <td>
-            <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', ${r.id}, ${s.ts}, ${sessionOverallBest})">Details 🔽</button>
+            <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', ${r.id}, ${s.ts}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'}, ${JSON.stringify(modeFilter)})">Details 🔽</button>
           </td>
         </tr>
-        <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.3);">
+        <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.35);">
           <td colspan="6">
-            <div id="${driverDetailId}_content" class="driver-lap-details">Lade Rundenzeiten...</div>
+            <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
           </td>
         </tr>`;
       });
@@ -308,6 +341,115 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
   }
 }
 
+// Fasst Rundenzeiten nach Zeitfenstern zu Sessions zusammen, falls keine Sessions in sessions.json vorliegen
+async function synthesizeSessionsFromLaps(modeFilter) {
+  let allLaps = [];
+  try {
+    for (let i = 1; i <= MAX_CARS; i++) {
+      let res = await fetch('/api/stats?id=' + i);
+      let data = await res.json();
+      if (data && data.laps) {
+        data.laps.forEach(l => {
+          let match = Array.isArray(modeFilter) ? modeFilter.includes(l.mode) : (l.mode === modeFilter);
+          if (match) {
+            allLaps.push({
+              carId: i,
+              driver: carNamesMap[i]?.driver || ("Fahrer " + i),
+              car: carNamesMap[i]?.car || ("Auto " + i),
+              lap: l.lap,
+              time: l.time,
+              sz1: l.sz1 || 0,
+              sz2: l.sz2 || 0,
+              sz3: l.sz3 || 0,
+              sz4: l.sz4 || 0,
+              pos: l.pos || 1,
+              mode: l.mode,
+              ts: l.ts || 0
+            });
+          }
+        });
+      }
+    }
+  } catch (e) { console.error(e); }
+
+  if (allLaps.length === 0) return [];
+
+  allLaps.sort((a, b) => a.ts - b.ts);
+
+  // Cluster bilden: Runden mit mehr als 20 Minuten Abstand bilden eine neue Session
+  let sessions = [];
+  let currentCluster = [];
+  let clusterTimeoutMs = 20 * 60 * 1000;
+
+  allLaps.forEach(l => {
+    let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
+    if (currentCluster.length === 0) {
+      currentCluster.push(l);
+    } else {
+      let prevLap = currentCluster[currentCluster.length - 1];
+      let prevTsMs = prevLap.ts < 10000000000 ? prevLap.ts * 1000 : prevLap.ts;
+      if (lapTsMs - prevTsMs > clusterTimeoutMs) {
+        sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
+        currentCluster = [l];
+      } else {
+        currentCluster.push(l);
+      }
+    }
+  });
+
+  if (currentCluster.length > 0) {
+    sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
+  }
+
+  return sessions;
+}
+
+function buildSessionFromCluster(clusterLaps, modeFilter) {
+  let carsMap = {};
+  clusterLaps.forEach(l => {
+    if (!carsMap[l.carId]) {
+      carsMap[l.carId] = {
+        id: l.carId,
+        driver: l.driver,
+        car: l.car,
+        laps: 0,
+        bestLap: 0
+      };
+    }
+    carsMap[l.carId].laps++;
+    if (l.time > 0 && (carsMap[l.carId].bestLap === 0 || l.time < carsMap[l.carId].bestLap)) {
+      carsMap[l.carId].bestLap = l.time;
+    }
+  });
+
+  let results = Object.values(carsMap);
+  let isRankByBest = (clusterLaps[0].mode === 1 || clusterLaps[0].mode === 4);
+  if (isRankByBest) {
+    results.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+  } else {
+    results.sort((a, b) => b.laps - a.laps || a.bestLap - b.bestLap);
+  }
+
+  results.forEach((r, idx) => { r.pos = idx + 1; });
+
+  let modeVal = clusterLaps[0].mode;
+  let modeName = "Freies Training";
+  if (modeVal === 1) modeName = "Qualifying";
+  if (modeVal === 2) modeName = "Rennen (Runden)";
+  if (modeVal === 3) modeName = "Rennen (Zeit)";
+  if (modeVal === 4) modeName = "Dragrace";
+
+  let lastLap = clusterLaps[clusterLaps.length - 1];
+  let sessionTs = lastLap.ts < 10000000000 ? lastLap.ts : Math.floor(lastLap.ts / 1000);
+
+  return {
+    ts: sessionTs,
+    mode: modeVal,
+    modeName: modeName,
+    results: results
+  };
+}
+
 function toggleSessionDetails(ts) {
   let el = document.getElementById('session_detail_' + ts);
   let arrow = document.getElementById('session_arrow_' + ts);
@@ -318,7 +460,7 @@ function toggleSessionDetails(ts) {
   }
 }
 
-async function toggleDriverLapsInSession(elemId, carId, sessionTs, sessionOverallBest) {
+async function toggleDriverLapsInSession(elemId, carId, sessionTs, sessionOverallBest, isDrag, modeFilter) {
   let trElem = document.getElementById(elemId + '_tr');
   let contentElem = document.getElementById(elemId + '_content');
   let btnElem = document.getElementById('btn_arrow_' + elemId);
@@ -333,7 +475,7 @@ async function toggleDriverLapsInSession(elemId, carId, sessionTs, sessionOveral
 
   trElem.style.display = 'table-row';
   contentElem.style.display = 'block';
-  contentElem.innerHTML = 'Lade Rundenzeiten...';
+  contentElem.innerHTML = 'Lade Zeiten...';
   if (btnElem) btnElem.innerText = 'Details 🔼';
 
   try {
@@ -341,13 +483,18 @@ async function toggleDriverLapsInSession(elemId, carId, sessionTs, sessionOveral
     let data = await res.json();
 
     if (!data.laps || data.laps.length === 0) {
-      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten im Speicher vorhanden.</span>';
+      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Zeiten im Speicher vorhanden.</span>';
       return;
     }
 
+    // Filter nach Modus und Session-Zeitfenster (+/- 2 Stunden um Session-Ende)
+    let sessionTsMs = (sessionTs && sessionTs > 0) ? (sessionTs < 10000000000 ? sessionTs * 1000 : sessionTs) : 0;
+
     let filteredLaps = data.laps.filter(l => {
-      if (sessionTs && l.ts && l.ts > 0) {
-        let sessionTsMs = sessionTs < 10000000000 ? sessionTs * 1000 : sessionTs;
+      let modeMatch = Array.isArray(modeFilter) ? modeFilter.includes(l.mode) : (l.mode === modeFilter);
+      if (!modeMatch) return false;
+
+      if (sessionTsMs > 0 && l.ts && l.ts > 0) {
         let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
         return lapTsMs <= sessionTsMs + 180000 && lapTsMs >= (sessionTsMs - 7200000);
       }
@@ -355,158 +502,18 @@ async function toggleDriverLapsInSession(elemId, carId, sessionTs, sessionOveral
     });
 
     if (filteredLaps.length === 0) {
-      filteredLaps = data.laps;
+      filteredLaps = data.laps.filter(l => Array.isArray(modeFilter) ? modeFilter.includes(l.mode) : (l.mode === modeFilter));
     }
 
-    renderEmbeddedLapsTable(contentElem, filteredLaps, sessionOverallBest || 0);
+    renderEmbeddedLapsTable(contentElem, filteredLaps, sessionOverallBest || 0, isDrag);
   } catch (e) {
     console.error(e);
-    contentElem.innerHTML = '<span style="color:var(--neon-red);">Fehler beim Laden der Rundenzeiten.</span>';
+    contentElem.innerHTML = '<span style="color:var(--neon-red);">Fehler beim Laden der Zeiten.</span>';
   }
 }
 
-async function loadDirectLapsFallback(modeFilter, containerId) {
-  let container = document.getElementById(containerId);
-  container.innerHTML = '<p style="color:var(--text-muted);">Lade Rundenverlauf...</p>';
-
-  let allLaps = [];
-  try {
-    for (let i = 1; i <= MAX_CARS; i++) {
-      let res = await fetch('/api/stats?id=' + i);
-      let data = await res.json();
-      if (data && data.laps) {
-        data.laps.forEach(l => {
-          let match = false;
-          if (Array.isArray(modeFilter)) match = modeFilter.includes(l.mode);
-          else match = (l.mode === modeFilter);
-          
-          if (match) {
-            allLaps.push({
-              carId: i,
-              driver: carNamesMap[i]?.driver || ("Fahrer " + i),
-              car: carNamesMap[i]?.car || ("Auto " + i),
-              lap: l.lap,
-              time: l.time,
-              sz1: l.sz1 || 0,
-              sz2: l.sz2 || 0,
-              sz3: l.sz3 || 0,
-              sz4: l.sz4 || 0,
-              pos: l.pos || 1,
-              mode: l.mode,
-              ts: l.ts
-            });
-          }
-        });
-      }
-    }
-  } catch (e) { console.error(e); }
-
-  if (allLaps.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Einträge in diesem Bereich gespeichert.</p>';
-    return;
-  }
-
-  let html = `<div class="session-card">
-    <div style="display:flex; justify-content:space-between; align-items:center;" onclick="toggleSessionDetails('fallback')">
-      <div>
-        <strong style="color:var(--neon-green); font-size:16px;">Rundenaufzeichnung</strong>
-        <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${allLaps.length} Runden erfasst</span>
-      </div>
-      <div>
-        <span id="session_arrow_fallback" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">Details 🔽</span>
-      </div>
-    </div>
-    <div id="session_detail_fallback" class="session-details" style="display:block;">`;
-
-  let overallBestSz1 = 0, overallBestSz2 = 0, overallBestSz3 = 0, overallBestSz4 = 0, overallBestTime = 0;
-  allLaps.forEach(l => {
-    if (l.sz1 > 0 && (overallBestSz1 === 0 || l.sz1 < overallBestSz1)) overallBestSz1 = l.sz1;
-    if (l.sz2 > 0 && (overallBestSz2 === 0 || l.sz2 < overallBestSz2)) overallBestSz2 = l.sz2;
-    if (l.sz3 > 0 && (overallBestSz3 === 0 || l.sz3 < overallBestSz3)) overallBestSz3 = l.sz3;
-    if (l.sz4 > 0 && (overallBestSz4 === 0 || l.sz4 < overallBestSz4)) overallBestSz4 = l.sz4;
-    if (l.time > 0 && (overallBestTime === 0 || l.time < overallBestTime)) overallBestTime = l.time;
-  });
-
-  let carStats = {};
-  allLaps.forEach(l => {
-    let id = l.carId;
-    if (!carStats[id]) {
-      carStats[id] = {
-        bestSz1: 0, worstSz1: 0,
-        bestSz2: 0, worstSz2: 0,
-        bestSz3: 0, worstSz3: 0,
-        bestSz4: 0, worstSz4: 0,
-        bestTime: 0, worstTime: 0
-      };
-    }
-    let cs = carStats[id];
-    if (l.sz1 > 0) {
-      if (cs.bestSz1 === 0 || l.sz1 < cs.bestSz1) cs.bestSz1 = l.sz1;
-      if (cs.worstSz1 === 0 || l.sz1 > cs.worstSz1) cs.worstSz1 = l.sz1;
-    }
-    if (l.sz2 > 0) {
-      if (cs.bestSz2 === 0 || l.sz2 < cs.bestSz2) cs.bestSz2 = l.sz2;
-      if (cs.worstSz2 === 0 || l.sz2 > cs.worstSz2) cs.worstSz2 = l.sz2;
-    }
-    if (l.sz3 > 0) {
-      if (cs.bestSz3 === 0 || l.sz3 < cs.bestSz3) cs.bestSz3 = l.sz3;
-      if (cs.worstSz3 === 0 || l.sz3 > cs.worstSz3) cs.worstSz3 = l.sz3;
-    }
-    if (l.sz4 > 0) {
-      if (cs.bestSz4 === 0 || l.sz4 < cs.bestSz4) cs.bestSz4 = l.sz4;
-      if (cs.worstSz4 === 0 || l.sz4 > cs.worstSz4) cs.worstSz4 = l.sz4;
-    }
-    if (l.time > 0) {
-      if (cs.bestTime === 0 || l.time < cs.bestTime) cs.bestTime = l.time;
-      if (cs.worstTime === 0 || l.time > cs.worstTime) cs.worstTime = l.time;
-    }
-  });
-
-  html += `<div class="table-responsive"><table>
-    <thead>
-      <tr>
-        <th>Fahrer</th>
-        <th>Runde</th>
-        <th>SZ1</th>
-        <th>SZ2</th>
-        <th>SZ3</th>
-        <th>SZ4</th>
-        <th>Rundenzeit</th>
-        <th>Datum / Uhrzeit</th>
-        <th>Aktion</th>
-      </tr>
-    </thead>
-    <tbody>`;
-
-  allLaps.slice().reverse().forEach(l => {
-    let cs = carStats[l.carId] || {};
-
-    let styleSz1 = getDynamicColorStyle(l.sz1, cs.bestSz1, overallBestSz1, cs.worstSz1);
-    let styleSz2 = getDynamicColorStyle(l.sz2, cs.bestSz2, overallBestSz2, cs.worstSz2);
-    let styleSz3 = getDynamicColorStyle(l.sz3, cs.bestSz3, overallBestSz3, cs.worstSz3);
-    let styleSz4 = getDynamicColorStyle(l.sz4, cs.bestSz4, overallBestSz4, cs.worstSz4);
-    let styleTime = getDynamicColorStyle(l.time, cs.bestTime, overallBestTime, cs.worstTime);
-
-    html += `<tr>
-      <td style="color:var(--neon-cyan); font-weight:bold;">${l.driver} <br><small style="color:var(--text-muted);">(${l.car})</small></td>
-      <td>Runde ${l.lap}</td>
-      <td style="${styleSz1}">${l.sz1 > 0 ? (l.sz1 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz2}">${l.sz2 > 0 ? (l.sz2 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz3}">${l.sz3 > 0 ? (l.sz3 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz4}">${l.sz4 > 0 ? (l.sz4 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleTime}">${(l.time / 1000).toFixed(2)}s</td>
-      <td style="color:var(--text-muted); font-size:12px;">${formatTimestamp(l.ts)}</td>
-      <td>
-        <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLapAndReload(${l.carId}, ${l.lap})">🗑</button>
-      </td>
-    </tr>`;
-  });
-
-  html += `</tbody></table></div></div></div>`;
-  container.innerHTML = html;
-}
-
-function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest) {
+// Baut die fahrerspezifische Rundenübersicht exakt mit der geforderten Farb-Logik auf
+function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag) {
   let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0, minTime = 0;
   let maxSz1 = 0, maxSz2 = 0, maxSz3 = 0, maxSz4 = 0, maxTime = 0;
 
@@ -523,7 +530,7 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest) {
       if (minSz3 === 0 || l.sz3 < minSz3) minSz3 = l.sz3;
       if (maxSz3 === 0 || l.sz3 > maxSz3) maxSz3 = l.sz3;
     }
-    if (l.sz4 > 0) {
+    if (!isDrag && l.sz4 > 0) {
       if (minSz4 === 0 || l.sz4 < minSz4) minSz4 = l.sz4;
       if (maxSz4 === 0 || l.sz4 > maxSz4) maxSz4 = l.sz4;
     }
@@ -536,15 +543,18 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest) {
   let allowWorst = (laps.length > 1);
   let effectiveSessionBest = (sessionOverallBest > 0) ? sessionOverallBest : minTime;
 
+  let roundLabel = isDrag ? "Lauf" : "Runde";
+  let timeLabel = isDrag ? "Laufzeit" : "Zeit";
+
   let html = `<div class="table-responsive"><table style="margin:0; font-size:12px;">
     <thead>
       <tr>
-        <th>Runde</th>
+        <th>${roundLabel}</th>
         <th>SZ1</th>
         <th>SZ2</th>
         <th>SZ3</th>
-        <th>SZ4</th>
-        <th>Zeit</th>
+        ${isDrag ? '' : '<th>SZ4</th>'}
+        <th>${timeLabel}</th>
         <th>Platz</th>
         <th>Uhrzeit</th>
       </tr>
@@ -576,16 +586,36 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest) {
     let styleSz1 = getSectorStyle(l.sz1, minSz1, maxSz1);
     let styleSz2 = getSectorStyle(l.sz2, minSz2, maxSz2);
     let styleSz3 = getSectorStyle(l.sz3, minSz3, maxSz3);
-    let styleSz4 = getSectorStyle(l.sz4, minSz4, maxSz4);
+    let styleSz4 = isDrag ? '' : getSectorStyle(l.sz4, minSz4, maxSz4);
     let styleTime = getTimeStyle(l.time, minTime, maxTime);
 
+    // Formatierung der Zellen: Im Dragrace mit zweizeiligem Split + Sektor
+    let formatCell = (szVal, splitVal, style) => {
+      let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
+      if (isDrag) {
+        let splitDisp = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+        return `<div class="drag-cell"><span class="drag-split" style="font-size:10px; color:var(--text-muted); display:block;">Spl: ${splitDisp}</span><span class="drag-sector" style="${style}">${valDisp}</span></div>`;
+      }
+      return `<span style="${style}">${valDisp}</span>`;
+    };
+
+    // Kumulierte Split-Berechnung für Dragrace
+    let split1 = l.sz1;
+    let split2 = (l.sz1 > 0 && l.sz2 > 0) ? (l.sz1 + l.sz2) : 0;
+    let split3 = l.time; // SZ3 ist das Ziel -> Split3 entspricht der finalen Laufzeit
+
+    let sz1Content = formatCell(l.sz1, split1, styleSz1);
+    let sz2Content = formatCell(l.sz2, split2, styleSz2);
+    let sz3Content = formatCell(l.sz3, split3, styleSz3);
+    let sz4Content = isDrag ? '' : formatCell(l.sz4, 0, styleSz4);
+
     html += `<tr>
-      <td>Runde ${l.lap}</td>
-      <td style="${styleSz1}">${l.sz1 > 0 ? (l.sz1 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz2}">${l.sz2 > 0 ? (l.sz2 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz3}">${l.sz3 > 0 ? (l.sz3 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleSz4}">${l.sz4 > 0 ? (l.sz4 / 1000).toFixed(2) + 's' : '---'}</td>
-      <td style="${styleTime}">${(l.time / 1000).toFixed(2)}s</td>
+      <td>${roundLabel} ${l.lap}</td>
+      <td>${sz1Content}</td>
+      <td>${sz2Content}</td>
+      <td>${sz3Content}</td>
+      ${isDrag ? '' : `<td>${sz4Content}</td>`}
+      <td style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
       <td style="color:var(--neon-orange); font-weight:bold;">${l.pos ? 'P' + l.pos : '---'}</td>
       <td style="color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
     </tr>`;
@@ -602,7 +632,7 @@ function deleteSingleLapAndReload(carId, lapNum) {
 }
 
 function deleteSession(ts) {
-  if (confirm("Möchtest du diese Rennstatistik wirklich löschen?")) {
+  if (confirm("Möchtest du diesen Durchgang wirklich löschen?")) {
     fetch('/api/deletesession?ts=' + ts, { method: 'POST' })
       .then(() => switchStatsTab(currentTab))
       .catch(e => console.error(e));
@@ -718,7 +748,7 @@ function renderDriverStatsTable() {
     }
 
     html += `<tr>
-      <td>Runde ${l.lap}</td>
+      <td>${l.mode === 4 ? 'Lauf' : 'Runde'} ${l.lap}</td>
       <td style="color:${timeColor}; font-weight:bold;">${timeSec}</td>
       <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
       <td>${modeStr}</td>

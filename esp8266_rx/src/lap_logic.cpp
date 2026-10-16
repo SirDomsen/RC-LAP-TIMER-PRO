@@ -19,6 +19,7 @@ bool sectorAudioFeedback = true;
 
 bool awaitingBaseCross[MAX_CARS + 1] = {false};
 bool finishedFinalLap[MAX_CARS + 1]  = {false};
+bool dragRunActive[MAX_CARS + 1]     = {false};
 
 // Sektorzeiten
 uint32_t sz1TimeMs[MAX_CARS + 1] = {0};
@@ -160,6 +161,7 @@ void resetAllLaps() {
     readyForNextLap[i] = true;
     awaitingBaseCross[i] = true;
     finishedFinalLap[i] = false;
+    dragRunActive[i] = false;
     currentExpectedSector[i] = 1;
     sz1TimeMs[i] = 0;
     sz2TimeMs[i] = 0;
@@ -219,7 +221,6 @@ bool areAllActiveCarsFinished() {
     if (lapCounter[i] > 0 && !finishedFinalLap[i]) {
       uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
       if (lapStartMs <= modeEndTimeMs) {
-        // Wenn das Auto innerhalb der letzten 60 Sekunden aktiv war, läuft die Runde noch
         if (millis() - lastSeenMs[i] < 60000UL) {
           return false;
         }
@@ -235,18 +236,23 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   lastSeenMs[carId] = now;
   addRecentID(carId);
 
-  // Hat das Auto seine letzte Runde nach Zeitablauf bereits beendet, werden keine weiteren Sektoren gewertet
+  // Im Dragrace MUSS das Auto vorher an der Basis gestartet sein
+  if (currentMode == MODE_DRAGRACE) {
+    if (!dragRunActive[carId] || lastCrossTime[carId] == 0) {
+      return;
+    }
+  }
+
   if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && finishedFinalLap[carId]) {
     return;
   }
 
-  // Plausibilitäts-Check: Falls SZ-Uhr desynchronisiert ist, nutze Empfangszeit
   if (timestampMs == 0 || (timestampMs > now && timestampMs - now > 5000) || (now > timestampMs && now - timestampMs > 300000)) {
     timestampMs = now;
   }
 
-  // Wenn das Auto noch NIE gestartet ist:
-  if (lastCrossTime[carId] == 0 || lapCounter[carId] == 0) {
+  // Wenn das Auto im Rundkurs-Modus noch nie gestartet ist:
+  if (currentMode != MODE_DRAGRACE && (lastCrossTime[carId] == 0 || lapCounter[carId] == 0)) {
     readyForNextLap[carId] = true;
     if (awaitingBaseCross[carId]) {
       awaitingBaseCross[carId] = false;
@@ -262,7 +268,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
   uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
 
-  // Toleranz gegen minimale Sync-Verschiebungen:
   if (timestampMs < lapStartMs) {
     if (lapStartMs - timestampMs < 150) {
       timestampMs = lapStartMs + 1;
@@ -280,6 +285,9 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     if (targetSector == 0) return;
 
     if (stationId == targetSector) {
+      dragRunActive[carId] = false;
+      readyForNextLap[carId] = false;
+
       if (targetSector == 3) {
         split3TimeMs[carId] = elapsedMs;
         sz3TimeMs[carId] = (split2TimeMs[carId] > 0) ? (elapsedMs - split2TimeMs[carId]) : ((split1TimeMs[carId] > 0) ? (elapsedMs - split1TimeMs[carId]) : elapsedMs);
@@ -314,7 +322,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
       uint16_t completedRun = lapCounter[carId];
       lapCounter[carId]++;
-      readyForNextLap[carId] = false;
 
       uint64_t currentTsMs = getCurrentTimestampMs();
       uint8_t pos = getCurrentPosition(carId);
@@ -521,10 +528,20 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
   // --- DRAGRACE START AN BASIS ---
   if (currentMode == MODE_DRAGRACE) {
-    lapCounter[carId] = 1;
+    // Wenn für dieses Auto bereits ein Lauf aktiv ist -> ignorieren!
+    if (dragRunActive[carId]) return;
+
+    // Mindest-Entprellung gegen mehrfaches Auslösen beim Start
+    if (lastCrossTime[carId] > 0 && (exactMicros - lastCrossTime[carId] < ((uint32_t)minLapTimeMs * 1000UL))) {
+      return;
+    }
+
+    dragRunActive[carId] = true;
+    readyForNextLap[carId] = false;
+
+    lapCounter[carId] = (lapCounter[carId] == 0) ? 1 : lapCounter[carId];
     lastCrossTime[carId] = exactMicros;
     lastSectorTimeMs[carId] = nowMs;
-    readyForNextLap[carId] = true;
     currentExpectedSector[carId] = 1;
     sz1TimeMs[carId] = 0;
     sz2TimeMs[carId] = 0;
@@ -547,7 +564,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
   // INITIALER START ODER NEUER START NACH RESET
   if (lapCounter[carId] == 0) {
-    // Nach Zeitablauf darf kein neues Fahrzeug mehr ins Rennen starten
     if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
       return;
     }
@@ -577,20 +593,17 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     return;
   }
 
-  // PRÜFUNG BEI ZEITABLAUF (Qualifying & Zeitrennen):
-  // Alle vor Zeitablauf begonnenen Runden dürfen noch beendet werden!
   if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
     if (modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
-      if (finishedFinalLap[carId]) return; // Schon abgewinkt
+      if (finishedFinalLap[carId]) return;
       if (lastCrossTime[carId] == 0) return;
       uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
-      if (lapStartMs > modeEndTimeMs) return; // Runde wurde nach Zeitablauf begonnen
+      if (lapStartMs > modeEndTimeMs) return;
     }
   }
 
   if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
 
-  // CHECKPOINT-MODUS PRÜFUNG (ab gewerteter Runde)
   if (checkpointMode && currentMode != MODE_DRAGRACE && lapCounter[carId] > 0) {
     bool passedAll = true;
     if (useSz3 && currentExpectedSector[carId] < 4) passedAll = false;
@@ -717,7 +730,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     currentExpectedSector[carId] = 1;
     lapCounted = true;
 
-    // Wenn Zeit bereits abgelaufen war, ist dieses Fahrzeug nun offiziell im Ziel
     if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
       finishedFinalLap[carId] = true;
     }
@@ -785,7 +797,16 @@ void updateLapLogicTasks() {
     }
   }
 
-  // Automatische Benachrichtigung an das Frontend, sobald alle Autos nach Zeitablauf im Ziel sind
+  // Automatischer Timeout für abgebrochene Dragrace-Läufe (nach 45 Sekunden)
+  if (currentMode == MODE_DRAGRACE) {
+    for (uint8_t i = 1; i <= MAX_CARS; i++) {
+      if (dragRunActive[i] && (now - lastSectorTimeMs[i] > 45000UL)) {
+        dragRunActive[i] = false;
+        readyForNextLap[i] = true;
+      }
+    }
+  }
+
   static bool sessionEndBroadcasted = false;
   if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
     if (modeEndTimeMs > 0 && now > modeEndTimeMs) {

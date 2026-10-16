@@ -23,11 +23,10 @@ extern bool checkpointMode;
 extern bool dragraceMode;
 extern bool sectorAudioFeedback;
 
-// Status: Auto muss erst Start/Ziel passieren, bevor Sektoren gewertet werden
+// Status-Flags
 extern bool awaitingBaseCross[MAX_CARS + 1];
-
-// Status: Letzte Runde nach Zeitablauf bereits absolviert
 extern bool finishedFinalLap[MAX_CARS + 1];
+extern bool dragRunActive[MAX_CARS + 1]; // Verhindert Mehrfachstart im Dragrace
 
 // Aktuelle Sektorzeiten pro Auto in Millisekunden
 extern uint32_t sz1TimeMs[MAX_CARS + 1];

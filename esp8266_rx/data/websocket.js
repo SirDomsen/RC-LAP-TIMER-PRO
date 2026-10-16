@@ -28,6 +28,7 @@ function initWebSocket() {
 }
 
 let lastResetTimestamp = 0;
+let lastDragStartTs = {};
 
 function handleLiveEvent(msg) {
   if (msg.type === 'sector') {
@@ -56,9 +57,14 @@ function handleLiveEvent(msg) {
 }
 
 function onDragStartEvent(msg) {
-  if (isCarAllowedForTTS(msg.carId)) {
-    let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
-    speak(driver + " gestartet!");
+  let now = Date.now();
+  // Debounce: Maximal eine Startansage pro 3 Sekunden
+  if (!lastDragStartTs[msg.carId] || (now - lastDragStartTs[msg.carId] > 3000)) {
+    lastDragStartTs[msg.carId] = now;
+    if (isCarAllowedForTTS(msg.carId)) {
+      let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+      speak(driver + " gestartet!");
+    }
   }
   updateData();
 }

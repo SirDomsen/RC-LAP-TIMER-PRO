@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.7.0';
+window.UI_VERSION = '2.9.0';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -22,7 +22,6 @@ let announced30 = false;
 let announced10 = false;
 let timeExpiredAnnounced = false;
 
-// Lokale Ticker-Variablen für flüssigen Sekundentakt
 let localSecondsLeft = -1;
 let localTimerInterval = null;
 
@@ -143,8 +142,13 @@ async function updateData() {
     
     lastLapsData = data;
     let html = '';
+    let isDrag = (currentMode === 4);
+
+    let thSz4 = document.getElementById('th-sz4-label')?.closest('th');
+    if (thSz4) thSz4.style.display = isDrag ? 'none' : '';
+
     if (data.length === 0) {
-      html = '<tr><td colspan="9">Keine Autos erfasst</td></tr>';
+      html = `<tr><td colspan="${isDrag ? 8 : 9}">Keine Autos erfasst</td></tr>`;
       currentLeaderId = null;
     } else {
       let leaderSearch = [...data];
@@ -167,9 +171,9 @@ async function updateData() {
       let displayData = sortLapData(data);
 
       let thLapsLabel = document.getElementById('th-laps-label');
-      if (thLapsLabel) thLapsLabel.innerText = (currentMode === 4 ? "Läufe" : "Runde");
+      if (thLapsLabel) thLapsLabel.innerText = isDrag ? "Läufe" : "Runde";
       let thLastLabel = document.getElementById('th-last-label');
-      if (thLastLabel) thLastLabel.innerText = (currentMode === 4 ? "Laufzeit" : "Letzte Zeit");
+      if (thLastLabel) thLastLabel.innerText = isDrag ? "Laufzeit" : "Letzte Zeit";
 
       let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0;
       let minBestLap = 0;
@@ -279,7 +283,7 @@ async function updateData() {
           <td id="sz-cell-${row.id}-1" class="${sz1Class}">${sz1Disp}</td>
           <td id="sz-cell-${row.id}-2" class="${sz2Class}">${sz2Disp}</td>
           <td id="sz-cell-${row.id}-3" class="${sz3Class}">${sz3Disp}</td>
-          <td id="sz-cell-${row.id}-4" class="${sz4Class}">${sz4Disp}</td>
+          <td id="sz-cell-${row.id}-4" class="${sz4Class}" style="${isDrag ? 'display:none;' : ''}">${sz4Disp}</td>
           <td class="${lastClass}">${lastDisplay}</td>
           <td class="${bestClass}" style="font-weight:bold;">${bestDisplay}</td>
         </tr>`;
@@ -291,7 +295,6 @@ async function updateData() {
     console.error("Error fetching lap data:", err);
   }
 
-  // Sektorstationen Status mit Akku-Warnung (Gelb bei Unterspannung)
   try {
     let resStations = await fetch('/api/stations');
     if (resStations.ok) {
@@ -404,6 +407,9 @@ function finishSessionNow() {
     } else {
       speak("Das Qualifying ist beendet!", false);
     }
+    if (typeof window.autoSaveSessionResult === 'function') {
+      window.autoSaveSessionResult(1, "Qualifying");
+    }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     announceRaceResults();
   } else {
@@ -436,6 +442,8 @@ function handleBaseCrossEvent(msg) {
 }
 
 function handleSectorTrackEntryTTS(carId) {
+  if (currentMode === 4) return;
+
   let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
 
   if (awaitingBaseCrossMap[carId]) {
@@ -480,7 +488,7 @@ function checkLapEvents(car, currentLeaderLaps, position) {
     statusCarsMap[carId] = null;
     awaitingBaseCrossMap[carId] = false;
 
-    if (isCarAllowedForTTS(carId)) {
+    if (currentMode !== 4 && isCarAllowedForTTS(carId)) {
       speak(driverName + " gestartet!");
     }
     return;
@@ -523,7 +531,7 @@ function checkLapEvents(car, currentLeaderLaps, position) {
       }
     }
 
-    if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred) {
+    if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
       let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
       
       let isAbsoluteBest = false;
