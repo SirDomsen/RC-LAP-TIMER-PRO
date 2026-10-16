@@ -18,6 +18,7 @@ bool dragraceMode = false;
 bool sectorAudioFeedback = true;
 
 bool awaitingBaseCross[MAX_CARS + 1] = {false};
+bool finishedFinalLap[MAX_CARS + 1]  = {false};
 
 // Sektorzeiten
 uint32_t sz1TimeMs[MAX_CARS + 1] = {0};
@@ -158,6 +159,7 @@ void resetAllLaps() {
     lastSeenMs[i] = 0;
     readyForNextLap[i] = true;
     awaitingBaseCross[i] = true;
+    finishedFinalLap[i] = false;
     currentExpectedSector[i] = 1;
     sz1TimeMs[i] = 0;
     sz2TimeMs[i] = 0;
@@ -209,11 +211,34 @@ uint8_t getActiveTargetSector() {
   return 0;
 }
 
+bool areAllActiveCarsFinished() {
+  if (currentMode != MODE_QUALIFYING && currentMode != MODE_RACE_TIME) return false;
+  if (modeEndTimeMs == 0 || millis() <= modeEndTimeMs) return false;
+
+  for (uint8_t i = 1; i <= MAX_CARS; i++) {
+    if (lapCounter[i] > 0 && !finishedFinalLap[i]) {
+      uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
+      if (lapStartMs <= modeEndTimeMs) {
+        // Wenn das Auto innerhalb der letzten 60 Sekunden aktiv war, läuft die Runde noch
+        if (millis() - lastSeenMs[i] < 60000UL) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs) {
   if (carId < 1 || carId > MAX_CARS) return;
   uint32_t now = millis();
   lastSeenMs[carId] = now;
   addRecentID(carId);
+
+  // Hat das Auto seine letzte Runde nach Zeitablauf bereits beendet, werden keine weiteren Sektoren gewertet
+  if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && finishedFinalLap[carId]) {
+    return;
+  }
 
   // Plausibilitäts-Check: Falls SZ-Uhr desynchronisiert ist, nutze Empfangszeit
   if (timestampMs == 0 || (timestampMs > now && timestampMs - now > 5000) || (now > timestampMs && now - timestampMs > 300000)) {
@@ -254,7 +279,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     uint8_t targetSector = getActiveTargetSector();
     if (targetSector == 0) return;
 
-    // Wenn Zielstation erreicht wurde:
     if (stationId == targetSector) {
       if (targetSector == 3) {
         split3TimeMs[carId] = elapsedMs;
@@ -295,7 +319,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       uint64_t currentTsMs = getCurrentTimestampMs();
       uint8_t pos = getCurrentPosition(carId);
 
-      // In Flash-Speicher puffern mit allen Sektoren
       queueLapForStorage(carId, completedRun, elapsedMs, sz1TimeMs[carId], sz2TimeMs[carId], sz3TimeMs[carId], 0, pos, (uint8_t)currentMode, currentTsMs);
 
       digitalWrite(LED_READY, LOW);
@@ -317,7 +340,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       return;
     }
 
-    // Zwischenzeiten vor dem Ziel
     if (stationId < targetSector) {
       if (stationId == 1 && useSz1) {
         uint32_t s1 = elapsedMs;
@@ -497,7 +519,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
   uint32_t nowMs = exactMicros / 1000UL;
 
-  // --- DRAGRACE START AM ZIEL / BASIS ---
+  // --- DRAGRACE START AN BASIS ---
   if (currentMode == MODE_DRAGRACE) {
     lapCounter[carId] = 1;
     lastCrossTime[carId] = exactMicros;
@@ -523,11 +545,13 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     return;
   }
 
-  if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
-  if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
-
   // INITIALER START ODER NEUER START NACH RESET
   if (lapCounter[carId] == 0) {
+    // Nach Zeitablauf darf kein neues Fahrzeug mehr ins Rennen starten
+    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
+      return;
+    }
+
     awaitingBaseCross[carId] = false;
     lapCounter[carId] = 1;
     lastCrossTime[carId] = exactMicros;
@@ -553,7 +577,20 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     return;
   }
 
-  // CHECKPOINT-MODUS PRÜFUNG (erst ab gewerteter Runde relevant)
+  // PRÜFUNG BEI ZEITABLAUF (Qualifying & Zeitrennen):
+  // Alle vor Zeitablauf begonnenen Runden dürfen noch beendet werden!
+  if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
+    if (modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
+      if (finishedFinalLap[carId]) return; // Schon abgewinkt
+      if (lastCrossTime[carId] == 0) return;
+      uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
+      if (lapStartMs > modeEndTimeMs) return; // Runde wurde nach Zeitablauf begonnen
+    }
+  }
+
+  if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
+
+  // CHECKPOINT-MODUS PRÜFUNG (ab gewerteter Runde)
   if (checkpointMode && currentMode != MODE_DRAGRACE && lapCounter[carId] > 0) {
     bool passedAll = true;
     if (useSz3 && currentExpectedSector[carId] < 4) passedAll = false;
@@ -680,10 +717,14 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     currentExpectedSector[carId] = 1;
     lapCounted = true;
 
+    // Wenn Zeit bereits abgelaufen war, ist dieses Fahrzeug nun offiziell im Ziel
+    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
+      finishedFinalLap[carId] = true;
+    }
+
     uint64_t currentTsMs = getCurrentTimestampMs();
     uint8_t pos = getCurrentPosition(carId);
     
-    // In Flash-Queue einreihen (inklusive aller Sektorzeiten)
     queueLapForStorage(carId, completedLap, currentLapTimeMs, sz1TimeMs[carId], sz2TimeMs[carId], sz3TimeMs[carId], sz4TimeMs[carId], pos, (uint8_t)currentMode, currentTsMs);
 
     broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall);
@@ -742,6 +783,21 @@ void updateLapLogicTasks() {
     if (!readyForNextLap[i] && (now - lastSeenMs[i] > CLEARANCE_TIMEOUT_MS)) {
       readyForNextLap[i] = true; 
     }
+  }
+
+  // Automatische Benachrichtigung an das Frontend, sobald alle Autos nach Zeitablauf im Ziel sind
+  static bool sessionEndBroadcasted = false;
+  if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
+    if (modeEndTimeMs > 0 && now > modeEndTimeMs) {
+      if (!sessionEndBroadcasted && areAllActiveCarsFinished()) {
+        sessionEndBroadcasted = true;
+        broadcastWebSocket("{\"type\":\"session_completed\"}");
+      }
+    } else {
+      sessionEndBroadcasted = false;
+    }
+  } else {
+    sessionEndBroadcasted = false;
   }
 }
 

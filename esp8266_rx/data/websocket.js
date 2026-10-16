@@ -42,6 +42,10 @@ function handleLiveEvent(msg) {
     onDragStartEvent(msg);
   } else if (msg.type === 'drag_finish') {
     onDragFinishEvent(msg);
+  } else if (msg.type === 'session_completed') {
+    if (typeof finishSessionNow === 'function') {
+      finishSessionNow();
+    }
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {

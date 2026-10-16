@@ -71,6 +71,7 @@ function sendSession(mode, duration, laps, speakText) {
   announced60 = false;
   announced30 = false;
   announced10 = false;
+  timeExpiredAnnounced = false;
 
   fetch(`/api/session?mode=${mode}&duration=${duration}&laps=${laps}`, { method: 'POST' })
     .then(() => {
@@ -107,6 +108,7 @@ function resetLapsDataSilent() {
     awaitingBaseCrossMap = {};
     currentLeaderId = null;
     sessionBestLap = 0;
+    timeExpiredAnnounced = false;
     updateData();
   }).catch(err => console.error(err));
 }
@@ -122,6 +124,7 @@ function resetLapsData() {
     maxLapInRace = 0;
     currentLeaderId = null;
     sessionBestLap = 0;
+    timeExpiredAnnounced = false;
     document.getElementById('leaderLapDisplay').innerText = "0";
     updateData();
   }).catch(err => console.error(err));

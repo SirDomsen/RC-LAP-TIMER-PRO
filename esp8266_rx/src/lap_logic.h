@@ -26,6 +26,9 @@ extern bool sectorAudioFeedback;
 // Status: Auto muss erst Start/Ziel passieren, bevor Sektoren gewertet werden
 extern bool awaitingBaseCross[MAX_CARS + 1];
 
+// Status: Letzte Runde nach Zeitablauf bereits absolviert
+extern bool finishedFinalLap[MAX_CARS + 1];
+
 // Aktuelle Sektorzeiten pro Auto in Millisekunden
 extern uint32_t sz1TimeMs[MAX_CARS + 1];
 extern uint32_t sz2TimeMs[MAX_CARS + 1];
@@ -76,6 +79,7 @@ void updateLEDs();
 void resetAllLaps();
 void addRecentID(uint8_t newId);
 uint8_t getCurrentPosition(uint8_t carId);
+bool areAllActiveCarsFinished();
 
 void syncClockOnce(uint64_t clientTsSec);
 uint64_t getCurrentTimestampMs();

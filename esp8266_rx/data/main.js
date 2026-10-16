@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.4.0';
+window.UI_VERSION = '2.6.0';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -16,6 +16,15 @@ let carNamesMap = {};
 let audioUnmuted = false;
 let lastLapsData = [];
 let awaitingBaseCrossMap = {};
+
+let announced60 = false;
+let announced30 = false;
+let announced10 = false;
+let timeExpiredAnnounced = false;
+
+// Lokale Ticker-Variablen für flüssigen Sekundentakt
+let localSecondsLeft = -1;
+let localTimerInterval = null;
 
 let currentSortColumn = 'default'; 
 let currentSortDir = 'asc';        
@@ -70,6 +79,62 @@ async function loadCarNames() {
   } catch (e) {
     console.error("Fehler beim Laden der Namen:", e);
   }
+}
+
+function updateTimerDisplayString(sec) {
+  let timerElem = document.getElementById('timerDisplay');
+  if (!timerElem) return;
+
+  if (isSessionFinished) {
+    timerElem.innerText = "ZIEL";
+    return;
+  }
+
+  if (timeExpiredAnnounced) {
+    timerElem.innerText = "LETZTE RUNDE";
+    return;
+  }
+
+  if (sec >= 0) {
+    let m = Math.floor(sec / 60);
+    let s = sec % 60;
+    timerElem.innerText = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  } else {
+    timerElem.innerText = "--:--";
+  }
+}
+
+// Autonomer Client-Ticker: Läuft exakt jede Sekunde unabhängig von Netzwerk-Latenzen
+function startLocalTimerTicker() {
+  if (localTimerInterval) clearInterval(localTimerInterval);
+
+  localTimerInterval = setInterval(() => {
+    if (localSecondsLeft > 0 && isSessionActive && !isSessionFinished) {
+      localSecondsLeft--;
+      updateTimerDisplayString(localSecondsLeft);
+
+      if (localSecondsLeft === 60 && !announced60) {
+        announced60 = true;
+        speak("Noch eine Minute!", true);
+      } else if (localSecondsLeft === 30 && !announced30) {
+        announced30 = true;
+        speak("Noch 30 Sekunden!", true);
+      } else if (localSecondsLeft === 10 && !announced10) {
+        announced10 = true;
+        speak("Noch 10 Sekunden!", true);
+      } else if (localSecondsLeft === 0) {
+        if (currentMode === 1 || currentMode === 3) {
+          if (!timeExpiredAnnounced) {
+            timeExpiredAnnounced = true;
+            updateTimerDisplayString(0);
+            speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
+          }
+        } else {
+          finishSessionNow();
+        }
+      }
+    }
+  }, 1000);
 }
 
 async function updateData() {
@@ -255,61 +320,28 @@ async function updateData() {
     if (currentMode === 4) modeText = "Dragrace";
     document.getElementById('modeDisplay').innerText = modeText;
 
-    let secondsLeft = info.secondsLeft;
+    let serverSecondsLeft = info.secondsLeft;
 
-    if (secondsLeft >= 0) {
-      let m = Math.floor(secondsLeft / 60);
-      let s = secondsLeft % 60;
-      document.getElementById('timerDisplay').innerText = 
-        (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    if (serverSecondsLeft >= 0) {
+      // Nur synchronisieren, wenn lokale Uhr um mehr als 1 Sekunde abweicht
+      if (localSecondsLeft === -1 || Math.abs(localSecondsLeft - serverSecondsLeft) > 1) {
+        localSecondsLeft = serverSecondsLeft;
+        updateTimerDisplayString(localSecondsLeft);
+      }
 
-      if (isSessionActive && !isSessionFinished) {
-        if (secondsLeft <= 60 && secondsLeft > 58 && !announced60) {
-          announced60 = true;
-          speak("Noch eine Minute!", true);
-        } else if (secondsLeft <= 30 && secondsLeft > 28 && !announced30) {
-          announced30 = true;
-          speak("Noch 30 Sekunden!", true);
-        } else if (secondsLeft <= 10 && secondsLeft > 8 && !announced10) {
-          announced10 = true;
-          speak("Noch 10 Sekunden!", true);
-        } else if (secondsLeft === 0) {
-          isSessionFinished = true;
-          isSessionActive = false;
-
-          if (currentMode === 1) {
-            let bestDriver = null;
-            let bestCar = null;
-            let bestTimeMs = 0;
-            let participantCount = 0;
-
-            lastLapsData.forEach(car => {
-              if (car.completedLaps > 0 || car.bestLap > 0) { participantCount++; }
-              if (car.bestLap > 0 && (bestTimeMs === 0 || car.bestLap < bestTimeMs)) {
-                bestTimeMs = car.bestLap;
-                bestDriver = car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id));
-                bestCar = car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id));
-              }
-            });
-
-            if (participantCount > 1 && bestDriver && bestTimeMs > 0) {
-              let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
-              speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + " holt die Pole Position mit " + timeSec, true);
-            } else if (participantCount === 1 && bestDriver && bestTimeMs > 0) {
-              let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
-              speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + ", beste Zeit: " + timeSec, true);
-            } else {
-              speak("Das Qualifying ist beendet!", true);
-            }
-          } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
-            announceRaceResults();
-          } else {
-            speak("Die Zeit ist abgelaufen! Durchgang beendet!", true);
-          }
+      if (serverSecondsLeft === 0 && (currentMode === 1 || currentMode === 3)) {
+        if (!timeExpiredAnnounced) {
+          timeExpiredAnnounced = true;
+          updateTimerDisplayString(0);
+          speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
+        }
+        if (info.allFinished) {
+          finishSessionNow();
         }
       }
     } else {
-      document.getElementById('timerDisplay').innerText = "--:--";
+      localSecondsLeft = -1;
+      updateTimerDisplayString(-1);
     }
   } catch (err) {
     console.error("Error fetching time left:", err);
@@ -330,6 +362,46 @@ async function updateData() {
     document.getElementById('recentIdsContainer').innerHTML = html;
   } catch (err) {
     console.error("Error fetching recent IDs:", err);
+  }
+}
+
+function finishSessionNow() {
+  if (isSessionFinished) return;
+  isSessionFinished = true;
+  isSessionActive = false;
+  localSecondsLeft = 0;
+
+  let timerElem = document.getElementById('timerDisplay');
+  if (timerElem) timerElem.innerText = "ZIEL";
+
+  if (currentMode === 1) {
+    let bestDriver = null;
+    let bestCar = null;
+    let bestTimeMs = 0;
+    let participantCount = 0;
+
+    lastLapsData.forEach(car => {
+      if (car.completedLaps > 0 || car.bestLap > 0) { participantCount++; }
+      if (car.bestLap > 0 && (bestTimeMs === 0 || car.bestLap < bestTimeMs)) {
+        bestTimeMs = car.bestLap;
+        bestDriver = car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id));
+        bestCar = car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id));
+      }
+    });
+
+    if (participantCount > 1 && bestDriver && bestTimeMs > 0) {
+      let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
+      speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + " holt die Pole Position mit " + timeSec, false);
+    } else if (participantCount === 1 && bestDriver && bestTimeMs > 0) {
+      let timeSec = (bestTimeMs / 1000).toFixed(2).replace('.', ',');
+      speak("Das Qualifying ist beendet! " + bestDriver + " auf " + bestCar + ", beste Zeit: " + timeSec, false);
+    } else {
+      speak("Das Qualifying ist beendet!", false);
+    }
+  } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
+    announceRaceResults();
+  } else {
+    speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);
   }
 }
 
@@ -505,6 +577,7 @@ window.addEventListener('DOMContentLoaded', () => {
   syncTimeWithServerOnce();
   initWebSocket();
   loadCarNames().then(() => updateTTSFilterDisplay());
+  startLocalTimerTicker();
   pollData();
 });
 

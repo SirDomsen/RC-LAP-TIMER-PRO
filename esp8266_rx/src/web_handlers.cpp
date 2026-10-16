@@ -93,6 +93,10 @@ void handlePostSession(AsyncWebServerRequest *request) {
     } else {
       modeEndTimeMs = 0;
     }
+
+    for (uint8_t i = 0; i <= MAX_CARS; i++) {
+      finishedFinalLap[i] = false;
+    }
   }
   request->send(200, "text/plain", "OK");
 }
@@ -108,13 +112,15 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   }
   static String json;
   json = "";
-  json.reserve(128);
+  json.reserve(160);
   json = "{\"mode\":";
   json += (int)currentMode;
   json += ",\"secondsLeft\":";
   json += secondsLeft;
   json += ",\"serverMillis\":";
   json += millis();
+  json += ",\"allFinished\":";
+  json += (areAllActiveCarsFinished() ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
