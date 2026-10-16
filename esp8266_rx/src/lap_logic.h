@@ -23,6 +23,9 @@ extern bool checkpointMode;
 extern bool dragraceMode;
 extern bool sectorAudioFeedback;
 
+// Status: Auto muss erst Start/Ziel passieren, bevor Sektoren gewertet werden
+extern bool awaitingBaseCross[MAX_CARS + 1];
+
 // Aktuelle Sektorzeiten pro Auto in Millisekunden
 extern uint32_t sz1TimeMs[MAX_CARS + 1];
 extern uint32_t sz2TimeMs[MAX_CARS + 1];

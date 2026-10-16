@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.2.1';
+window.UI_VERSION = '2.2.2';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -15,6 +15,7 @@ let previousBestLaps = {};
 let carNamesMap = {};
 let audioUnmuted = false;
 let lastLapsData = [];
+let awaitingBaseCrossMap = {};
 
 let currentSortColumn = 'default'; 
 let currentSortDir = 'asc';        
@@ -139,7 +140,7 @@ async function updateData() {
         if (row.lastSeenMs && row.lastSeenMs > 0 && serverMillisOffset > 0) {
           let timeSinceLastSignal = serverMillisOffset - row.lastSeenMs;
           let avgMs = history.length > 0 ? (history.reduce((a, b) => a + b, 0) / history.length) : 0;
-          let thresholdMs = Math.max(avgMs * 3.0, 10000);
+          let thresholdMs = Math.max(avgMs * 3.0, 15000);
 
           if (timeSinceLastSignal > thresholdMs) {
             isPaused = true;
@@ -149,9 +150,10 @@ async function updateData() {
         let lastDisplay = '---';
         let lastClass = 'lap-time-neutral';
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
-        let currentStatus = statusCarsMap[row.id];
 
-        if (isPaused || currentStatus === 'pause' || currentStatus === 'box') {
+        if (awaitingBaseCrossMap[row.id]) {
+          lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
+        } else if (isPaused || statusCarsMap[row.id] === 'pause' || statusCarsMap[row.id] === 'box') {
           if (isRaceMode && currentMode !== 4) {
             statusCarsMap[row.id] = 'box';
             lastDisplay = '<span class="pit-badge">Box</span>';
@@ -361,23 +363,39 @@ async function pollData() {
   }
 }
 
+function handleBaseCrossEvent(msg) {
+  let carId = msg.carId;
+  awaitingBaseCrossMap[carId] = false;
+  statusCarsMap[carId] = null;
+  updateData();
+}
+
 function handleSectorTrackEntryTTS(carId) {
   let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
-  if (previousLaps[carId] === undefined) {
+
+  // Sobald das Auto auf der Runde zur Basis ist, NICHT erneut sprechen!
+  if (awaitingBaseCrossMap[carId]) {
+    return;
+  }
+
+  if (previousLaps[carId] === undefined || previousLaps[carId] === 0) {
+    awaitingBaseCrossMap[carId] = true;
     previousLaps[carId] = 0;
     previousBestLaps[carId] = 0;
     lapHistoryMap[carId] = [];
-    statusCarsMap[carId] = null;
+    statusCarsMap[carId] = 'on_track';
     if (isCarAllowedForTTS(carId)) {
       speak(driverName + " gestartet!");
     }
   } else if (statusCarsMap[carId] === 'pause') {
-    statusCarsMap[carId] = null;
+    awaitingBaseCrossMap[carId] = true;
+    statusCarsMap[carId] = 'on_track';
     if (isCarAllowedForTTS(carId)) {
       speak(driverName + " wieder gestartet");
     }
   } else if (statusCarsMap[carId] === 'box') {
-    statusCarsMap[carId] = null;
+    awaitingBaseCrossMap[carId] = true;
+    statusCarsMap[carId] = 'on_track';
     if (isCarAllowedForTTS(carId)) {
       speak(driverName + " verlässt die Box");
     }
@@ -396,6 +414,7 @@ function checkLapEvents(car, currentLeaderLaps, position) {
     previousBestLaps[carId] = car.bestLap || 0;
     lapHistoryMap[carId] = [];
     statusCarsMap[carId] = null;
+    awaitingBaseCrossMap[carId] = false;
 
     if (isCarAllowedForTTS(carId)) {
       speak(driverName + " gestartet!");
@@ -406,35 +425,10 @@ function checkLapEvents(car, currentLeaderLaps, position) {
   if (currentLaps > prevLaps) {
     let completedLapNum = currentLaps;
     previousLaps[carId] = currentLaps;
+    awaitingBaseCrossMap[carId] = false;
     let lastLapMs = car.lastLap;
 
     let history = lapHistoryMap[carId] || [];
-    let isDelayInvalid = false;
-
-    if (history.length > 0 && lastLapMs > 0) {
-      let avgMs = history.reduce((a, b) => a + b, 0) / history.length;
-      let thresholdMs = Math.max(avgMs * 3.0, 10000);
-
-      if (lastLapMs > thresholdMs) {
-        isDelayInvalid = true;
-      }
-    }
-
-    if (isDelayInvalid) {
-      if (currentMode === 0 || currentMode === 1) {
-        statusCarsMap[carId] = 'pause';
-        if (isCarAllowedForTTS(carId)) {
-          speak(driverName + " wieder gestartet");
-        }
-      } 
-      else if (currentMode >= 2) {
-        statusCarsMap[carId] = 'box';
-        if (isCarAllowedForTTS(carId)) {
-          speak(driverName + " verlässt die Box");
-        }
-      }
-      return;
-    }
 
     if (statusCarsMap[carId]) {
       statusCarsMap[carId] = null;

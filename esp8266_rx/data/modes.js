@@ -104,6 +104,7 @@ function resetLapsDataSilent() {
     previousBestLaps = {};
     lapHistoryMap = {};
     statusCarsMap = {};
+    awaitingBaseCrossMap = {};
     currentLeaderId = null;
     sessionBestLap = 0;
     updateData();
@@ -116,6 +117,7 @@ function resetLapsData() {
     previousBestLaps = {};
     lapHistoryMap = {};
     statusCarsMap = {};
+    awaitingBaseCrossMap = {};
     isSessionFinished = false;
     maxLapInRace = 0;
     currentLeaderId = null;

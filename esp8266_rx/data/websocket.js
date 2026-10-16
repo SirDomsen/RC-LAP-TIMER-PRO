@@ -34,6 +34,8 @@ function handleLiveEvent(msg) {
     onSectorLiveEvent(msg);
   } else if (msg.type === 'track_seen') {
     handleSectorTrackEntryTTS(msg.carId);
+  } else if (msg.type === 'base_cross') {
+    handleBaseCrossEvent(msg);
   } else if (msg.type === 'lap') {
     onLapLiveEvent(msg);
   } else if (msg.type === 'drag_start') {
@@ -75,8 +77,6 @@ function onDragFinishEvent(msg) {
 }
 
 function onSectorLiveEvent(msg) {
-  handleSectorTrackEntryTTS(msg.carId);
-
   let cell = document.getElementById(`sz-cell-${msg.carId}-${msg.sector}`);
   if (cell) {
     cell.innerText = (msg.time / 1000).toFixed(2) + 's';
@@ -91,7 +91,6 @@ function onSectorLiveEvent(msg) {
     }
   }
 
-  // Bestzeitenansage nur wenn es tatsächlich eine PB oder Overall Best ist
   if (sectorAudioEnabled && isCarAllowedForTTS(msg.carId) && (msg.isPB || msg.isOverallBest)) {
     let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
     let text = "";

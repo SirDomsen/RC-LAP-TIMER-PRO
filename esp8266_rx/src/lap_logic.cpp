@@ -17,6 +17,8 @@ bool checkpointMode = false;
 bool dragraceMode = false;
 bool sectorAudioFeedback = true;
 
+bool awaitingBaseCross[MAX_CARS + 1] = {false};
+
 // Sektorzeiten (reine Abschnittsdauer)
 uint32_t sz1TimeMs[MAX_CARS + 1] = {0};
 uint32_t sz2TimeMs[MAX_CARS + 1] = {0};
@@ -155,6 +157,7 @@ void resetAllLaps() {
     lapCounter[i] = 0;
     lastSeenMs[i] = 0;
     readyForNextLap[i] = true;
+    awaitingBaseCross[i] = true;
     currentExpectedSector[i] = 1;
     sz1TimeMs[i] = 0;
     sz2TimeMs[i] = 0;
@@ -208,23 +211,36 @@ uint8_t getActiveTargetSector() {
 
 void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs) {
   if (carId < 1 || carId > MAX_CARS) return;
-  lastSeenMs[carId] = millis();
-  addRecentID(carId);
+  uint32_t now = millis();
 
-  // SZ-Meldung signalisiert der Basis: Auto ist auf der Strecke!
+  // Pause-Erkennung: Wenn mehr als 15 Sek. kein Signal kam, muss erst wieder Start/Ziel passiert werden
+  if (currentMode != MODE_DRAGRACE) {
+    uint32_t pauseThreshold = 20000UL;
+    if (bestLapDuration[carId] > 0) {
+      pauseThreshold = bestLapDuration[carId] * 3UL;
+      if (pauseThreshold < 15000UL) pauseThreshold = 15000UL;
+      if (pauseThreshold > 60000UL) pauseThreshold = 60000UL;
+    }
+
+    if (lastSeenMs[carId] > 0 && (now - lastSeenMs[carId] > pauseThreshold)) {
+      awaitingBaseCross[carId] = true;
+    }
+  }
+
+  lastSeenMs[carId] = now;
+  addRecentID(carId);
   readyForNextLap[carId] = true;
 
-  // Wenn das Auto noch NIE durch Start/Ziel gefahren ist (lapCounter == 0),
-  // gibt es keine gültige Rundenstartzeit -> Keine Sektorzeiten berechnen!
-  if (lastCrossTime[carId] == 0 || lapCounter[carId] == 0) {
-    // Schickt ein reines Track-Event an das Webinterface für Status/Ansage
+  // Wenn das Auto noch NIE an der Basis war oder nach einer Pause erst zur Basis fahren muss:
+  if (currentMode != MODE_DRAGRACE && (awaitingBaseCross[carId] || lapCounter[carId] == 0 || lastCrossTime[carId] == 0)) {
+    awaitingBaseCross[carId] = true;
     String trackJson = "{\"type\":\"track_seen\",\"carId\":";
     trackJson += carId;
     trackJson += ",\"station\":";
     trackJson += stationId;
     trackJson += "}";
     broadcastWebSocket(trackJson);
-    return;
+    return; // KEINE Zeiten berechnen!
   }
 
   uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
@@ -254,7 +270,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         bool isPB = false;
         bool isOverall = false;
 
-        // Keine Bestzeit-Hymne bei erster Fahrt
         if (bestLapDuration[carId] > 0 && elapsedMs < bestLapDuration[carId]) {
           bestLapDuration[carId] = elapsedMs;
           isPB = true;
@@ -296,7 +311,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         return;
       }
 
-      // Zwischenzeiten vor dem Ziel
       if (stationId < targetSector) {
         if (stationId == 1 && useSz1) {
           uint32_t s1 = elapsedMs;
@@ -517,6 +531,33 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
   if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
 
+  // NEUER LAUF / RE-ENTRY NACH PAUSE: Auto überquert jetzt Start/Ziel
+  if (awaitingBaseCross[carId] || lapCounter[carId] == 0) {
+    awaitingBaseCross[carId] = false;
+    lapCounter[carId] = 1;
+    lastCrossTime[carId] = exactMicros;
+    lastSectorTimeMs[carId] = nowMs;
+    readyForNextLap[carId] = false;
+    currentExpectedSector[carId] = 1;
+    sz1TimeMs[carId] = 0;
+    sz2TimeMs[carId] = 0;
+    sz3TimeMs[carId] = 0;
+    sz4TimeMs[carId] = 0;
+    split1TimeMs[carId] = 0;
+    split2TimeMs[carId] = 0;
+    split3TimeMs[carId] = 0;
+
+    digitalWrite(LED_READY, LOW);
+    readyLedBlinking = true;
+    readyLedOffTime = millis() + 200;
+
+    String baseJson = "{\"type\":\"base_cross\",\"carId\":";
+    baseJson += carId;
+    baseJson += ",\"driver\":\"" + driverNames[carId] + "\"}";
+    broadcastWebSocket(baseJson);
+    return;
+  }
+
   if (checkpointMode && currentMode != MODE_DRAGRACE) {
     bool passedAll = true;
     if (useSz1 && currentExpectedSector[carId] < 2) passedAll = false;
@@ -532,23 +573,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
   bool lapCounted = false;
 
-  // Erstüberfahrt Start/Ziel -> Startet die Rundenwertung ab jetzt
-  if (lapCounter[carId] == 0) {
-    lapCounter[carId] = 1;
-    lastCrossTime[carId] = exactMicros;
-    lastSectorTimeMs[carId] = nowMs;
-    readyForNextLap[carId] = false;
-    currentExpectedSector[carId] = 1;
-    sz1TimeMs[carId] = 0;
-    sz2TimeMs[carId] = 0;
-    sz3TimeMs[carId] = 0;
-    sz4TimeMs[carId] = 0;
-    split1TimeMs[carId] = 0;
-    split2TimeMs[carId] = 0;
-    split3TimeMs[carId] = 0;
-    lapCounted = true;
-  } 
-  else if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
+  if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
     uint32_t currentLapTimeMs = (exactMicros - lastCrossTime[carId]) / 1000UL;
     
     uint8_t finalSectorNum = useSz3 ? 4 : (useSz2 ? 3 : (useSz1 ? 2 : 0));
@@ -634,7 +659,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     bool isLapPB = false;
     bool isLapOverall = false;
 
-    // Persönliche Rundenbestzeit erst ab zweiter gewerteter Runde
     if (lapCounter[carId] > 1 && bestLapDuration[carId] > 0 && currentLapTimeMs < bestLapDuration[carId]) {
       bestLapDuration[carId] = currentLapTimeMs;
       isLapPB = true;
