@@ -188,6 +188,13 @@
         ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert. Das originale PC-Änderungsdatum bleibt exakt erhalten.
       </div>
 
+      <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="autoGzipToggle" checked style="width: 18px; height: 18px; cursor: pointer;">
+        <label for="autoGzipToggle" style="font-size: 14px; color: var(--neon-cyan); cursor: pointer; font-weight: bold;">
+       ⚡ Dateien automatisch vor dem Upload komprimieren (.gz)
+        </label>
+      </div>
+
       <div class="file-dropzone" onclick="document.getElementById('fileInput').click()">
         <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFileSelect(this)">
         <div id="dropLabel" style="color:var(--text-main);">📁 Klicke hier, um Dateien auszuwählen (.html, .js, .css, .json, ...)</div>
@@ -247,24 +254,27 @@
 
     // Komprimiert ein File-Objekt im Browser-RAM via Streams-API
     async function compressFileToGzip(file) {
-      if (!isCompressibleFile(file.name) || !('CompressionStream' in window)) {
-        return { blob: file, uploadName: file.name, wasCompressed: false };
-      }
+  const useGzip = document.getElementById('autoGzipToggle')?.checked ?? true;
+  
+  // Wenn Checkbox nicht aktiv oder nicht komprimierbar -> unkomprimiert lassen
+  if (!useGzip || !isCompressibleFile(file.name) || !('CompressionStream' in window)) {
+    return { blob: file, uploadName: file.name, wasCompressed: false };
+  }
 
-      try {
-        const cs = new CompressionStream('gzip');
-        const stream = file.stream().pipeThrough(cs);
-        const compressedBlob = await new Response(stream).blob();
-        return { 
-          blob: compressedBlob, 
-          uploadName: file.name + '.gz', 
-          wasCompressed: true 
-        };
-      } catch (err) {
-        console.warn("Gzip-Kompression fehlgeschlagen, lade unkomprimiert hoch:", err);
-        return { blob: file, uploadName: file.name, wasCompressed: false };
-      }
-    }
+  try {
+    const cs = new CompressionStream('gzip');
+    const stream = file.stream().pipeThrough(cs);
+    const compressedBlob = await new Response(stream).blob();
+    return { 
+      blob: compressedBlob, 
+      uploadName: file.name + '.gz', 
+      wasCompressed: true 
+    };
+  } catch (err) {
+    console.warn("Gzip-Kompression fehlgeschlagen, lade unkomprimiert hoch:", err);
+    return { blob: file, uploadName: file.name, wasCompressed: false };
+  }
+}
 
     function handleFileSelect(input) {
       selectedFiles = Array.from(input.files);

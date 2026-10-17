@@ -110,29 +110,44 @@ static void setupWLAN() {
 void initNetworkAndServer() {
   setupWLAN();
 
-  // serveStatic erkennt automatisch vorhandene .gz Dateien und setzt den Content-Encoding Header
+  // serveStatic erkennt automatisch vorhandene .gz Dateien und liefert den Content-Encoding Header mit
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
-  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/update.html")) {
+  // --- UPDATE-SEITE (unter /update oder /update.html) ---
+  auto serveUpdatePage = [](AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/update.html.gz")) {
+      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/update.html.gz", "text/html");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    } else if (LittleFS.exists("/update.html")) {
       request->send(LittleFS, "/update.html", "text/html");
-    } else if (LittleFS.exists("/update.html.gz")) {
-      request->send(LittleFS, "/update.html.gz", "text/html");
     } else {
       request->send(200, "text/html", "<h2>Update</h2><form method='POST' action='/api/upload' enctype='multipart/form-data'><input type='file' name='data'><input type='submit' value='Upload'></form>");
     }
-  });
+  };
+  server.on("/update", HTTP_GET, serveUpdatePage);
+  server.on("/update.html", HTTP_GET, serveUpdatePage);
 
+  // --- DEBUG-SEITE (unter /debug oder /debug.html) ---
+  auto serveDebugPage = [](AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/debug.html.gz")) {
+      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/debug.html.gz", "text/html");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    } else if (LittleFS.exists("/debug.html")) {
+      request->send(LittleFS, "/debug.html", "text/html");
+    } else {
+      request->send(404, "text/plain", "Debug-Seite nicht im Flash gefunden");
+    }
+  };
+  server.on("/debug", HTTP_GET, serveDebugPage);
+  server.on("/debug.html", HTTP_GET, serveDebugPage);
+
+  // --- UPLOAD & DATEI-MANAGER ---
   server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Upload erfolgreich!");
   }, handleFileUpload);
 
-  server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ESP startet neu...");
-    scheduleESPReset(600);
-  });
-
-  // Dateiliste mit Größe, Zeitstempel und LittleFS-Speicherstatistik abrufen
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     FSInfo fs_info;
     LittleFS.info(fs_info);
@@ -162,7 +177,6 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
-  // Einzelne Datei im LittleFS löschen
   server.on("/api/deletefile", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("file")) {
       String filename = request->getParam("file")->value();
@@ -176,6 +190,12 @@ void initNetworkAndServer() {
     request->send(400, "text/plain", "Datei nicht gefunden");
   });
 
+  server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ESP startet neu...");
+    scheduleESPReset(600);
+  });
+
+  // --- SYSTEM & DIAGNOSE ---
   server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json;
     json.reserve(160);
@@ -193,32 +213,13 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
-  server.on("/api/laps", HTTP_GET, handleGetLaps);
-  server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
   server.on("/api/debug/status", HTTP_GET, handleGetDebugStatus);
-  server.on("/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/debug.html.gz")) {
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/debug.html.gz", "text/html");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-    } else if (LittleFS.exists("/debug.html")) {
-      request->send(LittleFS, "/debug.html", "text/html");
-    } else {
-      request->send(404, "text/plain", "Debug-Seite nicht gefunden");
-    }
-  });
-  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/update.html.gz")) {
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/update.html.gz", "text/html");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-    } else if (LittleFS.exists("/update.html")) {
-      request->send(LittleFS, "/update.html", "text/html");
-    } else {
-      request->send(200, "text/html", "<h2>Update</h2><form method='POST' action='/api/upload' enctype='multipart/form-data'><input type='file' name='data'><input type='submit' value='Upload'></form>");
-    }
-  });
+  server.on("/api/debug/set", HTTP_POST, handlePostSetDebugMode);
+
+  // --- RENNLEITUNG & ZEITNAHME ---
+  server.on("/api/laps", HTTP_GET, handleGetLaps);
+  server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
   server.on("/api/session", HTTP_POST, handlePostSession);
   server.on("/api/timeleft", HTTP_GET, handleGetTimeLeft);
   server.on("/api/recent", HTTP_GET, handleGetRecent);
@@ -231,6 +232,7 @@ void initNetworkAndServer() {
   server.on("/api/rename", HTTP_POST, handlePostRename);
   server.on("/api/reset", HTTP_POST, handlePostReset);
 
+  // --- STATISTIKEN & HISTORIE ---
   server.on("/api/synctime", HTTP_POST, handlePostSyncTime);
   server.on("/api/stats", HTTP_GET, handleGetStats);
   server.on("/api/deletelap", HTTP_POST, handlePostDeleteLap);
@@ -242,6 +244,7 @@ void initNetworkAndServer() {
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
+  // --- CATCH-ALL & CAPTIVE PORTAL ---
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
     if (url.startsWith("/api/")) {
