@@ -34,4 +34,7 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request);
 
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final);
 
+void handleGetCacheConfig(AsyncWebServerRequest *request);
+void handlePostSetCacheConfig(AsyncWebServerRequest *request);
+
 #endif

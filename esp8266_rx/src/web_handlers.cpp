@@ -409,3 +409,17 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
     }
   }
 }
+
+
+void handleGetCacheConfig(AsyncWebServerRequest *request) {
+  String json = "{\"cache\":" + String(webCacheEnabled ? "true" : "false") + "}";
+  request->send(200, "application/json", json);
+}
+
+void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
+  if (request->hasParam("cache")) {
+    webCacheEnabled = (request->getParam("cache")->value() == "1");
+    saveCacheConfigToEEPROM(webCacheEnabled);
+  }
+  request->send(200, "text/plain", "OK");
+}

@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "web_handlers.h"
+#include "storage.h"
 
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -19,6 +20,8 @@ extern uint32_t perfAvgLoopUs;
 
 static bool pendingReset = false;
 static uint32_t resetTimer = 0;
+
+static String cacheHeaderStr; 
 
 void scheduleESPReset(uint16_t delayMs) {
   pendingReset = true;
@@ -60,7 +63,6 @@ static void setupWLAN() {
     currentActiveIP = WiFi.localIP();
     Serial.println("[WLAN] Verbunden! IP: " + currentActiveIP.toString());
   } else {
-    // STA komplett trennen und abschalten -> Stoppt blockierende Hintergrund-Scans
     WiFi.disconnect(true);
     delay(50);
     WiFi.mode(WIFI_AP);
@@ -83,12 +85,12 @@ static void setupWLAN() {
 void initNetworkAndServer() {
   setupWLAN();
 
-  // serveStatic bedient automatisch vorhandene .gz Dateien
+  cacheHeaderStr = webCacheEnabled ? "max-age=86400" : "no-cache";
+
   server.serveStatic("/", LittleFS, "/")
       .setDefaultFile("index.html")
-      .setCacheControl("no-cache");
+      .setCacheControl(cacheHeaderStr.c_str());
 
-  // --- UPDATE-SEITE (unter /update oder /update.html) ---
   auto serveUpdatePage = [](AsyncWebServerRequest *request) {
     if (LittleFS.exists("/update.html.gz")) {
       AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/update.html.gz", "text/html");
@@ -103,7 +105,6 @@ void initNetworkAndServer() {
   server.on("/update", HTTP_GET, serveUpdatePage);
   server.on("/update.html", HTTP_GET, serveUpdatePage);
 
-  // --- DEBUG-SEITE (unter /debug, /debug/ oder /debug.html) ---
   auto serveDebugPage = [](AsyncWebServerRequest *request) {
     if (LittleFS.exists("/debug.html.gz")) {
       AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/debug.html.gz", "text/html");
@@ -119,8 +120,6 @@ void initNetworkAndServer() {
   server.on("/debug/", HTTP_GET, serveDebugPage);
   server.on("/debug.html", HTTP_GET, serveDebugPage);
 
-  
-  // --- UPLOAD & DATEI-MANAGER ---
   server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Upload erfolgreich!");
   }, handleFileUpload);
@@ -172,7 +171,6 @@ void initNetworkAndServer() {
     scheduleESPReset(600);
   });
 
-  // --- SYSTEM & DIAGNOSE ---
   server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json;
     json.reserve(160);
@@ -194,7 +192,6 @@ void initNetworkAndServer() {
   server.on("/api/debug/status", HTTP_GET, handleGetDebugStatus);
   server.on("/api/debug/set", HTTP_POST, handlePostSetDebugMode);
 
-  // --- RENNLEITUNG & ZEITNAHME ---
   server.on("/api/laps", HTTP_GET, handleGetLaps);
   server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
   server.on("/api/session", HTTP_POST, handlePostSession);
@@ -209,7 +206,6 @@ void initNetworkAndServer() {
   server.on("/api/rename", HTTP_POST, handlePostRename);
   server.on("/api/reset", HTTP_POST, handlePostReset);
 
-  // --- STATISTIKEN & HISTORIE ---
   server.on("/api/synctime", HTTP_POST, handlePostSyncTime);
   server.on("/api/stats", HTTP_GET, handleGetStats);
   server.on("/api/deletelap", HTTP_POST, handlePostDeleteLap);
@@ -220,8 +216,10 @@ void initNetworkAndServer() {
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
+  
+  server.on("/api/cacheconfig", HTTP_GET, handleGetCacheConfig);
+  server.on("/api/setcacheconfig", HTTP_POST, handlePostSetCacheConfig);
 
-  // --- 404 CATCH-ALL (Ohne blockierendes Captive Portal) ---
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
 

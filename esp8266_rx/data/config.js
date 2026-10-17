@@ -1,3 +1,5 @@
+let initialCacheState = null;
+
 function openConfigModal() {
   let modal = document.getElementById('configModal');
   if (modal) modal.style.display = 'block';
@@ -19,6 +21,14 @@ function openConfigModal() {
   fetch('/api/filter').then(r => r.json()).then(data => {
     let cb = document.getElementById('cfg_two_frames');
     if (cb) cb.checked = data.enabled;
+  }).catch(e => console.error(e));
+
+  fetch('/api/cacheconfig').then(r => r.json()).then(data => {
+    let cb = document.getElementById('cfg_web_cache');
+    if (cb) {
+      cb.checked = data.cache;
+      initialCacheState = data.cache;
+    }
   }).catch(e => console.error(e));
 
   fetch('/api/sectorconfig').then(r => r.json()).then(data => {
@@ -110,6 +120,15 @@ async function saveConfig() {
     let filterCb = document.getElementById('cfg_two_frames');
     if (filterCb) {
       await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
+    }
+
+    let cacheCb = document.getElementById('cfg_web_cache');
+    if (cacheCb) {
+      let cacheVal = cacheCb.checked;
+      if (initialCacheState !== null && cacheVal !== initialCacheState) {
+        await fetch('/api/setcacheconfig?cache=' + (cacheVal ? "1" : "0"), { method: 'POST' });
+        alert("Info: Die Änderung des Web-Caches wird erst nach einem Neustart des ESP8266 aktiv.");
+      }
     }
 
     let sz1 = document.getElementById('cfg_use_sz1')?.checked ? "1" : "0";

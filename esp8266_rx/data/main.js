@@ -465,7 +465,11 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 4500);
+    
+    // JITTER HINZUGEFÜGT: Verzögert die Requests zufällig um bis zu 2 Sekunden
+    // Dadurch wird verhindert, dass alle 5 Clients gleichzeitig aufschlagen.
+    let randomJitter = Math.floor(Math.random() * 2000);
+    pollTimeout = setTimeout(pollData, 3500 + randomJitter);
   }
 }
 

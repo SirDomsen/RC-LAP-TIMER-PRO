@@ -7,6 +7,8 @@
 String driverNames[MAX_CARS + 1];
 String carNames[MAX_CARS + 1];
 
+bool webCacheEnabled = true;
+
 static const String defaultDrivers[MAX_CARS + 1] = {
   "-", "Fahrer 1", "Fahrer 2", "Fahrer 3", "Fahrer 4", "Fahrer 5",
   "Fahrer 6", "Fahrer 7", "Fahrer 8", "Fahrer 9", "Fahrer 10",
@@ -91,6 +93,7 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(307, 0);
     EEPROM.write(308, 0);
     EEPROM.write(309, 1);
+    EEPROM.write(310, 1); // Standard: Cache an
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;
@@ -101,6 +104,7 @@ void loadSettingsFromEEPROM() {
     checkpointMode = false;
     dragraceMode = false;
     sectorAudioFeedback = true;
+    webCacheEnabled = true;
   } else {
     uint16_t low = EEPROM.read(301);
     uint16_t high = EEPROM.read(302);
@@ -116,6 +120,7 @@ void loadSettingsFromEEPROM() {
     checkpointMode = (EEPROM.read(307) != 0);
     dragraceMode = (EEPROM.read(308) != 0);
     sectorAudioFeedback = (EEPROM.read(309) != 0);
+    webCacheEnabled = (EEPROM.read(310) != 0);
   }
 }
 
@@ -140,6 +145,11 @@ void saveFilterToEEPROM(bool enable) {
   EEPROM.commit();
 }
 
+void saveCacheConfigToEEPROM(bool enable) {
+  EEPROM.write(310, enable ? 1 : 0);
+  EEPROM.commit();
+}
+
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio) {
   EEPROM.write(304, s1 ? 1 : 0);
   EEPROM.write(305, s2 ? 1 : 0);
@@ -160,7 +170,6 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
-  // Nutze freie CPU-Zeit: Maximal alle 120 ms einen Datensatz schreiben
   if (millis() - lastStorageWrite < 120) return;
 
   if (queueHead != queueTail) { 
@@ -189,13 +198,11 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
     return;
   }
 
-  // Datei zum Anhängen öffnen
   File f = LittleFS.open(filepath, "r+");
   if (!f) return;
 
   size_t size = f.size();
   
-  // Wenn die Datei zu groß wird, greift der sichere Fallback und räumt auf (~200 Runden)
   if (size > 15000) {
     f.close();
     JsonDocument doc;
@@ -237,18 +244,15 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
     return;
   }
 
-  // RAM-freundlicher Append-Modus
   f.seek(size - 2, SeekSet);
   char lastChars[2];
   f.readBytes(lastChars, 2);
 
   if (lastChars[0] == '[' && lastChars[1] == ']') {
-     // Leeres Array füllen
      f.seek(size - 1, SeekSet);
      f.print(newLapJson);
      f.print("]}");
   } else {
-     // An ein existierendes Array anhängen
      f.seek(size - 2, SeekSet);
      f.print(",");
      f.print(newLapJson);
