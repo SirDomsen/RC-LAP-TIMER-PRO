@@ -1,5 +1,6 @@
 function openConfigModal() {
-  document.getElementById('configModal').style.display = 'block';
+  let modal = document.getElementById('configModal');
+  if (modal) modal.style.display = 'block';
 
   let container = document.getElementById('configRows');
   let ttsContainer = document.getElementById('ttsFilterContainer');
@@ -7,11 +8,12 @@ function openConfigModal() {
   let lapTimeCb = document.getElementById('cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
   
-  container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
-  ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
+  if (container) container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
+  if (ttsContainer) ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
 
   fetch('/api/deadtime').then(r => r.json()).then(data => {
-    if (data.ms) document.getElementById('cfg_deadtime').value = (data.ms / 1000).toFixed(1);
+    let dtElem = document.getElementById('cfg_deadtime');
+    if (dtElem && data.ms) dtElem.value = (data.ms / 1000).toFixed(1);
   }).catch(e => console.error(e));
 
   fetch('/api/filter').then(r => r.json()).then(data => {
@@ -20,19 +22,28 @@ function openConfigModal() {
   }).catch(e => console.error(e));
 
   fetch('/api/sectorconfig').then(r => r.json()).then(data => {
-    if (document.getElementById('cfg_use_sz1')) document.getElementById('cfg_use_sz1').checked = data.useSz1;
-    if (document.getElementById('cfg_use_sz2')) document.getElementById('cfg_use_sz2').checked = data.useSz2;
-    if (document.getElementById('cfg_use_sz3')) document.getElementById('cfg_use_sz3').checked = data.useSz3;
-    if (document.getElementById('cfg_checkpoint_mode')) document.getElementById('cfg_checkpoint_mode').checked = data.checkpointMode;
-    if (document.getElementById('cfg_dragrace_mode')) document.getElementById('cfg_dragrace_mode').checked = data.dragraceMode;
+    let sz1 = document.getElementById('cfg_use_sz1');
+    let sz2 = document.getElementById('cfg_use_sz2');
+    let sz3 = document.getElementById('cfg_use_sz3');
+    let cp = document.getElementById('cfg_checkpoint_mode');
+    let dr = document.getElementById('cfg_dragrace_mode');
+    let audio = document.getElementById('cfg_sector_audio');
+
+    if (sz1) sz1.checked = data.useSz1;
+    if (sz2) sz2.checked = data.useSz2;
+    if (sz3) sz3.checked = data.useSz3;
+    if (cp) cp.checked = data.checkpointMode;
+    if (dr) dr.checked = data.dragraceMode;
+
     if (data.sectorAudio !== undefined) {
       sectorAudioEnabled = data.sectorAudio;
       localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
     }
-    if (document.getElementById('cfg_sector_audio')) document.getElementById('cfg_sector_audio').checked = sectorAudioEnabled;
+    if (audio) audio.checked = sectorAudioEnabled;
   }).catch(e => console.error(e));
 
   fetch('/api/names').then(r => r.json()).then(names => {
+    if (!container || !ttsContainer) return;
     container.innerHTML = '';
     ttsContainer.innerHTML = '';
 
@@ -56,12 +67,13 @@ function openConfigModal() {
     updateTTSFilterDisplay();
   }).catch(e => {
     console.error(e);
-    container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Namen</p>';
+    if (container) container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Namen</p>';
   });
 }
 
 function closeConfigModal() {
-  document.getElementById('configModal').style.display = 'none';
+  let modal = document.getElementById('configModal');
+  if (modal) modal.style.display = 'none';
 }
 
 async function saveConfig() {
@@ -87,26 +99,33 @@ async function saveConfig() {
       localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
     }
 
-    let deadtimeSec = parseFloat(document.getElementById('cfg_deadtime').value);
-    if (!isNaN(deadtimeSec)) {
-      await fetch('/api/setdeadtime?ms=' + Math.round(deadtimeSec * 1000), { method: 'POST' });
+    let deadtimeElem = document.getElementById('cfg_deadtime');
+    if (deadtimeElem) {
+      let deadtimeSec = parseFloat(deadtimeElem.value);
+      if (!isNaN(deadtimeSec)) {
+        await fetch('/api/setdeadtime?ms=' + Math.round(deadtimeSec * 1000), { method: 'POST' });
+      }
     }
+
     let filterCb = document.getElementById('cfg_two_frames');
     if (filterCb) {
       await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
     }
 
-    let sz1 = document.getElementById('cfg_use_sz1').checked ? "1" : "0";
-    let sz2 = document.getElementById('cfg_use_sz2').checked ? "1" : "0";
-    let sz3 = document.getElementById('cfg_use_sz3').checked ? "1" : "0";
-    let cp = document.getElementById('cfg_checkpoint_mode').checked ? "1" : "0";
-    let dr = document.getElementById('cfg_dragrace_mode').checked ? "1" : "0";
+    // Sichere Abfragen mit Optional-Chaining (?.)
+    let sz1 = document.getElementById('cfg_use_sz1')?.checked ? "1" : "0";
+    let sz2 = document.getElementById('cfg_use_sz2')?.checked ? "1" : "0";
+    let sz3 = document.getElementById('cfg_use_sz3')?.checked ? "1" : "0";
+    let cp = document.getElementById('cfg_checkpoint_mode')?.checked ? "1" : "0";
+    let dr = document.getElementById('cfg_dragrace_mode')?.checked ? "1" : "0";
+
     let audioCb = document.getElementById('cfg_sector_audio');
     if (audioCb) {
       sectorAudioEnabled = audioCb.checked;
       localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
     }
     let audio = sectorAudioEnabled ? "1" : "0";
+
     await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}`, { method: 'POST' });
 
     for (let i = 1; i <= MAX_CARS; i++) {
@@ -120,7 +139,7 @@ async function saveConfig() {
       }
     }
   } catch (err) { 
-    console.error(err); 
+    console.error("Fehler beim Speichern der Konfiguration:", err); 
   } finally {
     closeConfigModal();
     updateData();

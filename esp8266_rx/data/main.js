@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.9.1';
+window.UI_VERSION = '2.9.7';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -12,6 +12,7 @@ let isSessionActive = false;
 let isSessionFinished = false;
 let previousLaps = {};
 let previousBestLaps = {};
+let lastAnnouncedLapMap = {}; 
 let carNamesMap = {};
 let audioUnmuted = false;
 let lastLapsData = [];
@@ -24,6 +25,7 @@ let timeExpiredAnnounced = false;
 
 let localSecondsLeft = -1;
 let localTimerInterval = null;
+let isUpdatingData = false; 
 
 let currentSortColumn = 'default'; 
 let currentSortDir = 'asc';        
@@ -136,6 +138,9 @@ function startLocalTimerTicker() {
 }
 
 async function updateData() {
+  if (isUpdatingData) return;
+  isUpdatingData = true;
+
   try {
     let response = await fetch('/api/laps');
     let data = await response.json();
@@ -159,7 +164,8 @@ async function updateData() {
       }
 
       let leaderLaps = leaderSearch[0].completedLaps;
-      document.getElementById('leaderLapDisplay').innerText = leaderLaps;
+      let leaderElem = document.getElementById('leaderLapDisplay');
+      if (leaderElem) leaderElem.innerText = leaderLaps;
 
       let newLeader = leaderSearch[0];
       if ((currentMode === 2 || currentMode === 3) && isSessionActive && !isSessionFinished) {
@@ -197,26 +203,42 @@ async function updateData() {
         if (r.bestLap > 0 && (minBestLap === 0 || r.bestLap < minBestLap)) minBestLap = r.bestLap;
       });
 
+      // Synchronisiert die beste Rundenzeit der Session
+      if (minBestLap > 0) {
+        sessionBestLap = minBestLap;
+      }
+
       displayData.forEach((row) => {
         carNamesMap[row.id] = { driver: row.driver, car: row.car };
         let defaultPosition = row._defaultPos;
         
-        checkLapEvents(row, leaderLaps, defaultPosition);
+        // minBestLap wird mit übergeben, um Fehlinterpretationen zu unterbinden
+        checkLapEvents(row, leaderLaps, defaultPosition, minBestLap);
 
         let lastDisplay = '---';
         let lastClass = 'lap-time-neutral';
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
 
-        if (awaitingBaseCrossMap[row.id]) {
-          lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
-        } else if (statusCarsMap[row.id] === 'pause' || statusCarsMap[row.id] === 'box') {
+        // Boxen- & Pausenerkennung nach Inaktivität
+        if (serverMillisOffset > 0 && row.lastSeenMs > 0 && serverMillisOffset >= row.lastSeenMs && !isSessionFinished) {
+          let idleMs = serverMillisOffset - row.lastSeenMs;
+          let pauseThreshold = Math.max(35000, (row.lastLap > 0 ? row.lastLap * 2.5 : 35000));
+          let hasStarted = (row.completedLaps > 0 || row.sz1 > 0 || row.sz2 > 0 || row.sz3 > 0 || awaitingBaseCrossMap[row.id]);
+
+          if (hasStarted && idleMs > pauseThreshold) {
+            statusCarsMap[row.id] = (isRaceMode && currentMode !== 4) ? 'box' : 'pause';
+            awaitingBaseCrossMap[row.id] = false;
+          }
+        }
+
+        if (statusCarsMap[row.id] === 'pause' || statusCarsMap[row.id] === 'box') {
           if (isRaceMode && currentMode !== 4) {
-            statusCarsMap[row.id] = 'box';
             lastDisplay = '<span class="pit-badge">Box</span>';
           } else if (currentMode !== 4) {
-            statusCarsMap[row.id] = 'pause';
             lastDisplay = '<span class="pause-badge">Pause</span>';
           }
+        } else if (awaitingBaseCrossMap[row.id]) {
+          lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
         } else if (row.lastLap > 0) {
           lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
           
@@ -289,10 +311,13 @@ async function updateData() {
         </tr>`;
       });
     }
-    document.getElementById('lapTable').innerHTML = html;
+    let lapTable = document.getElementById('lapTable');
+    if (lapTable) lapTable.innerHTML = html;
     updateTTSFilterDisplay();
   } catch (err) {
     console.error("Error fetching lap data:", err);
+  } finally {
+    isUpdatingData = false;
   }
 
   try {
@@ -328,7 +353,8 @@ async function updateData() {
     if (currentMode === 2) modeText = "Rennen (Runden)";
     if (currentMode === 3) modeText = "Rennen (Zeit)";
     if (currentMode === 4) modeText = "Dragrace";
-    document.getElementById('modeDisplay').innerText = modeText;
+    let modeElem = document.getElementById('modeDisplay');
+    if (modeElem) modeElem.innerText = modeText;
 
     let serverSecondsLeft = info.secondsLeft;
 
@@ -368,7 +394,8 @@ async function updateData() {
         html += `<div class="recent-item">-</div>`;
       }
     });
-    document.getElementById('recentIdsContainer').innerHTML = html;
+    let recentCont = document.getElementById('recentIdsContainer');
+    if (recentCont) recentCont.innerHTML = html;
   } catch (err) {
     console.error("Error fetching recent IDs:", err);
   }
@@ -436,6 +463,14 @@ async function pollData() {
 
 function handleBaseCrossEvent(msg) {
   let carId = msg.carId;
+  let driverName = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  
+  if (statusCarsMap[carId] === 'box') {
+    if (isCarAllowedForTTS(carId)) speak(driverName + " verlässt die Box");
+  } else if (statusCarsMap[carId] === 'pause') {
+    if (isCarAllowedForTTS(carId)) speak(driverName + " wieder gestartet");
+  }
+
   awaitingBaseCrossMap[carId] = false;
   statusCarsMap[carId] = null;
   updateData();
@@ -474,7 +509,7 @@ function handleSectorTrackEntryTTS(carId) {
   }
 }
 
-function checkLapEvents(car, currentLeaderLaps, position) {
+function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   let carId = car.id;
   let currentLaps = car.completedLaps;
   let prevLaps = previousLaps[carId];
@@ -498,8 +533,14 @@ function checkLapEvents(car, currentLeaderLaps, position) {
     let completedLapNum = currentLaps;
     previousLaps[carId] = currentLaps;
     awaitingBaseCrossMap[carId] = false;
-    let lastLapMs = car.lastLap;
 
+    // Verhindert doppelte Ansagen derselben Runde
+    if (lastAnnouncedLapMap[carId] === completedLapNum) {
+      return;
+    }
+    lastAnnouncedLapMap[carId] = completedLapNum;
+
+    let lastLapMs = car.lastLap;
     let history = lapHistoryMap[carId] || [];
 
     if (statusCarsMap[carId]) {
@@ -531,29 +572,39 @@ function checkLapEvents(car, currentLeaderLaps, position) {
       }
     }
 
-    if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
-      let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
-      
-      let isAbsoluteBest = false;
-      if (completedLapNum > 1) {
-        if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
-          sessionBestLap = car.lastLap;
-          isAbsoluteBest = true;
-        }
-      } else {
-        if (sessionBestLap === 0 || car.lastLap < sessionBestLap) {
-          sessionBestLap = car.lastLap;
-        }
+    // --- ABSOLUTE & PERSÖNLICHE BESTZEIT PRÜFUNG ---
+    let isPersonalBest = false;
+    let isAbsoluteBest = false;
+
+    // sessionBestLap immer synchronisieren
+    if (minBestLap > 0 && (sessionBestLap === 0 || minBestLap < sessionBestLap)) {
+      sessionBestLap = minBestLap;
+    }
+
+    if (completedLapNum > 1 && lastLapMs > 0) {
+      // Persönliche Bestzeit: Die gefahrene Zeit muss mindestens dem car.bestLap entsprechen
+      if (car.bestLap > 0 && lastLapMs <= car.bestLap && (prevBest === 0 || lastLapMs < prevBest)) {
+        isPersonalBest = true;
+        previousBestLaps[carId] = lastLapMs;
       }
 
-      let isPersonalBest = false;
-      if (completedLapNum > 1 && car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
-        isPersonalBest = true;
+      // Absolute Bestzeit: Nur wenn es ein PB ist UND schneller/gleich der Session-Bestzeit
+      if (isPersonalBest && sessionBestLap > 0 && lastLapMs <= sessionBestLap) {
+        sessionBestLap = lastLapMs;
+        isAbsoluteBest = true;
+      } else if (isPersonalBest && sessionBestLap === 0) {
+        sessionBestLap = lastLapMs;
+        isAbsoluteBest = true;
       }
-      
-      if (car.bestLap > 0 && (prevBest === 0 || car.bestLap < prevBest)) {
-        previousBestLaps[carId] = car.bestLap;
+    } else if (completedLapNum === 1 && car.bestLap > 0) {
+      previousBestLaps[carId] = car.bestLap;
+      if (sessionBestLap === 0 || car.bestLap < sessionBestLap) {
+        sessionBestLap = car.bestLap;
       }
+    }
+
+    if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
+      let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
 
       let posText = ", ";
       if (currentMode !== 0 && position > 0) {
@@ -609,4 +660,4 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true })
+document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });

@@ -51,6 +51,7 @@ function handleLiveEvent(msg) {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
       lastResetTimestamp = now;
+      if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
       resetLapsDataSilent();
     }
   }
@@ -58,7 +59,6 @@ function handleLiveEvent(msg) {
 
 function onDragStartEvent(msg) {
   let now = Date.now();
-  // Debounce: Maximal eine Startansage pro 3 Sekunden
   if (!lastDragStartTs[msg.carId] || (now - lastDragStartTs[msg.carId] > 3000)) {
     lastDragStartTs[msg.carId] = now;
     if (isCarAllowedForTTS(msg.carId)) {
@@ -87,7 +87,18 @@ function onDragFinishEvent(msg) {
 }
 
 function onSectorLiveEvent(msg) {
-  let cell = document.getElementById(`sz-cell-${msg.carId}-${msg.sector}`);
+  let carId = msg.carId;
+
+  // Boxenausfahrt oder Ende der Pause bei Sektordurchfahrt ansagen & Status aufheben
+  if (typeof statusCarsMap !== 'undefined' && (statusCarsMap[carId] === 'pause' || statusCarsMap[carId] === 'box')) {
+    if (typeof handleSectorTrackEntryTTS === 'function') {
+      handleSectorTrackEntryTTS(carId);
+    }
+  } else if (typeof statusCarsMap !== 'undefined' && statusCarsMap[carId]) {
+    statusCarsMap[carId] = null;
+  }
+
+  let cell = document.getElementById(`sz-cell-${carId}-${msg.sector}`);
   if (cell) {
     cell.innerText = (msg.time / 1000).toFixed(2) + 's';
     cell.className = '';
@@ -101,8 +112,8 @@ function onSectorLiveEvent(msg) {
     }
   }
 
-  if (sectorAudioEnabled && isCarAllowedForTTS(msg.carId) && (msg.isPB || msg.isOverallBest)) {
-    let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+  if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
+    let driver = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
     let text = "";
     if (msg.isOverallBest) {
       text = driver + ", absolute Bestzeit Sektor " + msg.sector + "!";

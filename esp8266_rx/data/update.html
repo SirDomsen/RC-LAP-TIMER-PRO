@@ -148,8 +148,17 @@
     th {
       color: var(--neon-cyan);
       border-bottom: 1px solid var(--card-border);
-      padding: 6px;
+      padding: 8px 6px;
       text-align: left;
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.2s, background-color 0.2s;
+    }
+    th.sortable:hover {
+      color: #fff;
+      background-color: rgba(0, 229, 255, 0.1);
     }
     td {
       padding: 6px;
@@ -185,13 +194,13 @@
     <div class="card">
       <h3 class="card-title">Dateien hochladen</h3>
       <div class="info-box">
-        ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert. Das originale PC-Änderungsdatum bleibt exakt erhalten.
+        ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert[cite: 22]. Das originale PC-Änderungsdatum bleibt exakt erhalten[cite: 22].
       </div>
 
       <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
         <input type="checkbox" id="autoGzipToggle" checked style="width: 18px; height: 18px; cursor: pointer;">
         <label for="autoGzipToggle" style="font-size: 14px; color: var(--neon-cyan); cursor: pointer; font-weight: bold;">
-       ⚡ Dateien automatisch vor dem Upload komprimieren (.gz)
+          ⚡ Dateien automatisch vor dem Upload komprimieren (.gz)
         </label>
       </div>
 
@@ -219,9 +228,9 @@
         <table>
           <thead>
             <tr>
-              <th>Dateiname</th>
-              <th style="text-align:right;">Größe</th>
-              <th style="text-align:center;">Geändert am</th>
+              <th class="sortable" onclick="setSortColumn('name')">Dateiname <span id="sort_icon_name"></span></th>
+              <th class="sortable" style="text-align:right;" onclick="setSortColumn('size')">Größe <span id="sort_icon_size"></span></th>
+              <th class="sortable" style="text-align:center;" onclick="setSortColumn('time')">Geändert am <span id="sort_icon_time">▼</span></th>
               <th style="text-align:center;">Aktion</th>
             </tr>
           </thead>
@@ -236,7 +245,7 @@
     <div class="card">
       <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
       <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
-        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren.
+        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren[cite: 22].
       </p>
       <button class="btn btn-red" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
     </div>
@@ -244,37 +253,36 @@
 
   <script>
     let selectedFiles = [];
+    let cachedFiles = [];
+    let sortColumn = 'time'; // Standard: Neueste Dateien oben
+    let sortAsc = false;
 
-    // Prüft Dateiendung auf Web-Assets
     function isCompressibleFile(filename) {
       const lower = filename.toLowerCase();
-      if (lower.endsWith('.gz')) return false; // Bereits komprimiert
+      if (lower.endsWith('.gz')) return false; 
       return lower.endsWith('.html') || lower.endsWith('.js') || lower.endsWith('.css') || lower.endsWith('.svg');
     }
 
-    // Komprimiert ein File-Objekt im Browser-RAM via Streams-API
     async function compressFileToGzip(file) {
-  const useGzip = document.getElementById('autoGzipToggle')?.checked ?? true;
-  
-  // Wenn Checkbox nicht aktiv oder nicht komprimierbar -> unkomprimiert lassen
-  if (!useGzip || !isCompressibleFile(file.name) || !('CompressionStream' in window)) {
-    return { blob: file, uploadName: file.name, wasCompressed: false };
-  }
+      const useGzip = document.getElementById('autoGzipToggle')?.checked ?? true;
+      if (!useGzip || !isCompressibleFile(file.name) || !('CompressionStream' in window)) {
+        return { blob: file, uploadName: file.name, wasCompressed: false };
+      }
 
-  try {
-    const cs = new CompressionStream('gzip');
-    const stream = file.stream().pipeThrough(cs);
-    const compressedBlob = await new Response(stream).blob();
-    return { 
-      blob: compressedBlob, 
-      uploadName: file.name + '.gz', 
-      wasCompressed: true 
-    };
-  } catch (err) {
-    console.warn("Gzip-Kompression fehlgeschlagen, lade unkomprimiert hoch:", err);
-    return { blob: file, uploadName: file.name, wasCompressed: false };
-  }
-}
+      try {
+        const cs = new CompressionStream('gzip');
+        const stream = file.stream().pipeThrough(cs);
+        const compressedBlob = await new Response(stream).blob();
+        return { 
+          blob: compressedBlob, 
+          uploadName: file.name + '.gz', 
+          wasCompressed: true 
+        };
+      } catch (err) {
+        console.warn("Gzip-Kompression fehlgeschlagen, lade unkomprimiert hoch:", err);
+        return { blob: file, uploadName: file.name, wasCompressed: false };
+      }
+    }
 
     function handleFileSelect(input) {
       selectedFiles = Array.from(input.files);
@@ -312,7 +320,6 @@
         status.style.color = 'var(--neon-cyan)';
         status.innerText = `[${i + 1}/${selectedFiles.length}] Verarbeite: ${file.name}...`;
 
-        // Datei im Browser komprimieren
         let { blob, uploadName, wasCompressed } = await compressFileToGzip(file);
 
         if (wasCompressed) {
@@ -362,13 +369,72 @@
       return `${day}.${month}.${year} ${hours}:${mins}:${secs}`;
     }
 
+    function setSortColumn(col) {
+      if (sortColumn === col) {
+        sortAsc = !sortAsc;
+      } else {
+        sortColumn = col;
+        sortAsc = (col === 'name'); // Namen standardmäßig A-Z, Zeiten/Größen absteigend
+      }
+      renderFilesTable();
+    }
+
+    function renderFilesTable() {
+      let tbody = document.getElementById('fileListBody');
+      if (cachedFiles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:12px;">Keine Dateien im Flash vorhanden.</td></tr>';
+        return;
+      }
+
+      // Sortier-Icons aktualisieren
+      ['name', 'size', 'time'].forEach(c => {
+        let iconElem = document.getElementById('sort_icon_' + c);
+        if (!iconElem) return;
+        if (sortColumn === c) {
+          iconElem.innerText = sortAsc ? '▲' : '▼';
+        } else {
+          iconElem.innerText = '';
+        }
+      });
+
+      // Liste sortieren
+      let sorted = [...cachedFiles].sort((a, b) => {
+        let res = 0;
+        if (sortColumn === 'name') {
+          res = a.name.localeCompare(b.name);
+        } else if (sortColumn === 'size') {
+          res = (a.size || 0) - (b.size || 0);
+        } else if (sortColumn === 'time') {
+          res = (a.time || 0) - (b.time || 0);
+        }
+        return sortAsc ? res : -res;
+      });
+
+      let html = '';
+      sorted.forEach(f => {
+        let isGz = f.name.endsWith('.gz');
+        let nameColor = isGz ? 'var(--neon-green)' : 'var(--text-main)';
+        let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
+        let dateStr = formatFileDate(f.time);
+
+        html += `<tr>
+          <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">${f.name}</td>
+          <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
+          <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
+          <td style="text-align:center;">
+            <button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
+          </td>
+        </tr>`;
+      });
+      tbody.innerHTML = html;
+    }
+
     async function loadFilesList() {
       let tbody = document.getElementById('fileListBody');
       try {
         let res = await fetch('/api/files');
         let data = await res.json();
 
-        // 1. Speicherplatz aktualisieren
         let total = data.total || 0;
         let used = data.used || 0;
         let free = total - used;
@@ -380,32 +446,8 @@
         document.getElementById('storageFree').innerText = (free / 1024).toFixed(1) + ' KB';
         document.getElementById('storageTotal').innerText = (total / (1024 * 1024)).toFixed(2) + ' MB';
 
-        // 2. Dateiliste aufbauen
-        let files = data.files || [];
-        if (files.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:12px;">Keine Dateien im Flash vorhanden.</td></tr>';
-          return;
-        }
-
-        files.sort((a, b) => a.name.localeCompare(b.name));
-
-        let html = '';
-        files.forEach(f => {
-          let isGz = f.name.endsWith('.gz');
-          let nameColor = isGz ? 'var(--neon-green)' : 'var(--text-main)';
-          let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
-          let dateStr = formatFileDate(f.time);
-
-          html += `<tr>
-            <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">${f.name}</td>
-            <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
-            <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
-            <td style="text-align:center;">
-              <button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
-            </td>
-          </tr>`;
-        });
-        tbody.innerHTML = html;
+        cachedFiles = data.files || [];
+        renderFilesTable();
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="4" style="color:var(--neon-red); text-align:center; padding:12px;">Fehler beim Abrufen der Dateiliste.</td></tr>';
       }

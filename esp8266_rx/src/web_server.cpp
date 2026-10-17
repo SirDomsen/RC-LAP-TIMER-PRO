@@ -110,8 +110,11 @@ static void setupWLAN() {
 void initNetworkAndServer() {
   setupWLAN();
 
-  // serveStatic erkennt automatisch vorhandene .gz Dateien und liefert den Content-Encoding Header mit
-  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+
+  // serveStatic erkennt automatisch vorhandene .gz Dateien
+  server.serveStatic("/", LittleFS, "/")
+      .setDefaultFile("index.html")
+      .setCacheControl("no-cache");
 
   // --- UPDATE-SEITE (unter /update oder /update.html) ---
   auto serveUpdatePage = [](AsyncWebServerRequest *request) {
