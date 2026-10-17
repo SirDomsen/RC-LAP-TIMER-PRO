@@ -26,9 +26,9 @@ void handleTimeSyncBroadcast();
 bool isStationOnline(uint8_t stationId);
 bool isStationBatteryLow(uint8_t stationId);
 
-// Debug-Steuerung & Export
+// Debug-Steuerung & Export (const Reference verhindert RAM-Kopien)
 void setDebugMode(bool active);
 bool getDebugMode();
-String getDebugPacketsJSON();
+const String& getDebugPacketsJSON();
 
 #endif

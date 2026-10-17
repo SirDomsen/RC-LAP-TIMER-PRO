@@ -19,7 +19,8 @@ static bool sz3BatLow = false;
 
 static bool debugModeEnabled = false;
 
-#define MAX_DEBUG_PACKETS 20
+// 8 Pakete genügen für die Diagnose völlig und schonen den Heap
+#define MAX_DEBUG_PACKETS 8
 struct DebugPacketLog {
   uint32_t timestampMs;
   uint8_t stationId;
@@ -33,6 +34,10 @@ static uint8_t debugPacketCount = 0;
 
 void setDebugMode(bool active) {
   debugModeEnabled = active;
+  if (!active) {
+    debugPacketCount = 0;
+    debugPacketIndex = 0;
+  }
 }
 
 bool getDebugMode() {
@@ -51,8 +56,18 @@ void logDebugPacket(uint8_t stationId, uint8_t carId, uint32_t rawData) {
   if (debugPacketCount < MAX_DEBUG_PACKETS) debugPacketCount++;
 }
 
-String getDebugPacketsJSON() {
-  String json = "[";
+// Null-Fragmentierungs-JSON-Builder mit fest vorreserviertem Speicher
+const String& getDebugPacketsJSON() {
+  static String json;
+  static bool memoryReserved = false;
+  
+  if (!memoryReserved) {
+    json.reserve(512);
+    memoryReserved = true;
+  }
+  
+  json = "[";
+
   if (debugModeEnabled && debugPacketCount > 0) {
     uint8_t start = (debugPacketCount < MAX_DEBUG_PACKETS) ? 0 : debugPacketIndex;
     for (uint8_t i = 0; i < debugPacketCount; i++) {
@@ -118,7 +133,6 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     SectorPacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
 
-    // Auch ein Rundenpaket beweist, dass die Station lebt
     unsigned long now = millis();
     if (packet.stationId == 1) sz1LastSeen = now;
     if (packet.stationId == 2) sz2LastSeen = now;
@@ -153,7 +167,6 @@ void initESPNowBase() {
 
 void handleTimeSyncBroadcast() {
   static uint32_t lastSyncTime = 0;
-  // Alle 3 Sekunden Master-Sync (Stratum 0) aussenden
   if (millis() - lastSyncTime > 3000UL) {
     lastSyncTime = millis();
     
@@ -162,9 +175,6 @@ void handleTimeSyncBroadcast() {
     syncPkt.stratum = 0; // Master
 
     uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    if (!esp_now_is_peer_exist(broadcastAddress)) {
-      esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
-    }
     esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
   }
 }

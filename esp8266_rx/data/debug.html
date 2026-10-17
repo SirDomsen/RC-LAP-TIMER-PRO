@@ -4,7 +4,6 @@
   <title>RC Lap Timer Pro - Debug Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
-  <!-- Asynchrones Laden: blockiert offline im AP-Modus nicht mehr -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -102,7 +101,7 @@
           <div class="metric-val" id="valMaxLoop" style="color:var(--neon-orange);">-- ms</div>
         </div>
         <div class="metric-box">
-          <div class="metric-label">WS-Ping (Latenz)</div>
+          <div class="metric-label">Ping (Latenz)</div>
           <div class="metric-val" id="valPing" style="color:var(--neon-purple);">-- ms</div>
         </div>
       </div>
@@ -140,34 +139,16 @@
   </div>
 
   <script>
-    let ws = null;
-    let pingSentTime = 0;
-
-    function initDebugWebSocket() {
-      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(wsProtocol + '//' + window.location.host + '/ws');
-      ws.onmessage = function(e) {
-        try {
-          let data = JSON.parse(e.data);
-          if (data.ping) {
-            let rtt = Date.now() - data.ping;
-            document.getElementById('valPing').innerText = rtt + ' ms';
-          }
-        } catch(err) {}
-      };
-      ws.onclose = () => setTimeout(initDebugWebSocket, 2500);
-    }
-
-    function sendWsPing() {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ ping: Date.now() }));
-      }
-    }
+    let isFetchingLoop = false;
 
     async function fetchSystemMetrics() {
+      let t0 = performance.now();
       try {
         let res = await fetch('/api/debug/system');
         if (res.ok) {
+          let rtt = Math.round(performance.now() - t0);
+          document.getElementById('valPing').innerText = rtt + ' ms';
+
           let data = await res.json();
           document.getElementById('valCpu').innerText = data.cpuMhz + ' MHz';
           document.getElementById('valHeap').innerText = (data.freeHeap / 1024).toFixed(1) + ' KB';
@@ -187,8 +168,11 @@
     async function fetchDebugStatus() {
       try {
         let res = await fetch('/api/debug/status');
-        let data = await res.json();
-        document.getElementById('debugToggle').checked = data.debug;
+        if (res.ok) {
+          let data = await res.json();
+          let cb = document.getElementById('debugToggle');
+          if (cb) cb.checked = data.debug;
+        }
       } catch (e) {}
     }
 
@@ -207,6 +191,7 @@
 
       try {
         let res = await fetch('/api/debug/packets');
+        if (!res.ok) return;
         let packets = await res.json();
         let tbody = document.getElementById('packetTable');
 
@@ -233,11 +218,29 @@
       } catch (e) {}
     }
 
-    fetchDebugStatus();
-    initDebugWebSocket();
-    setInterval(fetchSystemMetrics, 2500);
-    setInterval(sendWsPing, 3000);
-    setInterval(fetchDebugPackets, 2500);
+    // Serieller Abfrage-Zyklus statt paralleler Timer (schützt den ESP8266 vor Lastspitzen)
+    async function startSequentialPolling() {
+      if (isFetchingLoop) return;
+      isFetchingLoop = true;
+
+      while (true) {
+        await fetchSystemMetrics();
+        await new Promise(r => setTimeout(r, 1200));
+
+        let isChecked = document.getElementById('debugToggle')?.checked;
+        if (isChecked) {
+          await fetchDebugPackets();
+          await new Promise(r => setTimeout(r, 1500));
+        } else {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await fetchDebugStatus();
+      startSequentialPolling();
+    });
   </script>
 </body>
 </html>
