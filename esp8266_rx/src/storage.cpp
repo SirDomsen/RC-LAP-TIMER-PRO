@@ -174,57 +174,87 @@ void processStorageQueue() {
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs) {
   String filepath = "/stats_" + String(carId) + ".json";
   
-  JsonDocument doc;
-  if (LittleFS.exists(filepath)) {
-    File f = LittleFS.open(filepath, "r");
+  char newLapJson[256];
+  snprintf(newLapJson, sizeof(newLapJson), "{\"lap\":%u,\"time\":%lu,\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,\"mode\":%u,\"ts\":%llu,\"pos\":%u}",
+           lapNum, lapTimeMs, sz1, sz2, sz3, sz4, mode, timestampMs, position);
+
+  if (!LittleFS.exists(filepath)) {
+    File f = LittleFS.open(filepath, "w");
     if (f) {
-      deserializeJson(doc, f);
+      f.print("{\"laps\":[");
+      f.print(newLapJson);
+      f.print("]}");
       f.close();
     }
+    return;
   }
 
-  JsonArray laps = doc["laps"].as<JsonArray>();
-  if (!laps) {
-    laps = doc["laps"].to<JsonArray>();
-  }
+  // Datei zum Anhängen öffnen
+  File f = LittleFS.open(filepath, "r+");
+  if (!f) return;
 
-  for (JsonObject existingLap : laps) {
-    if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs && existingLap["mode"] == mode) {
-      return; 
-    }
-  }
-
-  if (laps.size() >= 200) {
-    laps.remove(0);
-  }
-
-  JsonObject newLap = laps.add<JsonObject>();
-  newLap["lap"] = lapNum;
-  newLap["time"] = lapTimeMs;
-  newLap["sz1"] = sz1;
-  newLap["sz2"] = sz2;
-  newLap["sz3"] = sz3;
-  newLap["sz4"] = sz4;
-  newLap["mode"] = mode;
-  newLap["ts"] = timestampMs;
-  newLap["pos"] = position;
-
-  File f = LittleFS.open(filepath, "w");
-  if (f) {
-    serializeJson(doc, f);
+  size_t size = f.size();
+  
+  // Wenn die Datei zu groß wird, greift der sichere Fallback und räumt auf (~200 Runden)
+  if (size > 15000) {
     f.close();
+    JsonDocument doc;
+    File fRead = LittleFS.open(filepath, "r");
+    if (fRead) {
+      deserializeJson(doc, fRead);
+      fRead.close();
+    }
+
+    JsonArray laps = doc["laps"].as<JsonArray>();
+    if (!laps) laps = doc["laps"].to<JsonArray>();
+
+    for (JsonObject existingLap : laps) {
+      if (existingLap["lap"] == lapNum && existingLap["time"] == lapTimeMs && existingLap["mode"] == mode) {
+        return; 
+      }
+    }
+
+    if (laps.size() >= 200) {
+      laps.remove(0);
+    }
+
+    JsonObject newLap = laps.add<JsonObject>();
+    newLap["lap"] = lapNum;
+    newLap["time"] = lapTimeMs;
+    newLap["sz1"] = sz1;
+    newLap["sz2"] = sz2;
+    newLap["sz3"] = sz3;
+    newLap["sz4"] = sz4;
+    newLap["mode"] = mode;
+    newLap["ts"] = timestampMs;
+    newLap["pos"] = position;
+
+    File fWrite = LittleFS.open(filepath, "w");
+    if (fWrite) {
+      serializeJson(doc, fWrite);
+      fWrite.close();
+    }
+    return;
   }
-}
 
-String getDriverHistoryJson(uint8_t carId) {
-  String filepath = "/stats_" + String(carId) + ".json";
-  if (!LittleFS.exists(filepath)) return "{\"laps\":[]}";
+  // RAM-freundlicher Append-Modus
+  f.seek(size - 2, SeekSet);
+  char lastChars[2];
+  f.readBytes(lastChars, 2);
 
-  File f = LittleFS.open(filepath, "r");
-  if (!f) return "{\"laps\":[]}";
-  String content = f.readString();
+  if (lastChars[0] == '[' && lastChars[1] == ']') {
+     // Leeres Array füllen
+     f.seek(size - 1, SeekSet);
+     f.print(newLapJson);
+     f.print("]}");
+  } else {
+     // An ein existierendes Array anhängen
+     f.seek(size - 2, SeekSet);
+     f.print(",");
+     f.print(newLapJson);
+     f.print("]}");
+  }
   f.close();
-  return content;
 }
 
 void deleteLapFromHistory(uint8_t carId, uint16_t lapNum) {
@@ -318,17 +348,6 @@ void saveSessionToHistory(const String& sessionJsonStr) {
     serializeJson(doc, f);
     f.close();
   }
-}
-
-String getSessionsJson() {
-  String filepath = "/sessions.json";
-  if (!LittleFS.exists(filepath)) return "{\"sessions\":[]}";
-
-  File f = LittleFS.open(filepath, "r");
-  if (!f) return "{\"sessions\":[]}";
-  String content = f.readString();
-  f.close();
-  return content;
 }
 
 void deleteSessionFromHistory(uint64_t sessionTs) {

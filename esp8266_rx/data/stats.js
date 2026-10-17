@@ -844,7 +844,16 @@ function confirmDeleteAllStats() {
   }
 }
 
+// PERFORMANCE FIX: Blockiert den Download-Button visuell, während die 15 Dateien abgerufen werden
 async function downloadStatsBackup() {
+  let btn = document.querySelector('button[onclick="downloadStatsBackup()"]');
+  let originalText = btn ? btn.innerText : "💾 Backup herunterladen";
+  
+  if (btn) {
+    btn.innerText = "⏳ Erstelle Backup... (Bitte warten)";
+    btn.disabled = true;
+  }
+
   let backupData = {
     version: 2,
     exportedAt: Math.floor(Date.now() / 1000),
@@ -877,6 +886,11 @@ async function downloadStatsBackup() {
     downloadAnchor.remove();
   } catch (e) {
     alert("Fehler beim Erstellen des Backups: " + e.message);
+  } finally {
+    if (btn) {
+      btn.innerText = originalText;
+      btn.disabled = false;
+    }
   }
 }
 

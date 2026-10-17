@@ -72,45 +72,21 @@ static uint8_t  detectionCount = 0;
 #define VALIDATION_WINDOW_MICROS 85000 
 
 void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeMs, uint32_t splitTimeMs, bool isPB, bool isOverallBest, int32_t deltaMs) {
-  String json;
-  json.reserve(192);
-  json = "{\"type\":\"sector\",\"carId\":";
-  json += carId;
-  json += ",\"driver\":\"";
-  json += driverNames[carId];
-  json += "\",\"sector\":";
-  json += sectorNum;
-  json += ",\"time\":";
-  json += sectorTimeMs;
-  json += ",\"split\":";
-  json += splitTimeMs;
-  json += ",\"isPB\":";
-  json += (isPB ? "true" : "false");
-  json += ",\"isOverallBest\":";
-  json += (isOverallBest ? "true" : "false");
-  json += ",\"delta\":";
-  json += deltaMs;
-  json += "}";
-  broadcastWebSocket(json);
+  char buffer[192];
+  snprintf(buffer, sizeof(buffer), 
+    "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld}",
+    carId, driverNames[carId].c_str(), sectorNum, sectorTimeMs, splitTimeMs,
+    isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs);
+  broadcastWebSocket(buffer);
 }
 
 void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest) {
-  String json;
-  json.reserve(160);
-  json = "{\"type\":\"lap\",\"carId\":";
-  json += carId;
-  json += ",\"driver\":\"";
-  json += driverNames[carId];
-  json += "\",\"lap\":";
-  json += lapNum;
-  json += ",\"lapTime\":";
-  json += lapTimeMs;
-  json += ",\"isPB\":";
-  json += (isPB ? "true" : "false");
-  json += ",\"isOverallBest\":";
-  json += (isOverallBest ? "true" : "false");
-  json += "}";
-  broadcastWebSocket(json);
+  char buffer[160];
+  snprintf(buffer, sizeof(buffer), 
+    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s}",
+    carId, driverNames[carId].c_str(), lapNum, lapTimeMs, 
+    isPB ? "true" : "false", isOverallBest ? "true" : "false");
+  broadcastWebSocket(buffer);
 }
 
 void initLapLogic() {
@@ -262,11 +238,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     readyForNextLap[carId] = true;
     if (awaitingBaseCross[carId]) {
       awaitingBaseCross[carId] = false;
-      String trackJson = "{\"type\":\"track_seen\",\"carId\":";
-      trackJson += carId;
-      trackJson += ",\"station\":";
-      trackJson += stationId;
-      trackJson += "}";
+      char trackJson[64];
+      snprintf(trackJson, sizeof(trackJson), "{\"type\":\"track_seen\",\"carId\":%d,\"station\":%d}", carId, stationId);
       broadcastWebSocket(trackJson);
     }
     return;
@@ -341,14 +314,12 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       uint32_t finishSecTime = (targetSector == 3) ? sz3TimeMs[carId] : ((targetSector == 2) ? sz2TimeMs[carId] : sz1TimeMs[carId]);
       broadcastSectorEvent(carId, targetSector, finishSecTime, elapsedMs, isPB, isOverall, 0);
 
-      String finishJson = "{\"type\":\"drag_finish\",\"carId\":";
-      finishJson += carId;
-      finishJson += ",\"driver\":\"" + driverNames[carId] + "\"";
-      finishJson += ",\"time\":" + String(elapsedMs);
-      finishJson += ",\"isPB\":" + String(isPB ? "true" : "false");
-      finishJson += ",\"isOverallBest\":" + String(isOverall ? "true" : "false");
-      finishJson += "}";
+      char finishJson[192];
+      snprintf(finishJson, sizeof(finishJson),
+        "{\"type\":\"drag_finish\",\"carId\":%d,\"driver\":\"%s\",\"time\":%lu,\"isPB\":%s,\"isOverallBest\":%s}",
+        carId, driverNames[carId].c_str(), elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
       broadcastWebSocket(finishJson);
+
       broadcastLapEvent(carId, completedRun, elapsedMs, isPB, isOverall);
       return;
     }
@@ -561,9 +532,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyLedBlinking = true;
     readyLedOffTime = millis() + 200;
 
-    String startJson = "{\"type\":\"drag_start\",\"carId\":";
-    startJson += carId;
-    startJson += ",\"driver\":\"" + driverNames[carId] + "\"}";
+    char startJson[128];
+    snprintf(startJson, sizeof(startJson), "{\"type\":\"drag_start\",\"carId\":%d,\"driver\":\"%s\"}", carId, driverNames[carId].c_str());
     broadcastWebSocket(startJson);
     return;
   }
@@ -592,10 +562,10 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyLedBlinking = true;
     readyLedOffTime = millis() + 200;
 
-    String baseJson = "{\"type\":\"base_cross\",\"carId\":";
-    baseJson += carId;
-    baseJson += ",\"driver\":\"" + driverNames[carId] + "\"}";
+    char baseJson[128];
+    snprintf(baseJson, sizeof(baseJson), "{\"type\":\"base_cross\",\"carId\":%d,\"driver\":\"%s\"}", carId, driverNames[carId].c_str());
     broadcastWebSocket(baseJson);
+    
     return;
   }
 

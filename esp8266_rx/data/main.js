@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.9.8';
+window.UI_VERSION = '2.9.9'; // Version für Cache-Control erhöht
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -444,17 +444,27 @@ function finishSessionNow() {
 let pollTimeout = null;
 let isPolling = false;
 
+// INTELLIGENTES POLLING: Pausiert Hintergrundabfragen, wenn Modals offen sind (Entlastet ESP-LittleFS!)
 async function pollData() {
   if (isPolling) return;
   isPolling = true;
   try {
-    await updateData();
+    let mConfig = document.getElementById('configModal');
+    let mStatsOverview = document.getElementById('statsOverviewModal');
+    let mStatsDriver = document.getElementById('statsModal');
+    
+    let isModalOpen = (mConfig && mConfig.style.display === 'block') ||
+                      (mStatsOverview && mStatsOverview.style.display === 'block') ||
+                      (mStatsDriver && mStatsDriver.style.display === 'block');
+                      
+    if (!isModalOpen) {
+      await updateData();
+    }
   } catch (e) {
     console.error("Polling-Fehler:", e);
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    // Geschontes 4,5-Sekunden-Intervall gegen TCP-Überlastung bei mehreren Clients
     pollTimeout = setTimeout(pollData, 4500);
   }
 }

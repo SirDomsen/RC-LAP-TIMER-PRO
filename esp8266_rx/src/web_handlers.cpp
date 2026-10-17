@@ -8,65 +8,27 @@
 #include <utime.h>
 
 void handleGetLaps(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
-  json.reserve(2048);
-
-  json = "[";
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+  response->print("[");
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0) {
-      if (!first) json += ",";
-      json += "{\"id\":";
-      json += i;
-      json += ",\"driver\":\"";
-      json += driverNames[i];
-      json += "\",\"car\":\"";
-      json += carNames[i];
-      json += "\",\"completedLaps\":";
-      json += (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0);
-      json += ",\"sz1\":";
-      json += sz1TimeMs[i];
-      json += ",\"sz2\":";
-      json += sz2TimeMs[i];
-      json += ",\"sz3\":";
-      json += sz3TimeMs[i];
-      json += ",\"sz4\":";
-      json += sz4TimeMs[i];
-
-      json += ",\"bestSz1\":";
-      json += bestSz1TimeMs[i];
-      json += ",\"bestSz2\":";
-      json += bestSz2TimeMs[i];
-      json += ",\"bestSz3\":";
-      json += bestSz3TimeMs[i];
-      json += ",\"bestSz4\":";
-      json += bestSz4TimeMs[i];
-
-      json += ",\"split1\":";
-      json += split1TimeMs[i];
-      json += ",\"split2\":";
-      json += split2TimeMs[i];
-      json += ",\"split3\":";
-      json += split3TimeMs[i];
-
-      json += ",\"lastLap\":";
-      json += lastLapDuration[i];
-      json += ",\"bestLap\":";
-      json += bestLapDuration[i];
-      json += ",\"lastSeenMs\":";
-      json += lastSeenMs[i];
-      json += "}";
+      if (!first) response->print(",");
+      response->printf("{\"id\":%d,\"driver\":\"%s\",\"car\":\"%s\",\"completedLaps\":%d,",
+                       i, driverNames[i].c_str(), carNames[i].c_str(), (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0));
+      response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", sz1TimeMs[i], sz2TimeMs[i], sz3TimeMs[i], sz4TimeMs[i]);
+      response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", bestSz1TimeMs[i], bestSz2TimeMs[i], bestSz3TimeMs[i], bestSz4TimeMs[i]);
+      response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", split1TimeMs[i], split2TimeMs[i], split3TimeMs[i]);
+      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"lastSeenMs\":%lu}", lastLapDuration[i], bestLapDuration[i], lastSeenMs[i]);
       first = false;
     }
   }
-  json += "]";
-  request->send(200, "application/json", json);
+  response->print("]");
+  request->send(response);
 }
 
 void handleGetStationsStatus(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(160);
   json = "{";
   json += "\"sz1\":" + String(isStationOnline(1) ? "true" : "false") + ",";
@@ -115,8 +77,7 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
       secondsLeft = 0;
     }
   }
-  static String json;
-  json = "";
+  String json;
   json.reserve(160);
   json = "{\"mode\":";
   json += (int)currentMode;
@@ -131,8 +92,7 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
 }
 
 void handleGetRecent(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(64);
   json = "[";
   for (int i = 0; i < 5; i++) {
@@ -144,8 +104,7 @@ void handleGetRecent(AsyncWebServerRequest *request) {
 }
 
 void handleGetDeadtime(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(32);
   json = "{\"ms\":";
   json += minLapTimeMs;
@@ -154,8 +113,7 @@ void handleGetDeadtime(AsyncWebServerRequest *request) {
 }
 
 void handleGetFilter(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(32);
   json = "{\"enabled\":";
   json += (requireTwoFrames ? "true" : "false");
@@ -164,27 +122,18 @@ void handleGetFilter(AsyncWebServerRequest *request) {
 }
 
 void handleGetNames(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
-  json.reserve(1024);
-  json = "{";
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+  response->print("{");
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (i > 1) json += ",";
-    json += "\"";
-    json += i;
-    json += "\":{\"driver\":\"";
-    json += driverNames[i];
-    json += "\",\"car\":\"";
-    json += carNames[i];
-    json += "\"}";
+    if (i > 1) response->print(",");
+    response->printf("\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}", i, driverNames[i].c_str(), carNames[i].c_str());
   }
-  json += "}";
-  request->send(200, "application/json", json);
+  response->print("}");
+  request->send(response);
 }
 
 void handleGetVersion(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(64);
   json = "{\"firmware\":\"" FIRMWARE_VERSION "\"}";
   request->send(200, "application/json", json);
@@ -299,8 +248,7 @@ void handlePostSaveSessionResult(AsyncWebServerRequest *request) {
 }
 
 void handleGetSectorConfig(AsyncWebServerRequest *request) {
-  static String json;
-  json = "";
+  String json;
   json.reserve(160);
   json = "{";
   json += "\"useSz1\":" + String(useSz1 ? "true" : "false") + ",";
@@ -370,7 +318,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       snprintf(cleanPath, sizeof(cleanPath), "%s", filename.c_str());
     }
     
-    // Falls .gz hochgeladen wird: unkomprimierte Altdatei sofort entfernen
     if (strstr(cleanPath, ".gz") != NULL) {
       char rawPath[64];
       strncpy(rawPath, cleanPath, sizeof(rawPath));
@@ -391,7 +338,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
   
   if (final) {
     if (uploadFile) {
-      // 1. Falls PC-Zeitstempel übergeben wurde: aktuelle Zeit merken und kurz umstellen
       timeval oldTv;
       bool timeSwapped = false;
       if (targetMtime > 0) {
@@ -401,10 +347,8 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
         timeSwapped = true;
       }
 
-      // 2. Datei schließen (LittleFS stempelt die Datei mit der gerade aktiven Zeit ab)
       uploadFile.close();
 
-      // 3. Echte Systemzeit sofort wiederherstellen
       if (timeSwapped) {
         settimeofday(&oldTv, nullptr);
       }

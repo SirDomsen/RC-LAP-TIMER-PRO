@@ -112,7 +112,6 @@ async function saveConfig() {
       await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
     }
 
-    // Sichere Abfragen mit Optional-Chaining (?.)
     let sz1 = document.getElementById('cfg_use_sz1')?.checked ? "1" : "0";
     let sz2 = document.getElementById('cfg_use_sz2')?.checked ? "1" : "0";
     let sz3 = document.getElementById('cfg_use_sz3')?.checked ? "1" : "0";
@@ -128,14 +127,21 @@ async function saveConfig() {
 
     await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}`, { method: 'POST' });
 
+    // PERFORMANCE FIX: Sende nur Rename-Befehle, wenn sich ein Name geändert hat (Schont Flash & RAM)
     for (let i = 1; i <= MAX_CARS; i++) {
       let driverElem = document.getElementById('cfg_driver_' + i);
       let carElem = document.getElementById('cfg_car_' + i);
       if (driverElem && carElem) {
         let driverVal = driverElem.value.trim() || ('Fahrer ' + i);
         let carVal = carElem.value.trim() || ('Auto ' + i);
-        carNamesMap[i] = { driver: driverVal, car: carVal }; 
-        await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
+        
+        let oldDriver = carNamesMap[i]?.driver;
+        let oldCar = carNamesMap[i]?.car;
+        
+        if (driverVal !== oldDriver || carVal !== oldCar) {
+          carNamesMap[i] = { driver: driverVal, car: carVal }; 
+          await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
+        }
       }
     }
   } catch (err) { 
