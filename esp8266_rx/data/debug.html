@@ -4,7 +4,13 @@
   <title>RC Lap Timer Pro - Debug Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- Asynchrones Laden: blockiert offline im AP-Modus nicht mehr -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  </noscript>
   <style>
     :root {
       --bg-dark: #0a0c10;
@@ -19,7 +25,7 @@
       --text-muted: #8b949e;
     }
     body {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg-dark);
       color: var(--text-main);
       margin: 0;
@@ -146,11 +152,10 @@
           if (data.ping) {
             let rtt = Date.now() - data.ping;
             document.getElementById('valPing').innerText = rtt + ' ms';
-            console.log(`[WebSocket RTT] Latenz: ${rtt} ms`);
           }
         } catch(err) {}
       };
-      ws.onclose = () => setTimeout(initDebugWebSocket, 2000);
+      ws.onclose = () => setTimeout(initDebugWebSocket, 2500);
     }
 
     function sendWsPing() {
@@ -196,8 +201,8 @@
     }
 
     async function fetchDebugPackets() {
-      let isChecked = document.getElementById('debugToggle').checked;
-      let isFrozen = document.getElementById('freezeToggle').checked;
+      let isChecked = document.getElementById('debugToggle')?.checked;
+      let isFrozen = document.getElementById('freezeToggle')?.checked;
       if (!isChecked || isFrozen) return;
 
       try {
@@ -230,9 +235,9 @@
 
     fetchDebugStatus();
     initDebugWebSocket();
-    setInterval(fetchSystemMetrics, 1500);
-    setInterval(sendWsPing, 2000);
-    setInterval(fetchDebugPackets, 1500);
+    setInterval(fetchSystemMetrics, 2500);
+    setInterval(sendWsPing, 3000);
+    setInterval(fetchDebugPackets, 2500);
   </script>
 </body>
 </html>

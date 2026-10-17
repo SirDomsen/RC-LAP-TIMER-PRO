@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '2.9.7';
+window.UI_VERSION = '2.9.8';
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -203,7 +203,6 @@ async function updateData() {
         if (r.bestLap > 0 && (minBestLap === 0 || r.bestLap < minBestLap)) minBestLap = r.bestLap;
       });
 
-      // Synchronisiert die beste Rundenzeit der Session
       if (minBestLap > 0) {
         sessionBestLap = minBestLap;
       }
@@ -212,14 +211,12 @@ async function updateData() {
         carNamesMap[row.id] = { driver: row.driver, car: row.car };
         let defaultPosition = row._defaultPos;
         
-        // minBestLap wird mit übergeben, um Fehlinterpretationen zu unterbinden
         checkLapEvents(row, leaderLaps, defaultPosition, minBestLap);
 
         let lastDisplay = '---';
         let lastClass = 'lap-time-neutral';
         let isRaceMode = (currentMode === 2 || currentMode === 3 || currentMode === 4);
 
-        // Boxen- & Pausenerkennung nach Inaktivität
         if (serverMillisOffset > 0 && row.lastSeenMs > 0 && serverMillisOffset >= row.lastSeenMs && !isSessionFinished) {
           let idleMs = serverMillisOffset - row.lastSeenMs;
           let pauseThreshold = Math.max(35000, (row.lastLap > 0 ? row.lastLap * 2.5 : 35000));
@@ -457,7 +454,8 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 2500);
+    // Geschontes 4,5-Sekunden-Intervall gegen TCP-Überlastung bei mehreren Clients
+    pollTimeout = setTimeout(pollData, 4500);
   }
 }
 
@@ -534,7 +532,6 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
     previousLaps[carId] = currentLaps;
     awaitingBaseCrossMap[carId] = false;
 
-    // Verhindert doppelte Ansagen derselben Runde
     if (lastAnnouncedLapMap[carId] === completedLapNum) {
       return;
     }
@@ -572,23 +569,19 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       }
     }
 
-    // --- ABSOLUTE & PERSÖNLICHE BESTZEIT PRÜFUNG ---
     let isPersonalBest = false;
     let isAbsoluteBest = false;
 
-    // sessionBestLap immer synchronisieren
     if (minBestLap > 0 && (sessionBestLap === 0 || minBestLap < sessionBestLap)) {
       sessionBestLap = minBestLap;
     }
 
     if (completedLapNum > 1 && lastLapMs > 0) {
-      // Persönliche Bestzeit: Die gefahrene Zeit muss mindestens dem car.bestLap entsprechen
       if (car.bestLap > 0 && lastLapMs <= car.bestLap && (prevBest === 0 || lastLapMs < prevBest)) {
         isPersonalBest = true;
         previousBestLaps[carId] = lastLapMs;
       }
 
-      // Absolute Bestzeit: Nur wenn es ein PB ist UND schneller/gleich der Session-Bestzeit
       if (isPersonalBest && sessionBestLap > 0 && lastLapMs <= sessionBestLap) {
         sessionBestLap = lastLapMs;
         isAbsoluteBest = true;
