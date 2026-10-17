@@ -2,6 +2,7 @@
 #include "ir_decoder.h"
 #include "storage.h"
 #include "web_server.h"
+#include <sys/time.h>
 
 uint32_t lastCrossTime[MAX_CARS + 1]   = {0};
 uint32_t lastLapDuration[MAX_CARS + 1] = {0};
@@ -132,7 +133,12 @@ void syncClockOnce(uint64_t clientTsSec) {
   if (baseUnixTimestampSec == 0 || clientTsSec > baseUnixTimestampSec + 3600) {
     baseUnixTimestampSec = clientTsSec;
     baseMillis = millis();
-    Serial.printf("[ClockSync] Basis-Uhrzeit gesetzt auf: %llu\n", clientTsSec);
+    
+    // Stellt die interne ESP8266-Systemzeit für LittleFS-Dateien
+    timeval tv = { (time_t)clientTsSec, 0 };
+    settimeofday(&tv, nullptr);
+
+    Serial.printf("[ClockSync] Basis-Uhrzeit & System-RTC gesetzt auf: %llu\n", clientTsSec);
   }
 }
 

@@ -237,7 +237,6 @@ async function renderDriversOverview() {
   list.innerHTML = html;
 }
 
-// Lädt Sessions und ergänzt automatisch abgebrochene Läufe (z. B. nach Stromausfall)
 async function loadSessionsOverviewByMode(modeFilter, containerId) {
   let container = document.getElementById(containerId);
   container.innerHTML = '<p style="color:var(--text-muted);">Lade Historie...</p>';
@@ -253,7 +252,6 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
       return s.mode === modeFilter;
     });
 
-    // Alle gefahrenen Runden dieses Modus aus dem Flash laden
     let allFlashLaps = [];
     for (let i = 1; i <= MAX_CARS; i++) {
       try {
@@ -283,22 +281,21 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
       } catch (e) {}
     }
 
-    // Ermittle Runden, die in KEINER gespeicherten Session liegen (z.B. wegen Stromausfall oder Reset)
     let orphanLaps = allFlashLaps.filter(l => {
       let lapSec = l.ts < 10000000000 ? l.ts : Math.floor(l.ts / 1000);
       for (let s of savedSessions) {
         let sStart = s.startTs ? (s.startTs < 10000000000 ? s.startTs : Math.floor(s.startTs / 1000)) : (s.ts - 3600);
         let sEnd = s.endTs ? (s.endTs < 10000000000 ? s.endTs : Math.floor(s.endTs / 1000)) : s.ts;
         if (lapSec >= (sStart - 5) && lapSec <= (sEnd + 5)) {
-          return false; // Gehört zu einer bekannten Session
+          return false;
         }
       }
-      return true; // Verwaiste Runde (Stromausfall / nicht abgeschlossener Lauf)
+      return true;
     });
 
     let orphanSessions = [];
     if (orphanLaps.length > 0) {
-      orphanSessions = clusterLapsIntoSessions(orphanLaps, modeFilter, true);
+      orphanSessions = clusterLapsIntoSessions(orphanLaps, modeFilter);
     }
 
     let allSessions = [...savedSessions, ...orphanSessions];
@@ -392,7 +389,7 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
   }
 }
 
-function clusterLapsIntoSessions(lapsArray, modeFilter, isOrphanRecovery = false) {
+function clusterLapsIntoSessions(lapsArray, modeFilter) {
   lapsArray.sort((a, b) => a.ts - b.ts);
 
   let sessions = [];
@@ -407,7 +404,7 @@ function clusterLapsIntoSessions(lapsArray, modeFilter, isOrphanRecovery = false
       let prevLap = currentCluster[currentCluster.length - 1];
       let prevTsMs = prevLap.ts < 10000000000 ? prevLap.ts * 1000 : prevLap.ts;
       if (lapTsMs - prevTsMs > clusterTimeoutMs) {
-        sessions.push(buildSessionFromCluster(currentCluster, modeFilter, isOrphanRecovery));
+        sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
         currentCluster = [l];
       } else {
         currentCluster.push(l);
@@ -416,13 +413,13 @@ function clusterLapsIntoSessions(lapsArray, modeFilter, isOrphanRecovery = false
   });
 
   if (currentCluster.length > 0) {
-    sessions.push(buildSessionFromCluster(currentCluster, modeFilter, isOrphanRecovery));
+    sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
   }
 
   return sessions;
 }
 
-function buildSessionFromCluster(clusterLaps, modeFilter, isOrphanRecovery = false) {
+function buildSessionFromCluster(clusterLaps, modeFilter) {
   let carsMap = {};
   clusterLaps.forEach(l => {
     if (!carsMap[l.carId]) {
@@ -457,10 +454,6 @@ function buildSessionFromCluster(clusterLaps, modeFilter, isOrphanRecovery = fal
   if (modeVal === 3) modeName = "Rennen (Zeit)";
   if (modeVal === 4) modeName = "Dragrace";
 
-  if (modeVal === 4) {
-    modeName = "Dragrace";
-  }
-
   let firstLap = clusterLaps[0];
   let lastLap = clusterLaps[clusterLaps.length - 1];
   let startTs = firstLap.ts < 10000000000 ? firstLap.ts : Math.floor(firstLap.ts / 1000);
@@ -486,7 +479,6 @@ function toggleSessionDetails(ts) {
   }
 }
 
-// Rückwärts-Suche bis Runde 1 verhindert zuverlässig das Vermischen alter Durchgänge
 async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLapsCount, sessionOverallBest, isDrag, modeFilter) {
   let trElem = document.getElementById(elemId + '_tr');
   let contentElem = document.getElementById(elemId + '_content');
@@ -531,7 +523,6 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
 
     let runLaps = [];
     if (candidatesBeforeEnd.length > 0) {
-      // Vom Session-Ende rückwärts sammeln bis Runde 1 erreicht ist!
       for (let i = candidatesBeforeEnd.length - 1; i >= 0; i--) {
         let l = candidatesBeforeEnd[i];
         let lapMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
@@ -543,7 +534,7 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
         runLaps.unshift(l);
 
         if (l.lap === 1) {
-          break; // Runde 1 erreicht: Dieser Lauf ist vollständig abgegrenzt!
+          break;
         }
       }
     }
@@ -560,7 +551,6 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
   }
 }
 
-// Baut die fahrerspezifische Tabelle mit Split- und Sektorendarstellung auf
 function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag) {
   let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0, minTime = 0;
   let maxSz1 = 0, maxSz2 = 0, maxSz3 = 0, maxSz4 = 0, maxTime = 0;

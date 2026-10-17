@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 
 void handleGetLaps(AsyncWebServerRequest *request);
+void handleGetStationsStatus(AsyncWebServerRequest *request);
 void handlePostSession(AsyncWebServerRequest *request);
 void handleGetTimeLeft(AsyncWebServerRequest *request);
 void handleGetRecent(AsyncWebServerRequest *request);
@@ -16,13 +17,6 @@ void handlePostSetDeadtime(AsyncWebServerRequest *request);
 void handlePostRename(AsyncWebServerRequest *request);
 void handlePostReset(AsyncWebServerRequest *request);
 
-// Sektorstationen-Status & Debug
-void handleGetStationsStatus(AsyncWebServerRequest *request);
-void handleGetDebugPackets(AsyncWebServerRequest *request);
-void handleGetDebugStatus(AsyncWebServerRequest *request);
-void handlePostSetDebugMode(AsyncWebServerRequest *request);
-
-// Zeit-Synchronisierung, Session-Historie & Statistik
 void handlePostSyncTime(AsyncWebServerRequest *request);
 void handleGetStats(AsyncWebServerRequest *request);
 void handlePostDeleteLap(AsyncWebServerRequest *request);
@@ -31,8 +25,13 @@ void handlePostDeleteAllStats(AsyncWebServerRequest *request);
 void handleGetSessions(AsyncWebServerRequest *request);
 void handlePostSaveSessionResult(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);
-void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleGetSectorConfig(AsyncWebServerRequest *request);
 void handlePostSetSectorConfig(AsyncWebServerRequest *request);
+
+void handleGetDebugPackets(AsyncWebServerRequest *request);
+void handleGetDebugStatus(AsyncWebServerRequest *request);
+void handlePostSetDebugMode(AsyncWebServerRequest *request);
+
+void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final);
 
 #endif

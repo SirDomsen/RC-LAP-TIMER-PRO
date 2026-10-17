@@ -4,6 +4,8 @@
 #include "esp_now_base.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <sys/time.h>
+#include <utime.h>
 
 void handleGetLaps(AsyncWebServerRequest *request) {
   static String json;
@@ -351,13 +353,36 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
-void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+// Heap-schonender Upload-Handler mit PC-Zeitstempel (mtime)
+void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+  static char cleanPath[64];
+  static uint32_t targetMtime = 0;
+
   if (!index) {
-    if (!filename.startsWith("/")) {
-      filename = "/" + filename;
+    targetMtime = 0;
+    if (request->hasParam("mtime")) {
+      targetMtime = strtoul(request->getParam("mtime")->value().c_str(), NULL, 10);
     }
-    Serial.printf("[Upload] Start: %s\n", filename.c_str());
-    uploadFile = LittleFS.open(filename, "w");
+
+    if (!filename.startsWith("/")) {
+      snprintf(cleanPath, sizeof(cleanPath), "/%s", filename.c_str());
+    } else {
+      snprintf(cleanPath, sizeof(cleanPath), "%s", filename.c_str());
+    }
+    
+    // Falls .gz hochgeladen wird: unkomprimierte Altdatei sofort entfernen
+    if (strstr(cleanPath, ".gz") != NULL) {
+      char rawPath[64];
+      strncpy(rawPath, cleanPath, sizeof(rawPath));
+      char *gzExt = strstr(rawPath, ".gz");
+      if (gzExt) *gzExt = '\0';
+      if (LittleFS.exists(rawPath)) {
+        LittleFS.remove(rawPath);
+      }
+    }
+
+    Serial.printf("[Upload] Start: %s (PC-mtime: %u)\n", cleanPath, targetMtime);
+    uploadFile = LittleFS.open(cleanPath, "w");
   }
   
   if (uploadFile) {
@@ -366,14 +391,31 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
   
   if (final) {
     if (uploadFile) {
+      // 1. Falls PC-Zeitstempel übergeben wurde: aktuelle Zeit merken und kurz umstellen
+      timeval oldTv;
+      bool timeSwapped = false;
+      if (targetMtime > 0) {
+        gettimeofday(&oldTv, nullptr);
+        timeval newTv = { (time_t)targetMtime, 0 };
+        settimeofday(&newTv, nullptr);
+        timeSwapped = true;
+      }
+
+      // 2. Datei schließen (LittleFS stempelt die Datei mit der gerade aktiven Zeit ab)
       uploadFile.close();
-      Serial.printf("[Upload] Fertig: %s (%u Bytes)\n", filename.c_str(), index + len);
-      
-      if (filename == "/names.json") {
+
+      // 3. Echte Systemzeit sofort wiederherstellen
+      if (timeSwapped) {
+        settimeofday(&oldTv, nullptr);
+      }
+
+      Serial.printf("[Upload] Fertig: %s (%u Bytes, PC-mtime: %u)\n", filename.c_str(), index + len, targetMtime);
+
+      if (filename.indexOf("names.json") >= 0) {
         loadNamesFromFS();
       } 
-      else if (filename.endsWith(".json")) {
-        File bFile = LittleFS.open(filename, "r");
+      else if (filename.indexOf("backup.json") >= 0) {
+        File bFile = LittleFS.open("/" + filename, "r");
         if (bFile) {
           JsonDocument doc;
           DeserializationError err = deserializeJson(doc, bFile);
@@ -421,6 +463,5 @@ void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t in
         }
       }
     }
-    request->send(200, "text/plain", "Datei erfolgreich wiederhergestellt!");
   }
 }
