@@ -40,11 +40,21 @@ struct __attribute__((packed)) AlivePacket {
   uint8_t batteryLow;
 };
 
+// Das neue geheime Paket für den Wartungsmodus
+struct __attribute__((packed)) OtaTriggerPacket {
+  uint32_t magicCode;
+};
+#define OTA_MAGIC_CODE 0x07A1234
+
 uint32_t localSyncOffsetMs = 0;
 bool timeSynced = false;
 uint8_t currentStratum = 255;
 bool wifiConnected = false;
 bool batteryLow = false;
+
+// Status Flags für den Wartungsmodus
+bool triggerMaintenance = false;
+bool maintenanceMode = false;
 
 static uint32_t ledPulseEndMs = 0;
 static bool ledPulseActive = false;
@@ -71,22 +81,44 @@ uint32_t getSynchronizedTimeMs() {
   return millis() + localSyncOffsetMs;
 }
 
+// Hilfsfunktion: Gelbe LED im 3Hz Takt blinken lassen (Active LOW)
+void blinkSignalLed(int count) {
+  for (int i = 0; i < count; i++) {
+    digitalWrite(LED_SIGNAL, LOW); // AN
+    delay(166);
+    digitalWrite(LED_SIGNAL, HIGH); // AUS
+    delay(166);
+  }
+}
+
 void onDataSent(u8 *mac_addr, u8 sendStatus) {}
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  // 1. Kaskadierender Time-Sync (Downstream: Basis -> SZ1 -> SZ2 -> SZ3)
+  // OTA Trigger empfangen
+  if (len == sizeof(OtaTriggerPacket)) {
+    OtaTriggerPacket ota;
+    memcpy(&ota, incomingData, sizeof(ota));
+    if (ota.magicCode == OTA_MAGIC_CODE) {
+      triggerMaintenance = true;
+      #if STATION_ID < 3
+      // An hintere Stationen weiterleiten
+      esp_now_send(broadcastMac, (uint8_t *)&ota, sizeof(ota));
+      #endif
+    }
+    return;
+  }
+
+  // 1. Kaskadierender Time-Sync
   if (len == sizeof(SyncPacket)) {
     SyncPacket sync;
     memcpy(&sync, incomingData, sizeof(sync));
 
-    // Akzeptiere nur Syncs von Stationen, die näher an der Basis sind
     if (sync.stratum < currentStratum || !timeSynced) {
       localSyncOffsetMs = sync.baseTimeMs - millis();
       timeSynced = true;
       currentStratum = sync.stratum + 1;
 
       #if STATION_ID < 3
-      // Synchronisation an weiter entfernte Stationen mit eigenem berechneten Zeitstempel weiterreichen
       SyncPacket forwardSync;
       forwardSync.baseTimeMs = getSynchronizedTimeMs();
       forwardSync.stratum = currentStratum;
@@ -96,7 +128,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 2. Alive-Pakete (Upstream: SZ3 -> SZ2 -> SZ1 -> Basis)
+  // 2. Alive-Pakete
   if (len == sizeof(AlivePacket)) {
     AlivePacket alive;
     memcpy(&alive, incomingData, sizeof(alive));
@@ -109,7 +141,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
   
-  // 3. Sektor-Pakete (Upstream: SZ3 -> SZ2 -> SZ1 -> Basis)
+  // 3. Sektor-Pakete
   if (len == sizeof(SectorPacket)) {
     SectorPacket pkt;
     memcpy(&pkt, incomingData, sizeof(pkt));
@@ -129,43 +161,59 @@ void setup() {
   digitalWrite(1, LOW);
   pinMode(0, INPUT_PULLUP);
 
+  digitalWrite(LED_SIGNAL, HIGH); // LED Initial aus
+
+  // 1. Kurzes 333ms Aufblitzen als Boot-Indikator
   digitalWrite(LED_SIGNAL, LOW);
-  delay(200);
+  delay(333);
   digitalWrite(LED_SIGNAL, HIGH);
+  delay(100);
 
   WiFi.mode(WIFI_STA);
   IPAddress gateway(192, 168, 0, 1);
   IPAddress subnet(255, 255, 255, 0);
   WiFi.config(local_IP, gateway, subnet);
 
+  // 2. Versuch: Heim-WLAN für Schreibtisch-Modus
   WiFi.begin(HOME_SSID, HOME_PASS);
   uint32_t startAttemptTime = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 4000) {
     delay(200);
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
+  uint8_t activeChannel = 1;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    // Zuhause: WLAN bleibt an, IP ist aktiv, OTA bereit
+    wifiConnected = true;
+    activeChannel = WiFi.channel();
+  } else {
+    // Auf der Strecke: Heim-WLAN nicht gefunden -> Renn-Modus!
+    blinkSignalLed(5); // 5x Blinken signalisiert den Wechsel in den Stealth-ESP-NOW-Modus
+    
     WiFi.disconnect();
     delay(100);
-    WiFi.begin(AP_SSID, AP_PASS);
-    startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 4000) {
-      delay(200);
+    wifiConnected = false;
+
+    // Kanal der Basisstation für ESP-NOW erschnüffeln
+    int n = WiFi.scanNetworks(false, true);
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i).equals(HOME_SSID) || WiFi.SSID(i).equals(AP_SSID)) {
+        activeChannel = WiFi.channel(i);
+        break;
+      }
     }
+    wifi_set_channel(activeChannel);
   }
 
-  wifiConnected = (WiFi.status() == WL_CONNECTED);
-  if (!wifiConnected) {
-    wifi_set_channel(1);
-  }
-
-  digitalWrite(LED_SIGNAL, LOW); // Dauerhaft AN im Normalbetrieb
+  // Erfolgreich hochgefahren -> LED dauerhaft an
+  digitalWrite(LED_SIGNAL, LOW); 
 
   if (esp_now_init() == 0) {
     esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
-    esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
+    esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, activeChannel, NULL, 0);
   }
 
   initIRDecoder();
@@ -175,7 +223,21 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  // Switch in den Wartungsmodus, wenn Befehl über ESP-NOW kam
+  if (triggerMaintenance && !maintenanceMode) {
+    triggerMaintenance = false;
+    maintenanceMode = true;
+    
+    // WLAN reaktivieren und heimlich in die Basis einloggen
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(AP_SSID, AP_PASS);
+    // Wir lassen es im Hintergrund verbinden, OTA greift, sobald verbunden
+  }
+
+  // OTA Anfragen verarbeiten (funktioniert nur, wenn im Heimnetz oder im Wartungsmodus)
+  if (wifiConnected || maintenanceMode) {
+    ArduinoOTA.handle();
+  }
 
   static uint32_t lastBatteryCheckMs = 0;
   if (millis() - lastBatteryCheckMs > 10000) {
@@ -183,9 +245,9 @@ void loop() {
     batteryLow = (digitalRead(0) == HIGH);
   }
 
-  // Alive-Paket alle 3 Sekunden mit echtem Akku-Status senden
+  // Alive-Paket alle 3 Sekunden senden (im Wartungsmodus pausieren wir das Senden, um Störungen zu vermeiden)
   static uint32_t lastAliveMs = 0;
-  if (millis() - lastAliveMs > 3000) {
+  if (!maintenanceMode && millis() - lastAliveMs > 3000) {
     lastAliveMs = millis();
     AlivePacket alive;
     alive.stationId = STATION_ID;
@@ -193,18 +255,28 @@ void loop() {
     esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
   }
 
-  // LED-Status: 0.5Hz Blinken bei Unterspannung oder kurzer Aus-Puls bei Durchfahrt
-  if (batteryLow) {
+  // === LED STATUS LOGIK ===
+  if (maintenanceMode) {
+    // Höchste Prio: 3Hz Dauerblinken im Wartungsmodus
+    bool blinkState = (millis() / 166) % 2 == 0;
+    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
+  } else if (batteryLow) {
+    // Zweithöchste Prio: 0.5Hz Blinken bei leerem Akku
     bool blinkState = (millis() / 1000) % 2 == 0;
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
   } else if (ledPulseActive) {
+    // Dritte Prio: Flackern bei IR-Durchfahrt
     if (millis() >= ledPulseEndMs) {
-      digitalWrite(LED_SIGNAL, LOW);
+      digitalWrite(LED_SIGNAL, LOW); // Zurück auf Dauer-An
       ledPulseActive = false;
     }
+  } else {
+    // Normalzustand: Dauer-An (Active LOW)
+    digitalWrite(LED_SIGNAL, LOW);
   }
 
-  if (newCodeAvailable) {
+  // IR-Verarbeitung nur im Renn-Modus zulassen (nicht beim Flashen stören!)
+  if (newCodeAvailable && !maintenanceMode) {
     newCodeAvailable = false;
     
     uint32_t triggerTime = getSynchronizedTimeMs();
@@ -218,7 +290,7 @@ void loop() {
       uint32_t nowMs = millis();
 
       if (!batteryLow) {
-        digitalWrite(LED_SIGNAL, HIGH);
+        digitalWrite(LED_SIGNAL, HIGH); // LED Kurz aus (Impuls)
         ledPulseEndMs = nowMs + 40;
         ledPulseActive = true;
       }

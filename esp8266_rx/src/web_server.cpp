@@ -10,6 +10,10 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
+extern "C" {
+  #include <espnow.h>
+}
+
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 
@@ -186,6 +190,21 @@ void initNetworkAndServer() {
     json += ESP.getCpuFreqMHz();
     json += "}";
     request->send(200, "application/json", json);
+  });
+
+  server.on("/api/trigger_sz_ota", HTTP_POST, [](AsyncWebServerRequest *request) {
+    struct __attribute__((packed)) OtaTriggerPacket {
+      uint32_t magicCode;
+    };
+    OtaTriggerPacket pkt;
+    pkt.magicCode = 0x07A1234;
+    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    
+    for(int i=0; i<3; i++) {
+      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+      delay(50);
+    }
+    request->send(200, "text/plain", "OTA Trigger gesendet");
   });
 
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);

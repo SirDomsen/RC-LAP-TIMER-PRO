@@ -84,7 +84,6 @@
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
         <button class="btn btn-light" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
-        <!--Direktlink zur Debug-Konsole -->
         <button class="btn btn-purple" onclick="location.href='/debug'">📡 Debug</button>
       </div>
       <div style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
@@ -127,7 +126,6 @@
     </div>
   </div>
 
-  <!-- STATISTIKEN ÜBERSICHT MODAL (4 BEREICHE + FAHRER) -->
   <div id="statsOverviewModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -165,7 +163,6 @@
     </div>
   </div>
 
-  <!-- EINZELNE FAHRER STATISTIK (DETAILS) -->
   <div id="statsModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
@@ -200,7 +197,6 @@
     </div>
   </div>
 
-  <!-- EINSTELLUNGEN-MODAL -->
   <div id="configModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
@@ -262,6 +258,15 @@
             <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
             <strong>Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>
           </label>
+        </div>
+
+        <!-- NEU: Der Wartungs-Trigger -->
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-orange);">
+          <h4 style="color:var(--neon-orange); margin:0 0 5px 0; font-family:var(--font-display);">🔧 Sektorstationen OTA-Wartung</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
+            Weckt die Sektorstationen aus dem Funk-Modus, reaktiviert ihr WLAN und verbindet sie mit der Basis für OTA-Updates auf dem Feld. <strong style="color:var(--neon-red);">Achtung: Zeitmessung pausiert!</strong>
+          </p>
+          <button class="btn btn-warning" style="width:100%; padding:8px;" onclick="triggerSZOta()">Wartungs-Befehl funken</button>
         </div>
 
         <h4 style="color:var(--neon-cyan); margin-bottom:8px; font-family:var(--font-display);">Transponder-IDs zuweisen (Fahrer & Auto)</h4>

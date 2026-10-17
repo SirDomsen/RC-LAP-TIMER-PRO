@@ -146,7 +146,6 @@ async function saveConfig() {
 
     await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}`, { method: 'POST' });
 
-    // PERFORMANCE FIX: Sende nur Rename-Befehle, wenn sich ein Name geändert hat (Schont Flash & RAM)
     for (let i = 1; i <= MAX_CARS; i++) {
       let driverElem = document.getElementById('cfg_driver_' + i);
       let carElem = document.getElementById('cfg_car_' + i);
@@ -168,5 +167,15 @@ async function saveConfig() {
   } finally {
     closeConfigModal();
     updateData();
+  }
+}
+
+async function triggerSZOta() {
+  if(!confirm("Wartungsmodus an alle Sektorstationen funken?\nDie Zeitmessung wird unterbrochen, bis die SZs neu gestartet werden!")) return;
+  try {
+    await fetch('/api/trigger_sz_ota', { method: 'POST' });
+    alert("Signal erfolgreich gesendet!\nDie Stationen sollten nun dauerhaft schnell (3Hz) blinken, ihr WLAN hochfahren und sich mit der Basis verbinden.\nDu kannst sie in ca. 5-10 Sekunden über VS Code per IP-Adresse flashen.");
+  } catch(e) {
+    alert("Fehler beim Senden: " + e.message);
   }
 }
