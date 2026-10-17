@@ -244,8 +244,20 @@ void initNetworkAndServer() {
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
-  // --- CATCH-ALL & CAPTIVE PORTAL ---
-  server.onNotFound([](AsyncWebServerRequest *request) {
+ // --- CATCH-ALL & CAPTIVE PORTAL ---
+  auto serveCaptivePage = [](AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/captive.html.gz")) {
+      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/captive.html.gz", "text/html");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    } else if (LittleFS.exists("/captive.html")) {
+      request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
+    } else {
+      request->send(200, "text/html", CAPTIVE_HTML_FALLBACK, captiveProcessor);
+    }
+  };
+
+  server.onNotFound([serveCaptivePage](AsyncWebServerRequest *request) {
     String url = request->url();
     if (url.startsWith("/api/")) {
       request->send(404, "application/json", "{\"error\":\"Not Found\"}");
@@ -256,39 +268,42 @@ void initNetworkAndServer() {
     if (host == currentActiveIP.toString() || host == "laptimer.local" || host.indexOf("192.168.") >= 0) {
       if (LittleFS.exists(url)) {
         request->send(LittleFS, url, "text/html");
-      } else if (LittleFS.exists(url + ".gz")) {
-        request->send(LittleFS, url + ".gz", "text/html");
-      } else if (url == "/" || url == "/index.html") {
+        return;
+      } 
+      if (LittleFS.exists(url + ".gz")) {
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, url + ".gz", "text/html");
+        response->addHeader("Content-Encoding", "gzip");
+        request->send(response);
+        return;
+      } 
+      if (url == "/" || url == "/index.html") {
         if (LittleFS.exists("/index.html.gz")) {
-          request->send(LittleFS, "/index.html.gz", "text/html");
+          AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html.gz", "text/html");
+          response->addHeader("Content-Encoding", "gzip");
+          request->send(response);
         } else {
           request->send(LittleFS, "/index.html", "text/html");
         }
-      } else {
-        request->send(404, "text/plain", "404: Not Found");
+        return;
       }
+      request->send(404, "text/plain", "404: Not Found");
       return;
     }
 
+    // Android / Windows Erkennung
     if (url.indexOf("generate_204") >= 0 || url.indexOf("gen_204") >= 0) {
-      if (LittleFS.exists("/captive.html")) {
-        request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
-      } else {
-        request->send(200, "text/html", CAPTIVE_HTML_FALLBACK, captiveProcessor);
-      }
+      serveCaptivePage(request);
       return;
     }
     
+    // Apple iOS / macOS Erkennung
     if (url.indexOf("captive.apple.com") >= 0 || url.indexOf("hotspot-detect") >= 0) {
       request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
       return;
     }
 
-    if (LittleFS.exists("/captive.html")) {
-      request->send(LittleFS, "/captive.html", "text/html", false, captiveProcessor);
-    } else {
-      request->send(200, "text/html", CAPTIVE_HTML_FALLBACK, captiveProcessor);
-    }
+    // Standard Captive Portal Aufruf
+    serveCaptivePage(request);
   });
 
   ws.onEvent(onWsEvent);
