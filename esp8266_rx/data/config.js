@@ -1,4 +1,5 @@
 let initialCacheState = null;
+let pendingWifiMode = 0;
 
 function openConfigModal() {
   let modal = document.getElementById('configModal');
@@ -118,7 +119,6 @@ async function saveConfig() {
 
     let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
     let hsPass = document.getElementById('cfg_hotspot_pass')?.value || '';
-    // NUR Speichern. Der Broadcast an die Sektorstationen passiert erst beim gezielten AP-Wechsel.
     await fetch('/api/sethotspot?ssid=' + encodeURIComponent(hsSsid) + '&pass=' + encodeURIComponent(hsPass), { method: 'POST' });
 
     let deadtimeElem = document.getElementById('cfg_deadtime');
@@ -182,38 +182,67 @@ async function saveConfig() {
   }
 }
 
-// Löst den gezielten Hotspot-Verbindungsaufbau aus
-async function connectToHotspotNow() {
+async function forceWifiMode(mode) {
   let s = document.getElementById('cfg_hotspot_ssid')?.value || '';
   let p = document.getElementById('cfg_hotspot_pass')?.value || '';
-  if (!s) { 
+  
+  if (mode === 2 && !s) { 
     alert("Bitte erst eine Hotspot SSID eintragen!"); 
     return; 
   }
   
-  // Im ESP zwischenspeichern (noch nicht broadcasten)
-  await fetch('/api/sethotspot?ssid=' + encodeURIComponent(s) + '&pass=' + encodeURIComponent(p), { method: 'POST' });
+  pendingWifiMode = mode;
   
-  // Berechnung der gekürzten SSID für die UI-Anzeige
-  let maxLen = 31 - 4 - 15; 
-  let shortSsid = s;
-  if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
+  let modeName = "";
+  let expectedSsid = "";
+  
+  if (mode === 1) { 
+    modeName = "Heim-WLAN"; 
+    expectedSsid = "LT_Heimnetz-[IP-Adresse]"; 
+  }
+  else if (mode === 2) { 
+    modeName = "Hotspot"; 
+    let maxLen = 31 - 4 - 15; 
+    let shortSsid = s;
+    if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
+    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
+  }
+  else { 
+    modeName = "AP-Modus"; 
+    expectedSsid = "Laptimer_AP (Kein Geister-WLAN)"; 
+  }
+  
+  let desc = document.getElementById('alertModalDesc');
+  if (desc) desc.innerText = "Das Laptimer-System bricht alle aktuellen Verbindungen ab und wechselt sofort in: " + modeName + ".";
   
   let displaySsid = document.getElementById('alertSsidDisplay');
-  if (displaySsid) displaySsid.innerText = "LT_" + shortSsid + "-[IP-Adresse]";
+  if (displaySsid) displaySsid.innerText = expectedSsid;
 
-  // Settings-Menü schließen und Warn-Modal öffnen
+  let displayIp = document.getElementById('alertIpDisplay');
+  if (displayIp) {
+    if (mode === 0) displayIp.innerText = "192.168.0.8";
+    else displayIp.innerText = "DIE.ANGEZEIGTE.IP";
+  }
+
   closeConfigModal();
   let modal = document.getElementById('connectionAlertModal');
   if (modal) modal.style.display = 'block';
 }
 
-function confirmConnectionAlert() {
+async function confirmConnectionAlert() {
   let modal = document.getElementById('connectionAlertModal');
   if (modal) modal.style.display = 'none';
 
-  // JETZT erst feuert die Basis den ESP-NOW Broadcast an die SZs und kappt danach ihr eigenes WLAN
-  fetch('/api/connecthotspot', { method: 'POST' });
+  let s = document.getElementById('cfg_hotspot_ssid')?.value || '';
+  let p = document.getElementById('cfg_hotspot_pass')?.value || '';
+  
+  // Die eingegebenen Hotspot-Daten zur Sicherheit in den Flash schieben
+  if (pendingWifiMode === 2 || pendingWifiMode === 1) { 
+    await fetch('/api/sethotspot?ssid=' + encodeURIComponent(s) + '&pass=' + encodeURIComponent(p), { method: 'POST' });
+  }
+  
+  // Abflug! Basisstation triggern.
+  fetch('/api/switchwifi?mode=' + pendingWifiMode, { method: 'POST' });
 }
 
 async function triggerSZOta() {

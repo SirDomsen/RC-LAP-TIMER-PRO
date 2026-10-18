@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.0.0'; // Version für Cache-Control erhöht
+window.UI_VERSION = '3.0.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -444,9 +444,16 @@ function finishSessionNow() {
 let pollTimeout = null;
 let isPolling = false;
 
-// INTELLIGENTES POLLING: Pausiert Hintergrundabfragen, wenn Modals offen sind (Entlastet ESP-LittleFS!)
+// FIX: Smart Polling entlastet den ESP8266 wenn das Fenster inaktiv ist
 async function pollData() {
   if (isPolling) return;
+  
+  if (document.hidden) {
+    clearTimeout(pollTimeout);
+    pollTimeout = setTimeout(pollData, 3000);
+    return;
+  }
+  
   isPolling = true;
   try {
     let mConfig = document.getElementById('configModal');
@@ -466,10 +473,8 @@ async function pollData() {
     isPolling = false;
     clearTimeout(pollTimeout);
     
-    // JITTER HINZUGEFÜGT: Verzögert die Requests zufällig um bis zu 2 Sekunden
-    // Dadurch wird verhindert, dass alle 5 Clients gleichzeitig aufschlagen.
-    let randomJitter = Math.floor(Math.random() * 2000);
-    pollTimeout = setTimeout(pollData, 3500 + randomJitter);
+    let randomJitter = Math.floor(Math.random() * 1500);
+    pollTimeout = setTimeout(pollData, 5000 + randomJitter);
   }
 }
 

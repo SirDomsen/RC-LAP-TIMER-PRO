@@ -59,6 +59,12 @@ struct __attribute__((packed)) HotspotAckPacket {
   uint8_t stationId;
 };
 
+#define WIFI_SWITCH_MAGIC 0x08B2347
+struct __attribute__((packed)) WifiSwitchPacket {
+  uint32_t magicCode;
+  uint8_t mode; 
+};
+
 uint32_t localSyncOffsetMs = 0;
 bool timeSynced = false;
 uint8_t currentStratum = 255;
@@ -71,7 +77,9 @@ bool maintenanceMode = false;
 String dynamicSsid = "";
 String dynamicPass = "";
 bool pendingHotspotAck = false;
-bool triggerNewHotspot = false;
+
+volatile bool pendingWifiSwitch = false;
+volatile uint8_t targetWifiMode = 0;
 
 #define EEPROM_MAGIC_HOTSPOT 0x5B
 
@@ -81,7 +89,12 @@ static bool ledPulseActive = false;
 static uint32_t lastSeenSignalTime[MAX_CARS + 1] = {0};
 const uint32_t SECTOR_CLEARANCE_MS = 2000; 
 
-#define RELAY_CACHE_SIZE 8
+#define RELAY_QUEUE_SIZE 8
+volatile SectorPacket relayQueue[RELAY_QUEUE_SIZE];
+volatile uint8_t relayQueueHead = 0;
+volatile uint8_t relayQueueTail = 0;
+
+#define RELAY_CACHE_SIZE 16
 static uint32_t recentRelayedIds[RELAY_CACHE_SIZE] = {0};
 static uint8_t relayCacheIndex = 0;
 
@@ -131,21 +144,63 @@ uint32_t getSynchronizedTimeMs() {
 
 void blinkSignalLed(int count) {
   for (int i = 0; i < count; i++) {
-    digitalWrite(LED_SIGNAL, LOW); // AN
+    digitalWrite(LED_SIGNAL, LOW); 
     delay(166);
-    digitalWrite(LED_SIGNAL, HIGH); // AUS
+    digitalWrite(LED_SIGNAL, HIGH); 
     delay(166);
+  }
+}
+
+void executeWifiSwitch(uint8_t mode) {
+  digitalWrite(LED_SIGNAL, HIGH); 
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  
+  uint32_t startMs = millis();
+  
+  if (mode == 1) { 
+    IPAddress gateway(192, 168, 0, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.config(local_IP, gateway, subnet);
+    WiFi.begin(HOME_SSID, HOME_PASS);
+    while(WiFi.status() != WL_CONNECTED && millis() - startMs < 10000) { delay(100); }
+  } 
+  else if (mode == 2 && dynamicSsid.length() > 0) { 
+    WiFi.config(0u, 0u, 0u); 
+    WiFi.begin(dynamicSsid.c_str(), dynamicPass.c_str());
+    while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) { delay(100); }
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    wifi_set_channel(WiFi.channel());
+    digitalWrite(LED_SIGNAL, LOW); 
+  } else {
+    wifiConnected = false;
+    WiFi.disconnect(true);
+    delay(100);
+    int activeChannel = 1;
+    int n = WiFi.scanNetworks(false, true);
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i).equals(HOME_SSID) || WiFi.SSID(i).equals(AP_SSID) || (dynamicSsid.length() > 0 && WiFi.SSID(i).equals(dynamicSsid))) {
+        activeChannel = WiFi.channel(i);
+        break;
+      }
+    }
+    wifi_set_channel(activeChannel);
+    digitalWrite(LED_SIGNAL, LOW); 
   }
 }
 
 void connectWlanSequence() {
   digitalWrite(LED_SIGNAL, HIGH); 
-  
   WiFi.disconnect(true);
   delay(100);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_STA);
-  
-  // FIX: Modem Sleep deaktivieren für Ping < 5ms und stabile OTA-Transfers!
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   
   IPAddress gateway(192, 168, 0, 1);
@@ -154,10 +209,7 @@ void connectWlanSequence() {
   
   WiFi.begin(HOME_SSID, HOME_PASS);
   uint32_t startMs = millis();
-  
-  while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) {
-    delay(100);
-  }
+  while(WiFi.status() != WL_CONNECTED && millis() - startMs < 4000) { delay(100); }
   
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
@@ -172,15 +224,14 @@ void connectWlanSequence() {
   if (dynamicSsid.length() > 0) {
     WiFi.disconnect(true);
     delay(100);
-    
+    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u); 
     
     WiFi.begin(dynamicSsid.c_str(), dynamicPass.c_str());
     startMs = millis();
-    
-    while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) {
-      delay(100);
-    }
+    while(WiFi.status() != WL_CONNECTED && millis() - startMs < 12000) { delay(100); }
     
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnected = true;
@@ -211,14 +262,26 @@ void connectWlanSequence() {
 void onDataSent(u8 *mac_addr, u8 sendStatus) {}
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
+  if (len == sizeof(WifiSwitchPacket)) {
+    WifiSwitchPacket sw;
+    memcpy(&sw, incomingData, sizeof(sw));
+    if (sw.magicCode == WIFI_SWITCH_MAGIC) {
+      targetWifiMode = sw.mode;
+      pendingWifiSwitch = true;
+      
+      #if STATION_ID < 3
+      esp_now_send(broadcastMac, (uint8_t *)&sw, sizeof(sw));
+      #endif
+    }
+    return;
+  }
+
   if (len == sizeof(HotspotSyncPacket)) {
     HotspotSyncPacket syncPkt;
     memcpy(&syncPkt, incomingData, sizeof(syncPkt));
     if (syncPkt.magicCode == HOTSPOT_SYNC_MAGIC) {
       saveHotspotToEEPROM(String(syncPkt.ssid), String(syncPkt.pass));
       pendingHotspotAck = true;
-      triggerNewHotspot = true;
-      
       #if STATION_ID < 3
       esp_now_send(broadcastMac, (uint8_t *)&syncPkt, sizeof(syncPkt));
       #endif
@@ -260,7 +323,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
   if (len == sizeof(AlivePacket)) {
     AlivePacket alive;
     memcpy(&alive, incomingData, sizeof(alive));
-    
     #if STATION_ID < 3
     if (alive.stationId > STATION_ID) {
       esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
@@ -275,8 +337,13 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     
     #if STATION_ID < 3
     if (pkt.stationId > STATION_ID && !isAlreadyRelayed(pkt.eventId)) {
-      pkt.relayed = 1;
-      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+      uint8_t nextHead = (relayQueueHead + 1) % RELAY_QUEUE_SIZE;
+      if (nextHead != relayQueueTail) {
+        pkt.relayed = 1;
+        // Sicheres Kopieren in die volatile Queue
+        memcpy((void*)&relayQueue[relayQueueHead], &pkt, sizeof(SectorPacket));
+        relayQueueHead = nextHead;
+      }
     }
     #endif
   }
@@ -295,7 +362,6 @@ void setup() {
   delay(100);
 
   loadHotspotFromEEPROM();
-
   connectWlanSequence(); 
 
   if (esp_now_init() == 0) {
@@ -306,24 +372,34 @@ void setup() {
   }
 
   initIRDecoder();
-
   ArduinoOTA.setHostname(("SZ-" + String(STATION_ID)).c_str());
   ArduinoOTA.begin();
 }
 
 void loop() {
+  if (pendingWifiSwitch) {
+    pendingWifiSwitch = false;
+    executeWifiSwitch(targetWifiMode);
+  }
+
+  if (relayQueueTail != relayQueueHead) {
+    SectorPacket pktToRelay;
+    // Sauberes Herauskopieren aus der volatile Queue
+    memcpy(&pktToRelay, (void*)&relayQueue[relayQueueTail], sizeof(SectorPacket));
+    relayQueueTail = (relayQueueTail + 1) % RELAY_QUEUE_SIZE;
+    
+    for (int i = 0; i < STATION_ID; i++) {
+      esp_now_send(broadcastMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
+      delay(6);
+    }
+  }
+
   if (pendingHotspotAck) {
     pendingHotspotAck = false;
     HotspotAckPacket ack;
     ack.magicCode = HOTSPOT_ACK_MAGIC;
     ack.stationId = STATION_ID;
     esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
-    delay(50); 
-  }
-
-  if (triggerNewHotspot) {
-    triggerNewHotspot = false;
-    connectWlanSequence();
   }
 
   if (triggerMaintenance && !maintenanceMode) {
@@ -374,9 +450,7 @@ void loop() {
     uint8_t detectedCarId = (code >> 6) & 0x3F;
     uint8_t carIdInv      = code & 0x3F;
 
-    bool isValidSignal = ((detectedCarId ^ carIdInv) == 0x3F);
-
-    if (isValidSignal && detectedCarId >= 1 && detectedCarId <= MAX_CARS) {
+    if (((detectedCarId ^ carIdInv) == 0x3F) && detectedCarId >= 1 && detectedCarId <= MAX_CARS) {
       uint32_t nowMs = millis();
 
       if (!batteryLow) {
@@ -394,10 +468,14 @@ void loop() {
         pkt.carId = detectedCarId;
         pkt.timestamp = triggerTime;
         pkt.relayed = 0;
-        pkt.eventId = ((uint32_t)STATION_ID << 24) | (micros() & 0x00FFFFFF);
+        pkt.eventId = ((uint32_t)STATION_ID << 24) | (millis() & 0x00FFFFFF); 
 
-        isAlreadyRelayed(pkt.eventId);
-        esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+        isAlreadyRelayed(pkt.eventId); 
+        
+        for (int i = 0; i < STATION_ID; i++) {
+          esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+          delay(6);
+        }
       }
     }
   }

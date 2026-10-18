@@ -26,16 +26,13 @@ extern uint32_t perfAvgLoopUs;
 static bool pendingReset = false;
 static uint32_t resetTimer = 0;
 
-static bool pendingHotspotConnect = false;
-
-// NEU: Flag für den Auto-Kill des Geister-WLANs
 static bool pendingGhostApDisable = false;
 
-static String cacheHeaderStr; 
+static bool pendingWifiSwitch = false;
+static uint32_t wifiSwitchTimer = 0; // NEU: Timer für den verzögerten Kamikaze-Disconnect
+static uint8_t targetWifiMode = 0;
 
-void triggerHotspotConnect() {
-  pendingHotspotConnect = true;
-}
+static String cacheHeaderStr; 
 
 void scheduleESPReset(uint16_t delayMs) {
   pendingReset = true;
@@ -45,10 +42,7 @@ void scheduleESPReset(uint16_t delayMs) {
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     Serial.printf("[WebSocket] Client #%u verbunden\n", client->id());
-    
-    // NEU: Sobald das Frontend offen ist, wird der Auto-Kill getriggert
     pendingGhostApDisable = true;
-    
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
@@ -71,7 +65,9 @@ static void blinkGreenLED(int count) {
 
 static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   String ipStr = currentActiveIP.toString();
   String connectedSsid = WiFi.SSID();
@@ -85,13 +81,15 @@ static void setupGhostWLAN() {
   
   WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
   digitalWrite(LED_READY, HIGH); 
-  Serial.println("[WLAN] Verbunden! Geister-WLAN aufgespannt: " + ipApName);
+  Serial.println("[WLAN] Verbunden! Geister-WLAN: " + ipApName);
 }
 
 static void setupFallbackAP() {
   WiFi.disconnect(true);
   delay(50);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   
   IPAddress local_IP(192, 168, 0, 8);
   IPAddress gateway(192, 168, 0, 1);
@@ -105,10 +103,11 @@ static void setupFallbackAP() {
 
 static void setupWLAN() {
   digitalWrite(LED_READY, LOW); 
-  
   WiFi.disconnect(true);
   delay(100);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   
   IPAddress local_IP(192, 168, 0, 8);
   IPAddress gateway(192, 168, 0, 1);
@@ -117,7 +116,7 @@ static void setupWLAN() {
   
   WiFi.begin(HOME_SSID, HOME_PASS);
   int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 60) {
+  while (WiFi.status() != WL_CONNECTED && timeout < 16) {
     delay(250);
     timeout++;
   }
@@ -132,12 +131,14 @@ static void setupWLAN() {
     if (hotspotSSID.length() > 0) {
       WiFi.disconnect(true);
       delay(100);
-      
+      WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+      WiFi.mode(WIFI_STA);
+      WiFi.setSleepMode(WIFI_NONE_SLEEP);
       WiFi.config(0u, 0u, 0u); 
       
       WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
       timeout = 0;
-      while (WiFi.status() != WL_CONNECTED && timeout < 60) { 
+      while (WiFi.status() != WL_CONNECTED && timeout < 48) { 
         delay(250);
         timeout++;
       }
@@ -267,21 +268,6 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
-  server.on("/api/trigger_sz_ota", HTTP_POST, [](AsyncWebServerRequest *request) {
-    struct __attribute__((packed)) OtaTriggerPacket {
-      uint32_t magicCode;
-    };
-    OtaTriggerPacket pkt;
-    pkt.magicCode = 0x07A1234;
-    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    
-    for(int i=0; i<3; i++) {
-      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
-      delay(50);
-    }
-    request->send(200, "text/plain", "OTA Trigger gesendet");
-  });
-
   server.on("/api/hotspot", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json = "{\"ssid\":\"" + hotspotSSID + "\",\"pass\":\"" + hotspotPass + "\"}";
     request->send(200, "application/json", json);
@@ -294,22 +280,52 @@ void initNetworkAndServer() {
     request->send(200, "text/plain", "OK");
   });
 
-  server.on("/api/connecthotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
-    HotspotSyncPacket pkt;
-    pkt.magicCode = HOTSPOT_SYNC_MAGIC;
-    strncpy(pkt.ssid, hotspotSSID.c_str(), sizeof(pkt.ssid) - 1);
-    pkt.ssid[sizeof(pkt.ssid) - 1] = '\0';
-    strncpy(pkt.pass, hotspotPass.c_str(), sizeof(pkt.pass) - 1);
-    pkt.pass[sizeof(pkt.pass) - 1] = '\0';
-    
-    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    for(int i=0; i<3; i++) {
-      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
-      delay(50);
+  // --- NEU: Korrigierte Switch-Logik (Erst Daten, dann Befehl, dann warten) ---
+  server.on("/api/switchwifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+    uint8_t mode = 0;
+    if (request->hasParam("mode")) {
+      mode = request->getParam("mode")->value().toInt();
     }
     
-    triggerHotspotConnect();
-    request->send(200, "text/plain", "Connecting...");
+    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+    // 1. Wenn Modus = 2 (Hotspot), MÜSSEN wir den SZs vorher die SSID mitteilen!
+    if (mode == 2) {
+      HotspotSyncPacket syncPkt;
+      syncPkt.magicCode = HOTSPOT_SYNC_MAGIC;
+      strncpy(syncPkt.ssid, hotspotSSID.c_str(), sizeof(syncPkt.ssid) - 1);
+      syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
+      strncpy(syncPkt.pass, hotspotPass.c_str(), sizeof(syncPkt.pass) - 1);
+      syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
+
+      for(int i=0; i<3; i++) {
+        esp_now_send(broadcastMac, (uint8_t *)&syncPkt, sizeof(syncPkt));
+        delay(40);
+      }
+      delay(150); // Den SZs Zeit geben, das in den EEPROM zu brennen
+    }
+
+    // 2. Danach erst den eigentlichen Befehl zum sofortigen Umschalten senden
+    struct __attribute__((packed)) WifiSwitchPacket {
+      uint32_t magicCode;
+      uint8_t mode; 
+    };
+    
+    WifiSwitchPacket pkt;
+    pkt.magicCode = 0x08B2347; 
+    pkt.mode = mode;
+    
+    for(int i=0; i<3; i++) {
+      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+      delay(30);
+    }
+    
+    // 3. Basisstation merkt sich den Wechsel, kappt aber erst in 400ms ihr WLAN!
+    targetWifiMode = mode;
+    wifiSwitchTimer = millis() + 400; 
+    pendingWifiSwitch = true;
+    
+    request->send(200, "text/plain", "Switch initiated");
   });
 
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
@@ -387,40 +403,45 @@ void handleNetworkTasks() {
     ESP.restart();
   }
 
-  // NEU: Killt das Geister-WLAN aus dem sicheren Main-Loop heraus
   if (pendingGhostApDisable) {
     pendingGhostApDisable = false;
     if (WiFi.getMode() == WIFI_AP_STA) {
       WiFi.mode(WIFI_STA);
-      Serial.println("[WLAN] Frontend aktiv! Geister-WLAN abgeschaltet. Ping stabilisiert.");
     }
   }
   
-  if (pendingHotspotConnect) {
-    pendingHotspotConnect = false;
+  // --- NEU: Basisstation kappt erst NACH dem 400ms Timer ihr WLAN ---
+  if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
+    pendingWifiSwitch = false;
     
     digitalWrite(LED_READY, LOW); 
     WiFi.disconnect(true);
     delay(100);
-    
+    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
     WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
+    uint32_t startMs = millis();
     
-    WiFi.config(0u, 0u, 0u); 
-    WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
-    
-    int timeout = 0;
-    while (WiFi.status() != WL_CONNECTED && timeout < 60) { 
-      delay(250);
-      timeout++;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-      setupGhostWLAN(); 
-    } else {
-      blinkGreenLED(5);
-      digitalWrite(LED_READY, LOW);
-      delay(300);
-      setupWLAN(); 
+    if (targetWifiMode == 1) { 
+      IPAddress local_IP(192, 168, 0, 8);
+      IPAddress gateway(192, 168, 0, 1);
+      IPAddress subnet(255, 255, 255, 0);
+      WiFi.config(local_IP, gateway, subnet);
+      WiFi.begin(HOME_SSID, HOME_PASS);
+      while(WiFi.status() != WL_CONNECTED && millis() - startMs < 10000) { delay(100); }
+      if (WiFi.status() == WL_CONNECTED) { setupGhostWLAN(); } 
+      else { setupFallbackAP(); }
+    } 
+    else if (targetWifiMode == 2) { 
+      WiFi.config(0u, 0u, 0u); 
+      WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+      while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) { delay(100); }
+      if (WiFi.status() == WL_CONNECTED) { setupGhostWLAN(); } 
+      else { setupFallbackAP(); }
+    } 
+    else { 
+      setupFallbackAP();
     }
   }
 

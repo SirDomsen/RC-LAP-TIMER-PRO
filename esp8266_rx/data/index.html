@@ -225,9 +225,9 @@
         </div>
 
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
-          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">📶 Rennstrecken-Hotspot</h4>
+          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">📶 WLAN Kontrollzentrum</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
-            Hier die Daten für den Handy-Hotspot eintragen. Nach dem Speichern kann direkt die Verbindung getestet werden.
+            Hier Hotspot-Daten eintragen. Danach kannst du das Laptimer-System auf Knopfdruck sofort in ein anderes WLAN zwingen.
           </p>
           <div style="margin-bottom: 8px;">
             <label style="font-size: 12px; color: var(--text-muted);">Hotspot SSID (Name):</label><br>
@@ -237,7 +237,12 @@
             <label style="font-size: 12px; color: var(--text-muted);">Hotspot Passwort:</label><br>
             <input type="text" id="cfg_hotspot_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
           </div>
-          <button class="btn btn-warning" style="width:100%; padding:8px; font-size:11px;" onclick="connectToHotspotNow()">🚀 Jetzt mit AP verbinden</button>
+          
+          <div style="display:flex; gap: 5px; flex-wrap: wrap;">
+            <button class="btn btn-success" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(1)">🏠 Heim-WLAN</button>
+            <button class="btn btn-warning" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(2)">📱 Hotspot</button>
+            <button class="btn btn-purple" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(0)">📡 AP-Modus</button>
+          </div>
         </div>
 
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
@@ -287,22 +292,21 @@
     </div>
   </div>
 
-  <!-- NEU: Das stylische Connection Alert Modal -->
   <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
-      <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 VERBINDUNG WIRD AUFGEBAUT</h3>
-      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;">
-        Die Sektorstationen erhalten nun die Hotspot-Daten und die grüne LED der Basis erlischt. Sobald sie wieder leuchtet, ist der Laptimer bereit.
+      <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 WLAN WIRD GEWECHSELT</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="alertModalDesc">
+        Das System bricht nun alle aktuellen Verbindungen ab und startet den Wechsel.
       </p>
       
       <div style="background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
-        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">1. Scanne nach diesem WLAN:</p>
-        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:18px; color:var(--neon-cyan); font-weight:bold;">LT_Hotspot-IP</p>
+        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">1. Scanne nach diesem Geister-WLAN:</p>
+        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:18px; color:var(--neon-cyan); font-weight:bold;">LT_Netzwerk-IP</p>
         <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">2. Öffne im Browser:</p>
         <p style="margin:0; font-family:monospace; font-size:18px; color:var(--neon-green); font-weight:bold;">http://<span id="alertIpDisplay" style="color:var(--text-main);">DIE.ANGEZEIGTE.IP</span></p>
       </div>
       
-      <button class="btn btn-warning" style="width:100%; padding:14px; font-size:15px; font-weight:bold;" onclick="confirmConnectionAlert()">ALLES KLAR, STARTEN!</button>
+      <button class="btn btn-warning" style="width:100%; padding:14px; font-size:15px; font-weight:bold;" onclick="confirmConnectionAlert()">ALLES KLAR, AUSFÜHREN!</button>
     </div>
   </div>
 
