@@ -224,6 +224,22 @@
           </label>
         </div>
 
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
+          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">📶 Rennstrecken-Hotspot</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
+            Hier die Daten für den Handy-Hotspot eintragen. Nach dem Speichern kann direkt die Verbindung getestet werden.
+          </p>
+          <div style="margin-bottom: 8px;">
+            <label style="font-size: 12px; color: var(--text-muted);">Hotspot SSID (Name):</label><br>
+            <input type="text" id="cfg_hotspot_ssid" placeholder="z.B. Poco F7" style="width: 100%; margin-top: 3px;">
+          </div>
+          <div style="margin-bottom: 10px;">
+            <label style="font-size: 12px; color: var(--text-muted);">Hotspot Passwort:</label><br>
+            <input type="text" id="cfg_hotspot_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+          </div>
+          <button class="btn btn-warning" style="width:100%; padding:8px; font-size:11px;" onclick="connectToHotspotNow()">🚀 Jetzt mit AP verbinden</button>
+        </div>
+
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
           <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
@@ -260,15 +276,6 @@
           </label>
         </div>
 
-        <!-- NEU: Der Wartungs-Trigger -->
-        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-orange);">
-          <h4 style="color:var(--neon-orange); margin:0 0 5px 0; font-family:var(--font-display);">🔧 Sektorstationen OTA-Wartung</h4>
-          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
-            Weckt die Sektorstationen aus dem Funk-Modus, reaktiviert ihr WLAN und verbindet sie mit der Basis für OTA-Updates auf dem Feld. <strong style="color:var(--neon-red);">Achtung: Zeitmessung pausiert!</strong>
-          </p>
-          <button class="btn btn-warning" style="width:100%; padding:8px;" onclick="triggerSZOta()">Wartungs-Befehl funken</button>
-        </div>
-
         <h4 style="color:var(--neon-cyan); margin-bottom:8px; font-family:var(--font-display);">Transponder-IDs zuweisen (Fahrer & Auto)</h4>
         <div id="configRows"></div>
       </div>
@@ -277,6 +284,25 @@
         <button class="btn btn-success" onclick="saveConfig()">Speichern & Schließen</button>
         <button class="btn btn-warning" onclick="closeConfigModal()">Abbrechen</button>
       </div>
+    </div>
+  </div>
+
+  <!-- NEU: Das stylische Connection Alert Modal -->
+  <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
+      <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 VERBINDUNG WIRD AUFGEBAUT</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;">
+        Die Sektorstationen erhalten nun die Hotspot-Daten und die grüne LED der Basis erlischt. Sobald sie wieder leuchtet, ist der Laptimer bereit.
+      </p>
+      
+      <div style="background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
+        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">1. Scanne nach diesem WLAN:</p>
+        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:18px; color:var(--neon-cyan); font-weight:bold;">LT_Hotspot-IP</p>
+        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">2. Öffne im Browser:</p>
+        <p style="margin:0; font-family:monospace; font-size:18px; color:var(--neon-green); font-weight:bold;">http://<span id="alertIpDisplay" style="color:var(--text-main);">DIE.ANGEZEIGTE.IP</span></p>
+      </div>
+      
+      <button class="btn btn-warning" style="width:100%; padding:14px; font-size:15px; font-weight:bold;" onclick="confirmConnectionAlert()">ALLES KLAR, STARTEN!</button>
     </div>
   </div>
 

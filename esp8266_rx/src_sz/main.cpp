@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
+#include <EEPROM.h>
 #include "config.h"
 #include "ir_decoder.h"
 
@@ -40,11 +41,24 @@ struct __attribute__((packed)) AlivePacket {
   uint8_t batteryLow;
 };
 
-// Das neue geheime Paket für den Wartungsmodus
 struct __attribute__((packed)) OtaTriggerPacket {
   uint32_t magicCode;
 };
 #define OTA_MAGIC_CODE 0x07A1234
+
+// --- Pakete für die Hotspot-Synchronisation ---
+#define HOTSPOT_SYNC_MAGIC 0x08B2345
+struct __attribute__((packed)) HotspotSyncPacket {
+  uint32_t magicCode;
+  char ssid[32];
+  char pass[64];
+};
+
+#define HOTSPOT_ACK_MAGIC 0x08B2346
+struct __attribute__((packed)) HotspotAckPacket {
+  uint32_t magicCode;
+  uint8_t stationId;
+};
 
 uint32_t localSyncOffsetMs = 0;
 bool timeSynced = false;
@@ -52,9 +66,16 @@ uint8_t currentStratum = 255;
 bool wifiConnected = false;
 bool batteryLow = false;
 
-// Status Flags für den Wartungsmodus
 bool triggerMaintenance = false;
 bool maintenanceMode = false;
+
+// Hotspot Variablen & Flags
+String dynamicSsid = "";
+String dynamicPass = "";
+bool pendingHotspotAck = false;
+bool triggerNewHotspot = false;
+
+#define EEPROM_MAGIC_HOTSPOT 0x5B
 
 static uint32_t ledPulseEndMs = 0;
 static bool ledPulseActive = false;
@@ -65,6 +86,35 @@ const uint32_t SECTOR_CLEARANCE_MS = 2000;
 #define RELAY_CACHE_SIZE 8
 static uint32_t recentRelayedIds[RELAY_CACHE_SIZE] = {0};
 static uint8_t relayCacheIndex = 0;
+
+void loadHotspotFromEEPROM() {
+  EEPROM.begin(512);
+  if (EEPROM.read(0) == EEPROM_MAGIC_HOTSPOT) {
+    uint8_t ssidLen = EEPROM.read(1);
+    if (ssidLen <= 32) {
+      char s[33] = {0};
+      for(int i=0; i<ssidLen; i++) s[i] = EEPROM.read(2+i);
+      dynamicSsid = String(s);
+    }
+    uint8_t passLen = EEPROM.read(34);
+    if (passLen <= 64) {
+      char p[65] = {0};
+      for(int i=0; i<passLen; i++) p[i] = EEPROM.read(35+i);
+      dynamicPass = String(p);
+    }
+  }
+}
+
+void saveHotspotToEEPROM(String s, String p) {
+  EEPROM.write(0, EEPROM_MAGIC_HOTSPOT);
+  EEPROM.write(1, s.length());
+  for(unsigned int i=0; i<s.length(); i++) EEPROM.write(2+i, s[i]);
+  EEPROM.write(34, p.length());
+  for(unsigned int i=0; i<p.length(); i++) EEPROM.write(35+i, p[i]);
+  EEPROM.commit();
+  dynamicSsid = s;
+  dynamicPass = p;
+}
 
 bool isAlreadyRelayed(uint32_t eventId) {
   if (eventId == 0) return false;
@@ -81,7 +131,6 @@ uint32_t getSynchronizedTimeMs() {
   return millis() + localSyncOffsetMs;
 }
 
-// Hilfsfunktion: Gelbe LED im 3Hz Takt blinken lassen (Active LOW)
 void blinkSignalLed(int count) {
   for (int i = 0; i < count; i++) {
     digitalWrite(LED_SIGNAL, LOW); // AN
@@ -91,9 +140,99 @@ void blinkSignalLed(int count) {
   }
 }
 
+// Hybride Verbindungssequenz (Statisch daheim, DHCP im Hotspot)
+void connectWlanSequence() {
+  digitalWrite(LED_SIGNAL, HIGH); // LED Initial aus
+  
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  
+  // 1. Heim-WLAN suchen (MIT fester IP für OTA)
+  IPAddress gateway(192, 168, 0, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.config(local_IP, gateway, subnet);
+  
+  WiFi.begin(HOME_SSID, HOME_PASS);
+  uint32_t startMs = millis();
+  
+  while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) {
+    delay(100);
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    wifi_set_channel(WiFi.channel());
+    digitalWrite(LED_SIGNAL, LOW); // Erfolg -> Dauerhaft an
+    return;
+  }
+  
+  // Heim-WLAN fehlgeschlagen
+  blinkSignalLed(3);
+  digitalWrite(LED_SIGNAL, HIGH); 
+  
+  // 2. Dynamischen Hotspot versuchen (falls vorhanden)
+  if (dynamicSsid.length() > 0) {
+    WiFi.disconnect(true);
+    delay(100);
+    
+    // DHCP für das Handy aktivieren!
+    WiFi.config(0u, 0u, 0u); 
+    
+    WiFi.begin(dynamicSsid.c_str(), dynamicPass.c_str());
+    startMs = millis();
+    
+    while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) {
+      delay(100);
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      wifi_set_channel(WiFi.channel());
+      digitalWrite(LED_SIGNAL, LOW); // Erfolg -> Dauerhaft an
+      return;
+    }
+    
+    // Hotspot fehlgeschlagen
+    blinkSignalLed(5);
+    digitalWrite(LED_SIGNAL, HIGH);
+  }
+  
+  // 3. Fallback: Offline-Rennen (Kanal via Scan suchen, aber NICHT verbinden!)
+  WiFi.disconnect(true);
+  delay(100);
+  wifiConnected = false;
+  int activeChannel = 1;
+  int n = WiFi.scanNetworks(false, true);
+  for (int i = 0; i < n; i++) {
+    if (WiFi.SSID(i).equals(HOME_SSID) || WiFi.SSID(i).equals(AP_SSID) || (dynamicSsid.length() > 0 && WiFi.SSID(i).equals(dynamicSsid))) {
+      activeChannel = WiFi.channel(i);
+      break;
+    }
+  }
+  wifi_set_channel(activeChannel);
+  digitalWrite(LED_SIGNAL, LOW); // Scan beendet -> Dauerhaft an
+}
+
 void onDataSent(u8 *mac_addr, u8 sendStatus) {}
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
+  // Hotspot Sync empfangen
+  if (len == sizeof(HotspotSyncPacket)) {
+    HotspotSyncPacket syncPkt;
+    memcpy(&syncPkt, incomingData, sizeof(syncPkt));
+    if (syncPkt.magicCode == HOTSPOT_SYNC_MAGIC) {
+      saveHotspotToEEPROM(String(syncPkt.ssid), String(syncPkt.pass));
+      pendingHotspotAck = true;
+      triggerNewHotspot = true;
+      
+      #if STATION_ID < 3
+      esp_now_send(broadcastMac, (uint8_t *)&syncPkt, sizeof(syncPkt));
+      #endif
+    }
+    return;
+  }
+
   // OTA Trigger empfangen
   if (len == sizeof(OtaTriggerPacket)) {
     OtaTriggerPacket ota;
@@ -101,7 +240,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     if (ota.magicCode == OTA_MAGIC_CODE) {
       triggerMaintenance = true;
       #if STATION_ID < 3
-      // An hintere Stationen weiterleiten
       esp_now_send(broadcastMac, (uint8_t *)&ota, sizeof(ota));
       #endif
     }
@@ -162,58 +300,20 @@ void setup() {
   pinMode(0, INPUT_PULLUP);
 
   digitalWrite(LED_SIGNAL, HIGH); // LED Initial aus
-
-  // 1. Kurzes 333ms Aufblitzen als Boot-Indikator
   digitalWrite(LED_SIGNAL, LOW);
   delay(333);
   digitalWrite(LED_SIGNAL, HIGH);
   delay(100);
 
-  WiFi.mode(WIFI_STA);
-  IPAddress gateway(192, 168, 0, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  WiFi.config(local_IP, gateway, subnet);
+  loadHotspotFromEEPROM();
 
-  // 2. Versuch: Heim-WLAN für Schreibtisch-Modus
-  WiFi.begin(HOME_SSID, HOME_PASS);
-  uint32_t startAttemptTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 4000) {
-    delay(200);
-  }
-
-  uint8_t activeChannel = 1;
-
-  if (WiFi.status() == WL_CONNECTED) {
-    // Zuhause: WLAN bleibt an, IP ist aktiv, OTA bereit
-    wifiConnected = true;
-    activeChannel = WiFi.channel();
-  } else {
-    // Auf der Strecke: Heim-WLAN nicht gefunden -> Renn-Modus!
-    blinkSignalLed(5); // 5x Blinken signalisiert den Wechsel in den Stealth-ESP-NOW-Modus
-    
-    WiFi.disconnect();
-    delay(100);
-    wifiConnected = false;
-
-    // Kanal der Basisstation für ESP-NOW erschnüffeln
-    int n = WiFi.scanNetworks(false, true);
-    for (int i = 0; i < n; i++) {
-      if (WiFi.SSID(i).equals(HOME_SSID) || WiFi.SSID(i).equals(AP_SSID)) {
-        activeChannel = WiFi.channel(i);
-        break;
-      }
-    }
-    wifi_set_channel(activeChannel);
-  }
-
-  // Erfolgreich hochgefahren -> LED dauerhaft an
-  digitalWrite(LED_SIGNAL, LOW); 
+  connectWlanSequence(); 
 
   if (esp_now_init() == 0) {
     esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
-    esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, activeChannel, NULL, 0);
+    esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
   }
 
   initIRDecoder();
@@ -223,18 +323,26 @@ void setup() {
 }
 
 void loop() {
-  // Switch in den Wartungsmodus, wenn Befehl über ESP-NOW kam
+  if (pendingHotspotAck) {
+    pendingHotspotAck = false;
+    HotspotAckPacket ack;
+    ack.magicCode = HOTSPOT_ACK_MAGIC;
+    ack.stationId = STATION_ID;
+    esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
+    delay(50); // Kurz warten vor dem WLAN Neustart
+  }
+
+  if (triggerNewHotspot) {
+    triggerNewHotspot = false;
+    connectWlanSequence();
+  }
+
   if (triggerMaintenance && !maintenanceMode) {
     triggerMaintenance = false;
     maintenanceMode = true;
-    
-    // WLAN reaktivieren und heimlich in die Basis einloggen
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(AP_SSID, AP_PASS);
-    // Wir lassen es im Hintergrund verbinden, OTA greift, sobald verbunden
+    connectWlanSequence(); 
   }
 
-  // OTA Anfragen verarbeiten (funktioniert nur, wenn im Heimnetz oder im Wartungsmodus)
   if (wifiConnected || maintenanceMode) {
     ArduinoOTA.handle();
   }
@@ -245,7 +353,6 @@ void loop() {
     batteryLow = (digitalRead(0) == HIGH);
   }
 
-  // Alive-Paket alle 3 Sekunden senden (im Wartungsmodus pausieren wir das Senden, um Störungen zu vermeiden)
   static uint32_t lastAliveMs = 0;
   if (!maintenanceMode && millis() - lastAliveMs > 3000) {
     lastAliveMs = millis();
@@ -257,25 +364,20 @@ void loop() {
 
   // === LED STATUS LOGIK ===
   if (maintenanceMode) {
-    // Höchste Prio: 3Hz Dauerblinken im Wartungsmodus
     bool blinkState = (millis() / 166) % 2 == 0;
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
   } else if (batteryLow) {
-    // Zweithöchste Prio: 0.5Hz Blinken bei leerem Akku
     bool blinkState = (millis() / 1000) % 2 == 0;
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
   } else if (ledPulseActive) {
-    // Dritte Prio: Flackern bei IR-Durchfahrt
     if (millis() >= ledPulseEndMs) {
       digitalWrite(LED_SIGNAL, LOW); // Zurück auf Dauer-An
       ledPulseActive = false;
     }
   } else {
-    // Normalzustand: Dauer-An (Active LOW)
     digitalWrite(LED_SIGNAL, LOW);
   }
 
-  // IR-Verarbeitung nur im Renn-Modus zulassen (nicht beim Flashen stören!)
   if (newCodeAvailable && !maintenanceMode) {
     newCodeAvailable = false;
     
@@ -290,7 +392,7 @@ void loop() {
       uint32_t nowMs = millis();
 
       if (!batteryLow) {
-        digitalWrite(LED_SIGNAL, HIGH); // LED Kurz aus (Impuls)
+        digitalWrite(LED_SIGNAL, HIGH); 
         ledPulseEndMs = nowMs + 40;
         ledPulseActive = true;
       }

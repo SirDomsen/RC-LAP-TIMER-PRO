@@ -19,7 +19,6 @@ static bool sz3BatLow = false;
 
 static bool debugModeEnabled = false;
 
-// 8 Pakete genügen für die Diagnose völlig und schonen den Heap
 #define MAX_DEBUG_PACKETS 8
 struct DebugPacketLog {
   uint32_t timestampMs;
@@ -56,7 +55,6 @@ void logDebugPacket(uint8_t stationId, uint8_t carId, uint32_t rawData) {
   if (debugPacketCount < MAX_DEBUG_PACKETS) debugPacketCount++;
 }
 
-// Null-Fragmentierungs-JSON-Builder mit fest vorreserviertem Speicher
 const String& getDebugPacketsJSON() {
   static String json;
   static bool memoryReserved = false;
@@ -112,6 +110,16 @@ bool isDuplicateEvent(uint32_t eventId) {
 void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
   if (!esp_now_is_peer_exist(mac)) {
     esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
+  }
+
+  // --- NEU: ACK Paket vom Sektor abfangen ---
+  if (len == sizeof(HotspotAckPacket)) {
+    HotspotAckPacket ack;
+    memcpy(&ack, incomingData, sizeof(ack));
+    if (ack.magicCode == HOTSPOT_ACK_MAGIC) {
+      Serial.printf("[ESP-NOW] Hotspot ACK von SZ-%d empfangen! Station bootet WLAN neu.\n", ack.stationId);
+    }
+    return;
   }
 
   // 1. Alive / Heartbeat verarbeiten
@@ -172,7 +180,7 @@ void handleTimeSyncBroadcast() {
     
     SyncPacket syncPkt;
     syncPkt.baseTimeMs = millis();
-    syncPkt.stratum = 0; // Master
+    syncPkt.stratum = 0;
 
     uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));

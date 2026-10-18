@@ -1,6 +1,7 @@
 #include "web_server.h"
 #include "web_handlers.h"
 #include "storage.h"
+#include "esp_now_base.h"
 
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -25,7 +26,13 @@ extern uint32_t perfAvgLoopUs;
 static bool pendingReset = false;
 static uint32_t resetTimer = 0;
 
+static bool pendingHotspotConnect = false;
+
 static String cacheHeaderStr; 
+
+void triggerHotspotConnect() {
+  pendingHotspotConnect = true;
+}
 
 void scheduleESPReset(uint16_t delayMs) {
   pendingReset = true;
@@ -46,34 +53,96 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
   }
 }
 
-static void setupWLAN() {
+static void blinkGreenLED(int count) {
+  for(int i = 0; i < count; i++) {
+    digitalWrite(LED_READY, HIGH);
+    delay(166);
+    digitalWrite(LED_READY, LOW);
+    delay(166);
+  }
+}
+
+static void setupGhostWLAN() {
+  currentActiveIP = WiFi.localIP();
+  WiFi.mode(WIFI_AP_STA);
+  
+  String ipStr = currentActiveIP.toString();
+  String connectedSsid = WiFi.SSID();
+  
+  int maxSsidLen = 31 - 4 - ipStr.length();
+  if (connectedSsid.length() > maxSsidLen) {
+    connectedSsid = connectedSsid.substring(0, maxSsidLen);
+  }
+  
+  String ipApName = "LT_" + connectedSsid + "-" + ipStr;
+  
+  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
+  digitalWrite(LED_READY, HIGH); 
+  Serial.println("[WLAN] Verbunden! Geister-WLAN: " + ipApName);
+}
+
+static void setupFallbackAP() {
+  WiFi.disconnect(true);
+  delay(50);
+  WiFi.mode(WIFI_AP);
   IPAddress local_IP(192, 168, 0, 8);
   IPAddress gateway(192, 168, 0, 1);
   IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+  WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
+  currentActiveIP = local_IP;
+  digitalWrite(LED_READY, HIGH); 
+  Serial.println("[WLAN] Reiner AP-Modus aktiv! IP: " + currentActiveIP.toString());
+}
 
-  WiFi.mode(WIFI_AP_STA);
-  if (!WiFi.config(local_IP, gateway, subnet)) {
-    Serial.println("[WLAN] STA Fehler!");
-  }
-
+static void setupWLAN() {
+  digitalWrite(LED_READY, LOW); 
+  
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  
+  IPAddress local_IP(192, 168, 0, 8);
+  IPAddress gateway(192, 168, 0, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.config(local_IP, gateway, subnet);
+  
   WiFi.begin(HOME_SSID, HOME_PASS);
   int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 20) {
+  while (WiFi.status() != WL_CONNECTED && timeout < 60) {
     delay(250);
     timeout++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    currentActiveIP = WiFi.localIP();
-    Serial.println("[WLAN] Verbunden! IP: " + currentActiveIP.toString());
+    setupGhostWLAN();
   } else {
-    WiFi.disconnect(true);
-    delay(50);
-    WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(local_IP, gateway, subnet);
-    WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
-    currentActiveIP = local_IP;
-    Serial.println("[WLAN] Reiner AP-Modus aktiv! IP: " + currentActiveIP.toString());
+    blinkGreenLED(3);
+    digitalWrite(LED_READY, LOW);
+    delay(300);
+
+    if (hotspotSSID.length() > 0) {
+      WiFi.disconnect(true);
+      delay(100);
+      
+      WiFi.config(0u, 0u, 0u); 
+      
+      WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+      timeout = 0;
+      while (WiFi.status() != WL_CONNECTED && timeout < 60) { 
+        delay(250);
+        timeout++;
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        setupGhostWLAN();
+      } else {
+        blinkGreenLED(5);
+        setupFallbackAP();
+      }
+    } else {
+      setupFallbackAP();
+    }
   }
 
   if (MDNS.begin("laptimer")) {
@@ -82,8 +151,6 @@ static void setupWLAN() {
 
   ArduinoOTA.setHostname("LapTimer-Base");
   ArduinoOTA.begin();
-
-  digitalWrite(LED_READY, HIGH);
 }
 
 void initNetworkAndServer() {
@@ -207,6 +274,40 @@ void initNetworkAndServer() {
     request->send(200, "text/plain", "OTA Trigger gesendet");
   });
 
+  server.on("/api/hotspot", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json = "{\"ssid\":\"" + hotspotSSID + "\",\"pass\":\"" + hotspotPass + "\"}";
+    request->send(200, "application/json", json);
+  });
+
+  server.on("/api/sethotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
+    String ssid = request->hasParam("ssid") ? request->getParam("ssid")->value() : "";
+    String pass = request->hasParam("pass") ? request->getParam("pass")->value() : "";
+    // Nur lokal speichern, SZs noch NICHT benachrichtigen!
+    saveHotspotConfigToFS(ssid, pass);
+    request->send(200, "text/plain", "OK");
+  });
+
+  // NEU: Diese Route feuert jetzt den Broadcast VOR dem Verbindungsaufbau ab!
+  server.on("/api/connecthotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // 1. Erstes Kommando an die Sektorstationen (Daten synchronisieren)
+    HotspotSyncPacket pkt;
+    pkt.magicCode = HOTSPOT_SYNC_MAGIC;
+    strncpy(pkt.ssid, hotspotSSID.c_str(), sizeof(pkt.ssid) - 1);
+    pkt.ssid[sizeof(pkt.ssid) - 1] = '\0';
+    strncpy(pkt.pass, hotspotPass.c_str(), sizeof(pkt.pass) - 1);
+    pkt.pass[sizeof(pkt.pass) - 1] = '\0';
+    
+    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    for(int i=0; i<3; i++) {
+      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
+      delay(50);
+    }
+    
+    // 2. Danach Basis selbst verbinden lassen
+    triggerHotspotConnect();
+    request->send(200, "text/plain", "Connecting...");
+  });
+
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
   server.on("/api/debug/status", HTTP_GET, handleGetDebugStatus);
   server.on("/api/debug/set", HTTP_POST, handlePostSetDebugMode);
@@ -281,6 +382,34 @@ void handleNetworkTasks() {
   if (pendingReset && millis() >= resetTimer) {
     ESP.restart();
   }
+  
+  if (pendingHotspotConnect) {
+    pendingHotspotConnect = false;
+    
+    digitalWrite(LED_READY, LOW); 
+    WiFi.disconnect(true);
+    delay(100);
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.config(0u, 0u, 0u); 
+    WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+    
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 60) { 
+      delay(250);
+      timeout++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      setupGhostWLAN(); 
+    } else {
+      blinkGreenLED(5);
+      digitalWrite(LED_READY, LOW);
+      delay(300);
+      setupWLAN(); 
+    }
+  }
+
   ArduinoOTA.handle();
   MDNS.update();
   ws.cleanupClients();

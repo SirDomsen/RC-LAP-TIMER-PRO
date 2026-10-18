@@ -7,6 +7,10 @@ extern String driverNames[MAX_CARS + 1];
 extern String carNames[MAX_CARS + 1];
 extern bool webCacheEnabled;
 
+// NEU: Hotspot-Variablen
+extern String hotspotSSID;
+extern String hotspotPass;
+
 // Puffer-Struktur mit vollständigen Sektorzeiten
 struct PendingLap {
   uint8_t carId;
@@ -27,6 +31,10 @@ void saveNamesToEEPROM(int id, const String& driver, const String& car);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 void saveCacheConfigToEEPROM(bool enable);
+
+// NEU: Hotspot-Ladefunktionen
+void loadHotspotConfigFromFS();
+void saveHotspotConfigToFS(const String& ssid, const String& pass);
 
 void initFS();
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);

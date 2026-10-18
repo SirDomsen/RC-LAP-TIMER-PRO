@@ -13,6 +13,13 @@ function openConfigModal() {
   if (container) container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
   if (ttsContainer) ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
 
+  fetch('/api/hotspot').then(r => r.json()).then(data => {
+    let s = document.getElementById('cfg_hotspot_ssid');
+    let p = document.getElementById('cfg_hotspot_pass');
+    if (s) s.value = data.ssid || '';
+    if (p) p.value = data.pass || '';
+  }).catch(e => console.error(e));
+
   fetch('/api/deadtime').then(r => r.json()).then(data => {
     let dtElem = document.getElementById('cfg_deadtime');
     if (dtElem && data.ms) dtElem.value = (data.ms / 1000).toFixed(1);
@@ -109,6 +116,11 @@ async function saveConfig() {
       localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
     }
 
+    let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
+    let hsPass = document.getElementById('cfg_hotspot_pass')?.value || '';
+    // NUR Speichern. Der Broadcast an die Sektorstationen passiert erst beim gezielten AP-Wechsel.
+    await fetch('/api/sethotspot?ssid=' + encodeURIComponent(hsSsid) + '&pass=' + encodeURIComponent(hsPass), { method: 'POST' });
+
     let deadtimeElem = document.getElementById('cfg_deadtime');
     if (deadtimeElem) {
       let deadtimeSec = parseFloat(deadtimeElem.value);
@@ -168,6 +180,40 @@ async function saveConfig() {
     closeConfigModal();
     updateData();
   }
+}
+
+// Löst den gezielten Hotspot-Verbindungsaufbau aus
+async function connectToHotspotNow() {
+  let s = document.getElementById('cfg_hotspot_ssid')?.value || '';
+  let p = document.getElementById('cfg_hotspot_pass')?.value || '';
+  if (!s) { 
+    alert("Bitte erst eine Hotspot SSID eintragen!"); 
+    return; 
+  }
+  
+  // Im ESP zwischenspeichern (noch nicht broadcasten)
+  await fetch('/api/sethotspot?ssid=' + encodeURIComponent(s) + '&pass=' + encodeURIComponent(p), { method: 'POST' });
+  
+  // Berechnung der gekürzten SSID für die UI-Anzeige
+  let maxLen = 31 - 4 - 15; 
+  let shortSsid = s;
+  if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
+  
+  let displaySsid = document.getElementById('alertSsidDisplay');
+  if (displaySsid) displaySsid.innerText = "LT_" + shortSsid + "-[IP-Adresse]";
+
+  // Settings-Menü schließen und Warn-Modal öffnen
+  closeConfigModal();
+  let modal = document.getElementById('connectionAlertModal');
+  if (modal) modal.style.display = 'block';
+}
+
+function confirmConnectionAlert() {
+  let modal = document.getElementById('connectionAlertModal');
+  if (modal) modal.style.display = 'none';
+
+  // JETZT erst feuert die Basis den ESP-NOW Broadcast an die SZs und kappt danach ihr eigenes WLAN
+  fetch('/api/connecthotspot', { method: 'POST' });
 }
 
 async function triggerSZOta() {

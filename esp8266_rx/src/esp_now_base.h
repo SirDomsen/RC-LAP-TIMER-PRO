@@ -21,12 +21,26 @@ struct __attribute__((packed)) AlivePacket {
   uint8_t batteryLow; // 0 = OK, 1 = Akku leer
 };
 
+// --- NEU: Hotspot Sync Pakete ---
+#define HOTSPOT_SYNC_MAGIC 0x08B2345
+struct __attribute__((packed)) HotspotSyncPacket {
+  uint32_t magicCode;
+  char ssid[32];
+  char pass[64];
+};
+
+#define HOTSPOT_ACK_MAGIC 0x08B2346
+struct __attribute__((packed)) HotspotAckPacket {
+  uint32_t magicCode;
+  uint8_t stationId;
+};
+
 void initESPNowBase();
 void handleTimeSyncBroadcast();
 bool isStationOnline(uint8_t stationId);
 bool isStationBatteryLow(uint8_t stationId);
 
-// Debug-Steuerung & Export (const Reference verhindert RAM-Kopien)
+// Debug-Steuerung & Export
 void setDebugMode(bool active);
 bool getDebugMode();
 const String& getDebugPacketsJSON();

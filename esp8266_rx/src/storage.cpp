@@ -9,6 +9,10 @@ String carNames[MAX_CARS + 1];
 
 bool webCacheEnabled = true;
 
+// NEU: Hotspot-Variablen Instanziierung
+String hotspotSSID = "";
+String hotspotPass = "";
+
 static const String defaultDrivers[MAX_CARS + 1] = {
   "-", "Fahrer 1", "Fahrer 2", "Fahrer 3", "Fahrer 4", "Fahrer 5",
   "Fahrer 6", "Fahrer 7", "Fahrer 8", "Fahrer 9", "Fahrer 10",
@@ -31,6 +35,36 @@ void initFS() {
     Serial.println("[FS] Fehler beim Mounten von LittleFS");
   } else {
     Serial.println("[FS] LittleFS erfolgreich gestartet.");
+  }
+}
+
+// NEU: Hotspot aus LittleFS laden
+void loadHotspotConfigFromFS() {
+  if (LittleFS.exists("/wifi.json")) {
+    File f = LittleFS.open("/wifi.json", "r");
+    if (f) {
+      JsonDocument doc;
+      DeserializationError err = deserializeJson(doc, f);
+      f.close();
+      if (!err) {
+        hotspotSSID = doc["ssid"].as<String>();
+        hotspotPass = doc["pass"].as<String>();
+      }
+    }
+  }
+}
+
+// NEU: Hotspot in LittleFS speichern
+void saveHotspotConfigToFS(const String& ssid, const String& pass) {
+  hotspotSSID = ssid;
+  hotspotPass = pass;
+  JsonDocument doc;
+  doc["ssid"] = ssid;
+  doc["pass"] = pass;
+  File f = LittleFS.open("/wifi.json", "w");
+  if (f) {
+    serializeJson(doc, f);
+    f.close();
   }
 }
 
@@ -81,6 +115,9 @@ void saveAllNamesToFS() {
 void loadSettingsFromEEPROM() {
   EEPROM.begin(EEPROM_SIZE);
   loadNamesFromFS();
+  
+  // NEU: Hotspot Config beim Booten laden
+  loadHotspotConfigFromFS();
 
   if (EEPROM.read(0) != EEPROM_MAGIC) {
     EEPROM.write(0, EEPROM_MAGIC);
