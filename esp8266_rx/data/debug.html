@@ -71,6 +71,7 @@
     .toggle-container { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; }
     .toggle-box { font-size: 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
     .toggle-box input { transform: scale(1.3); cursor: pointer; }
+    #pollingStatus { color: var(--neon-orange); font-size: 12px; display: none; margin-top: 10px; font-family: 'Orbitron', sans-serif; }
   </style>
 </head>
 <body>
@@ -83,6 +84,7 @@
     <!-- SYSTEM RESSOURCEN METRIKEN -->
     <div class="card">
       <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-cyan);">ESP8266 Systemlast & Latenz</h3>
+      <div id="pollingStatus">⚠️ POLLING PAUSIERT (TAB IM HINTERGRUND)</div>
       <div class="metrics-grid">
         <div class="metric-box">
           <div class="metric-label">CPU Takt</div>
@@ -218,12 +220,20 @@
       } catch (e) {}
     }
 
-    // Serieller Abfrage-Zyklus statt paralleler Timer (schützt den ESP8266 vor Lastspitzen)
     async function startSequentialPolling() {
       if (isFetchingLoop) return;
       isFetchingLoop = true;
 
       while (true) {
+        // Pausiere Polling komplett, wenn Tab nicht sichtbar ist
+        if (document.hidden) {
+          document.getElementById('pollingStatus').style.display = 'block';
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        
+        document.getElementById('pollingStatus').style.display = 'none';
+
         await fetchSystemMetrics();
         await new Promise(r => setTimeout(r, 1200));
 

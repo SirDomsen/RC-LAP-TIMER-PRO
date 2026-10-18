@@ -28,6 +28,9 @@ static uint32_t resetTimer = 0;
 
 static bool pendingHotspotConnect = false;
 
+// NEU: Flag für den Auto-Kill des Geister-WLANs
+static bool pendingGhostApDisable = false;
+
 static String cacheHeaderStr; 
 
 void triggerHotspotConnect() {
@@ -42,6 +45,10 @@ void scheduleESPReset(uint16_t delayMs) {
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     Serial.printf("[WebSocket] Client #%u verbunden\n", client->id());
+    
+    // NEU: Sobald das Frontend offen ist, wird der Auto-Kill getriggert
+    pendingGhostApDisable = true;
+    
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
@@ -78,13 +85,14 @@ static void setupGhostWLAN() {
   
   WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
   digitalWrite(LED_READY, HIGH); 
-  Serial.println("[WLAN] Verbunden! Geister-WLAN: " + ipApName);
+  Serial.println("[WLAN] Verbunden! Geister-WLAN aufgespannt: " + ipApName);
 }
 
 static void setupFallbackAP() {
   WiFi.disconnect(true);
   delay(50);
   WiFi.mode(WIFI_AP);
+  
   IPAddress local_IP(192, 168, 0, 8);
   IPAddress gateway(192, 168, 0, 1);
   IPAddress subnet(255, 255, 255, 0);
@@ -282,14 +290,11 @@ void initNetworkAndServer() {
   server.on("/api/sethotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
     String ssid = request->hasParam("ssid") ? request->getParam("ssid")->value() : "";
     String pass = request->hasParam("pass") ? request->getParam("pass")->value() : "";
-    // Nur lokal speichern, SZs noch NICHT benachrichtigen!
     saveHotspotConfigToFS(ssid, pass);
     request->send(200, "text/plain", "OK");
   });
 
-  // NEU: Diese Route feuert jetzt den Broadcast VOR dem Verbindungsaufbau ab!
   server.on("/api/connecthotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
-    // 1. Erstes Kommando an die Sektorstationen (Daten synchronisieren)
     HotspotSyncPacket pkt;
     pkt.magicCode = HOTSPOT_SYNC_MAGIC;
     strncpy(pkt.ssid, hotspotSSID.c_str(), sizeof(pkt.ssid) - 1);
@@ -303,7 +308,6 @@ void initNetworkAndServer() {
       delay(50);
     }
     
-    // 2. Danach Basis selbst verbinden lassen
     triggerHotspotConnect();
     request->send(200, "text/plain", "Connecting...");
   });
@@ -382,6 +386,15 @@ void handleNetworkTasks() {
   if (pendingReset && millis() >= resetTimer) {
     ESP.restart();
   }
+
+  // NEU: Killt das Geister-WLAN aus dem sicheren Main-Loop heraus
+  if (pendingGhostApDisable) {
+    pendingGhostApDisable = false;
+    if (WiFi.getMode() == WIFI_AP_STA) {
+      WiFi.mode(WIFI_STA);
+      Serial.println("[WLAN] Frontend aktiv! Geister-WLAN abgeschaltet. Ping stabilisiert.");
+    }
+  }
   
   if (pendingHotspotConnect) {
     pendingHotspotConnect = false;
@@ -391,6 +404,7 @@ void handleNetworkTasks() {
     delay(100);
     
     WiFi.mode(WIFI_STA);
+    
     WiFi.config(0u, 0u, 0u); 
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     

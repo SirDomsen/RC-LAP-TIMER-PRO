@@ -46,7 +46,6 @@ struct __attribute__((packed)) OtaTriggerPacket {
 };
 #define OTA_MAGIC_CODE 0x07A1234
 
-// --- Pakete für die Hotspot-Synchronisation ---
 #define HOTSPOT_SYNC_MAGIC 0x08B2345
 struct __attribute__((packed)) HotspotSyncPacket {
   uint32_t magicCode;
@@ -69,7 +68,6 @@ bool batteryLow = false;
 bool triggerMaintenance = false;
 bool maintenanceMode = false;
 
-// Hotspot Variablen & Flags
 String dynamicSsid = "";
 String dynamicPass = "";
 bool pendingHotspotAck = false;
@@ -140,15 +138,16 @@ void blinkSignalLed(int count) {
   }
 }
 
-// Hybride Verbindungssequenz (Statisch daheim, DHCP im Hotspot)
 void connectWlanSequence() {
-  digitalWrite(LED_SIGNAL, HIGH); // LED Initial aus
+  digitalWrite(LED_SIGNAL, HIGH); 
   
   WiFi.disconnect(true);
   delay(100);
   WiFi.mode(WIFI_STA);
   
-  // 1. Heim-WLAN suchen (MIT fester IP für OTA)
+  // FIX: Modem Sleep deaktivieren für Ping < 5ms und stabile OTA-Transfers!
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  
   IPAddress gateway(192, 168, 0, 1);
   IPAddress subnet(255, 255, 255, 0);
   WiFi.config(local_IP, gateway, subnet);
@@ -163,20 +162,17 @@ void connectWlanSequence() {
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
     wifi_set_channel(WiFi.channel());
-    digitalWrite(LED_SIGNAL, LOW); // Erfolg -> Dauerhaft an
+    digitalWrite(LED_SIGNAL, LOW); 
     return;
   }
   
-  // Heim-WLAN fehlgeschlagen
   blinkSignalLed(3);
   digitalWrite(LED_SIGNAL, HIGH); 
   
-  // 2. Dynamischen Hotspot versuchen (falls vorhanden)
   if (dynamicSsid.length() > 0) {
     WiFi.disconnect(true);
     delay(100);
     
-    // DHCP für das Handy aktivieren!
     WiFi.config(0u, 0u, 0u); 
     
     WiFi.begin(dynamicSsid.c_str(), dynamicPass.c_str());
@@ -189,16 +185,14 @@ void connectWlanSequence() {
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnected = true;
       wifi_set_channel(WiFi.channel());
-      digitalWrite(LED_SIGNAL, LOW); // Erfolg -> Dauerhaft an
+      digitalWrite(LED_SIGNAL, LOW); 
       return;
     }
     
-    // Hotspot fehlgeschlagen
     blinkSignalLed(5);
     digitalWrite(LED_SIGNAL, HIGH);
   }
   
-  // 3. Fallback: Offline-Rennen (Kanal via Scan suchen, aber NICHT verbinden!)
   WiFi.disconnect(true);
   delay(100);
   wifiConnected = false;
@@ -211,13 +205,12 @@ void connectWlanSequence() {
     }
   }
   wifi_set_channel(activeChannel);
-  digitalWrite(LED_SIGNAL, LOW); // Scan beendet -> Dauerhaft an
+  digitalWrite(LED_SIGNAL, LOW); 
 }
 
 void onDataSent(u8 *mac_addr, u8 sendStatus) {}
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  // Hotspot Sync empfangen
   if (len == sizeof(HotspotSyncPacket)) {
     HotspotSyncPacket syncPkt;
     memcpy(&syncPkt, incomingData, sizeof(syncPkt));
@@ -233,7 +226,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // OTA Trigger empfangen
   if (len == sizeof(OtaTriggerPacket)) {
     OtaTriggerPacket ota;
     memcpy(&ota, incomingData, sizeof(ota));
@@ -246,7 +238,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 1. Kaskadierender Time-Sync
   if (len == sizeof(SyncPacket)) {
     SyncPacket sync;
     memcpy(&sync, incomingData, sizeof(sync));
@@ -266,7 +257,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 2. Alive-Pakete
   if (len == sizeof(AlivePacket)) {
     AlivePacket alive;
     memcpy(&alive, incomingData, sizeof(alive));
@@ -279,7 +269,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
   
-  // 3. Sektor-Pakete
   if (len == sizeof(SectorPacket)) {
     SectorPacket pkt;
     memcpy(&pkt, incomingData, sizeof(pkt));
@@ -299,7 +288,7 @@ void setup() {
   digitalWrite(1, LOW);
   pinMode(0, INPUT_PULLUP);
 
-  digitalWrite(LED_SIGNAL, HIGH); // LED Initial aus
+  digitalWrite(LED_SIGNAL, HIGH); 
   digitalWrite(LED_SIGNAL, LOW);
   delay(333);
   digitalWrite(LED_SIGNAL, HIGH);
@@ -329,7 +318,7 @@ void loop() {
     ack.magicCode = HOTSPOT_ACK_MAGIC;
     ack.stationId = STATION_ID;
     esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
-    delay(50); // Kurz warten vor dem WLAN Neustart
+    delay(50); 
   }
 
   if (triggerNewHotspot) {
@@ -362,7 +351,6 @@ void loop() {
     esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
   }
 
-  // === LED STATUS LOGIK ===
   if (maintenanceMode) {
     bool blinkState = (millis() / 166) % 2 == 0;
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
@@ -371,7 +359,7 @@ void loop() {
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
   } else if (ledPulseActive) {
     if (millis() >= ledPulseEndMs) {
-      digitalWrite(LED_SIGNAL, LOW); // Zurück auf Dauer-An
+      digitalWrite(LED_SIGNAL, LOW); 
       ledPulseActive = false;
     }
   } else {
