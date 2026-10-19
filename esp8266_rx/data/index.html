@@ -228,7 +228,10 @@
 
         <!-- WLAN Kontrollzentrum -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
-          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">📶 WLAN Kontrollzentrum</h4>
+          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">
+            📶 WLAN Kontrollzentrum
+            <span id="activeWifiBadge" style="float:right; font-size:11px; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.1); border:1px solid #555; color:var(--text-main);">Lade...</span>
+          </h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
             Hier Daten für alle Netzwerke pflegen. Ein Klick auf die Buttons zwingt die Basis sofort ins gewählte WLAN.
           </p>
@@ -333,6 +336,7 @@
     </div>
   </div>
 
+  <!-- WLAN Switch Modal -->
   <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
       <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 WLAN WIRD GEWECHSELT</h3>
@@ -351,10 +355,30 @@
     </div>
   </div>
 
+  <!-- OTA Wartungsmodus Modal -->
+  <div id="otaAlertModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);">
+      <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚡ SZ WARTUNGSMODUS (OTA)</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="otaModalDesc">
+        Wartungsmodus an alle Sektorstationen funken?<br>Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!
+      </p>
+      
+      <div id="otaModalStatus" style="display:none; background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
+        <p id="otaStatusText" style="margin:0; font-size:14px; color:var(--neon-green); font-weight:bold;">Status...</p>
+      </div>
+      
+      <div id="otaModalButtons" style="display:flex; gap:10px;">
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
+        <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
     <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>&copy; 2026 | Powered by ESP8266</div>
+    <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
+    <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
   <script src="tts.js"></script>

@@ -433,6 +433,7 @@ void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
 
 void handleGetWifiConfig(AsyncWebServerRequest *request) {
   JsonDocument doc;
+  doc["runtimeMode"] = currentRuntimeWifiMode;
   doc["mode"] = activeWifiMode;
   doc["homeSSID"] = homeSSID;
   doc["homePass"] = homePass;

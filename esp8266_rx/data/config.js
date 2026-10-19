@@ -14,7 +14,6 @@ function openConfigModal() {
   if (container) container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
   if (ttsContainer) ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
 
-  // --- NEU: Komplette WLAN-Konfiguration laden ---
   fetch('/api/wificonfig').then(r => r.json()).then(data => {
     let homeS = document.getElementById('cfg_home_ssid');
     let homeP = document.getElementById('cfg_home_pass');
@@ -29,6 +28,46 @@ function openConfigModal() {
     if (hotP) hotP.value = data.hotspotPass || '';
     if (apS) apS.value = data.apSSID || '';
     if (apP) apP.value = data.apPass || '';
+
+    // WLAN-Badge mit Fallback-Erkennung aktualisieren
+    let badge = document.getElementById('activeWifiBadge');
+    if (badge) {
+      let configured = data.mode;
+      let actual = data.runtimeMode !== undefined ? data.runtimeMode : data.mode;
+      let isFallback = (configured !== actual);
+
+      let txt = "";
+      let color = "";
+      let bg = "";
+
+      if (actual === 1) { 
+        txt = "🏠 Heim-WLAN"; 
+        color = "var(--neon-green)"; 
+        bg = "rgba(0,255,102,0.1)"; 
+      }
+      else if (actual === 2) { 
+        txt = "📱 Hotspot"; 
+        color = "var(--neon-orange)"; 
+        bg = "rgba(255,153,0,0.1)"; 
+      }
+      else { 
+        txt = "📡 AP-Modus"; 
+        color = "var(--neon-purple)"; 
+        bg = "rgba(181,50,255,0.1)"; 
+      }
+
+      if (isFallback) {
+        let source = configured === 1 ? "Heim-WLAN" : (configured === 2 ? "Hotspot" : "unbekannt");
+        txt += ` (Fallback von ${source})`;
+        color = "var(--neon-red)";
+        bg = "rgba(255,51,102,0.15)";
+      }
+
+      badge.innerText = txt + " aktiv";
+      badge.style.borderColor = color;
+      badge.style.color = color;
+      badge.style.background = bg;
+    }
   }).catch(e => console.error(e));
 
   fetch('/api/deadtime').then(r => r.json()).then(data => {
@@ -127,7 +166,6 @@ async function saveConfig() {
       localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
     }
 
-    // --- NEU: Alle 3 WLAN-Profile speichern ---
     let hS = document.getElementById('cfg_home_ssid')?.value || '';
     let hP = document.getElementById('cfg_home_pass')?.value || '';
     let hsS = document.getElementById('cfg_hotspot_ssid')?.value || '';
@@ -196,6 +234,7 @@ async function saveConfig() {
   } finally {
     closeConfigModal();
     updateData();
+    if (typeof loadWifiStatus === 'function') loadWifiStatus();
   }
 }
 
@@ -214,7 +253,7 @@ async function forceWifiMode(mode) {
   
   if (mode === 1) { 
     modeName = "Heim-WLAN"; 
-    expectedSsid = "Dein Heimnetzwerk (Die Basis nutzt ihre feste IP: 192.168.0.8)"; 
+    expectedSsid = "Dein Heimnetzwerk (Basis IP: 192.168.0.8)"; 
   }
   else if (mode === 2) { 
     modeName = "Hotspot"; 
@@ -256,26 +295,66 @@ async function confirmConnectionAlert() {
   let aS = document.getElementById('cfg_ap_ssid')?.value || '';
   let aP = document.getElementById('cfg_ap_pass')?.value || '';
   
-  // Die eingegebenen Daten zur Sicherheit in den Flash schieben
   let wUrl = `/api/setwificonfig?homeSSID=${encodeURIComponent(hS)}&homePass=${encodeURIComponent(hP)}&hotspotSSID=${encodeURIComponent(hsS)}&hotspotPass=${encodeURIComponent(hsP)}&apSSID=${encodeURIComponent(aS)}&apPass=${encodeURIComponent(aP)}`;
   await fetch(wUrl, { method: 'POST' });
   
-  // Abflug! Basisstation triggern.
   fetch('/api/switchwifi?mode=' + pendingWifiMode, { method: 'POST' });
 }
 
-async function triggerSZOta() {
-  if(!confirm("Wartungsmodus an alle Sektorstationen funken?\nDie Zeitmessung wird unterbrochen, bis die SZs neu gestartet werden!")) return;
+function triggerSZOta() {
+  closeConfigModal();
+  let modal = document.getElementById('otaAlertModal');
+  let statusBox = document.getElementById('otaModalStatus');
+  let btns = document.getElementById('otaModalButtons');
+  let desc = document.getElementById('otaModalDesc');
+  
+  if (modal) {
+    statusBox.style.display = 'none';
+    btns.innerHTML = `
+      <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
+      <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
+    `;
+    btns.style.display = 'flex';
+    desc.style.display = 'block';
+    modal.style.display = 'block';
+  }
+}
+
+function closeOtaAlert() {
+  let modal = document.getElementById('otaAlertModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function confirmOtaAlert() {
+  let btns = document.getElementById('otaModalButtons');
+  let statusBox = document.getElementById('otaModalStatus');
+  let statusText = document.getElementById('otaStatusText');
+  let desc = document.getElementById('otaModalDesc');
+  
+  btns.style.display = 'none';
+  desc.style.display = 'none';
+  statusBox.style.display = 'block';
+  statusText.style.color = 'var(--neon-cyan)';
+  statusText.innerText = "Sende Trigger-Signal an Sektorstationen...";
+
   try {
     let res = await fetch('/api/trigger_sz_ota', { method: 'POST' });
     let msg = await res.text();
     
     if (!res.ok) {
-      alert("⚠️ Fehler: " + msg);
+      statusText.style.color = 'var(--neon-orange)';
+      statusText.innerText = "⚠️ Fehler: " + msg;
     } else {
-      alert("✅ Signal erfolgreich gesendet!\nDie Stationen sollten nun dauerhaft schnell (3Hz) blinken, ihr WLAN hochfahren und sich mit dem aktuellen Netzwerk verbinden.\nDu kannst sie in ca. 5-10 Sekunden über VS Code / PlatformIO flashen.");
+      statusText.style.color = 'var(--neon-green)';
+      statusText.innerHTML = "✅ Signal erfolgreich gesendet!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Die Stationen blinken nun schnell (3Hz) und verbinden sich mit dem aktuellen Netzwerk.<br>Flash-Vorgang per OTA kann gestartet werden.</span>";
     }
   } catch(e) {
-    alert("Fehler beim Senden: " + e.message);
+    statusText.style.color = 'var(--neon-red)';
+    statusText.innerText = "❌ Fehler beim Senden: " + e.message;
   }
+  
+  setTimeout(() => {
+    btns.innerHTML = `<button class="btn btn-cyan" style="width:100%; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">SCHLIESSEN</button>`;
+    btns.style.display = 'flex';
+  }, 500);
 }

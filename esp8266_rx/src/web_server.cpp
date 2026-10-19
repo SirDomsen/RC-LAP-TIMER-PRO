@@ -30,6 +30,7 @@ static bool pendingWifiSwitch = false;
 static uint32_t wifiSwitchTimer = 0;
 static uint8_t targetWifiMode = 0;
 
+uint8_t currentRuntimeWifiMode = 0;
 static String cacheHeaderStr; 
 
 void scheduleESPReset(uint16_t delayMs) {
@@ -106,6 +107,7 @@ static void setupFallbackAP() {
   currentActiveIP = local_IP;
   digitalWrite(LED_READY, HIGH); 
   Serial.printf("[WLAN] AP-Modus aktiv: %s | IP: %s\n", apName, currentActiveIP.toString().c_str());
+  currentRuntimeWifiMode = 0; // Echter AP-Modus ist aktiv
 }
 
 static void connectNetworkCascade(uint8_t startMode) {
@@ -133,6 +135,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
+      currentRuntimeWifiMode = 1; // Echter Heim-WLAN-Modus ist aktiv
       setupGhostWLAN();
       return; // Erfolg! Kaskade beenden.
     } else {
@@ -159,6 +162,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
+      currentRuntimeWifiMode = 2; // Echter Hotspot-Modus ist aktiv
       setupGhostWLAN();
       return; // Erfolg! Kaskade beenden.
     } else {

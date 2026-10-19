@@ -6,6 +6,7 @@
 
 extern AsyncWebServer server;
 extern AsyncWebSocket ws;
+extern uint8_t currentRuntimeWifiMode;
 
 void initNetworkAndServer();
 void handleNetworkTasks();
