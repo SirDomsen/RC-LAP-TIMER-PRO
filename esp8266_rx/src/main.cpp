@@ -17,13 +17,13 @@ void setup() {
   // CPU-Takt auf 160 MHz setzen für maximale Rechenleistung
   system_update_cpu_freq(160);
 
-  Serial.begin(115200);
+  
   delay(100);
 
-  Serial.println();
-  Serial.print("[CPU] Taktfrequenz: ");
-  Serial.print(ESP.getCpuFreqMHz());
-  Serial.println(" MHz");
+  
+  
+  
+  
 
   initFS();
   loadSettingsFromEEPROM();

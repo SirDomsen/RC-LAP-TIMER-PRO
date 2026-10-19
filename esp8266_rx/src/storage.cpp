@@ -37,9 +37,9 @@ static uint8_t queueTail = 0;
 
 void initFS() {
   if (!LittleFS.begin()) {
-    Serial.println("[FS] Fehler beim Mounten von LittleFS");
+    
   } else {
-    Serial.println("[FS] LittleFS erfolgreich gestartet.");
+    
   }
 }
 

@@ -4,7 +4,6 @@
 #include "esp_now_base.h"
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <ESPAsyncTCP.h>
@@ -23,6 +22,8 @@ static IPAddress currentActiveIP(192, 168, 0, 8);
 extern uint32_t perfMaxLoopUs;
 extern uint32_t perfAvgLoopUs;
 
+uint8_t currentRuntimeWifiMode = 0;
+
 static bool pendingReset = false;
 static uint32_t resetTimer = 0;
 
@@ -30,7 +31,6 @@ static bool pendingWifiSwitch = false;
 static uint32_t wifiSwitchTimer = 0;
 static uint8_t targetWifiMode = 0;
 
-uint8_t currentRuntimeWifiMode = 0;
 static String cacheHeaderStr; 
 
 void scheduleESPReset(uint16_t delayMs) {
@@ -40,15 +40,12 @@ void scheduleESPReset(uint16_t delayMs) {
 
 void triggerWifiSwitch(uint8_t mode) {
   targetWifiMode = mode;
-  // 400ms warten, damit das Frontend noch die "200 OK"-Antwort erhält
   wifiSwitchTimer = millis() + 400; 
   pendingWifiSwitch = true;
 }
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-  if (type == WS_EVT_CONNECT) {
-    Serial.printf("[WebSocket] Client #%u verbunden\n", client->id());
-  } else if (type == WS_EVT_DATA) {
+  if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
@@ -72,6 +69,7 @@ static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   String ipStr = currentActiveIP.toString();
@@ -85,7 +83,6 @@ static void setupGhostWLAN() {
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
   WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
   digitalWrite(LED_READY, HIGH); 
-  Serial.println("[WLAN] Verbunden! Geister-WLAN: " + ipApName);
 }
 
 static void setupFallbackAP() {
@@ -93,6 +90,7 @@ static void setupFallbackAP() {
   delay(50);
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP);
+  WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   IPAddress local_IP(192, 168, 0, 8);
@@ -105,13 +103,12 @@ static void setupFallbackAP() {
   
   WiFi.softAP(apName, apKey, 1, 0, 8);
   currentActiveIP = local_IP;
+  currentRuntimeWifiMode = 0;
   digitalWrite(LED_READY, HIGH); 
-  Serial.printf("[WLAN] AP-Modus aktiv: %s | IP: %s\n", apName, currentActiveIP.toString().c_str());
-  currentRuntimeWifiMode = 0; // Echter AP-Modus ist aktiv
 }
 
 static void connectNetworkCascade(uint8_t startMode) {
-  // 1. HEIM-WLAN VERSUCHEN
+  // 1. HEIM-WLAN VERSUCHEN (Jetzt mit reinem DHCP)
   if (startMode == 1) {
     String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
     String p = homePass.length() > 0 ? homePass : HOME_PASS;
@@ -121,12 +118,11 @@ static void connectNetworkCascade(uint8_t startMode) {
     delay(50);
     WiFi.setPhyMode(WIFI_PHY_MODE_11G);
     WiFi.mode(WIFI_STA);
+    WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     
-    IPAddress local_IP(192, 168, 0, 8);
-    IPAddress gateway(192, 168, 0, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    WiFi.config(local_IP, gateway, subnet);
+    // DHCP erzwingen
+    WiFi.config(0u, 0u, 0u);
     
     WiFi.begin(s.c_str(), p.c_str());
     uint32_t startMs = millis();
@@ -135,25 +131,26 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
-      currentRuntimeWifiMode = 1; // Echter Heim-WLAN-Modus ist aktiv
+      currentRuntimeWifiMode = 1;
       setupGhostWLAN();
-      return; // Erfolg! Kaskade beenden.
+      return; 
     } else {
       blinkGreenLED(3);
       delay(300);
-      startMode = 2; // Fallback: Gehe zu Schritt 2 (Hotspot)
+      startMode = 2; 
     }
   }
 
-  // 2. HOTSPOT VERSUCHEN (Direkt gewählt oder Fallback von Heim-WLAN)
+  // 2. HOTSPOT VERSUCHEN 
   if (startMode == 2 && hotspotSSID.length() > 0) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
     WiFi.setPhyMode(WIFI_PHY_MODE_11G);
     WiFi.mode(WIFI_STA);
+    WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    WiFi.config(0u, 0u, 0u); // DHCP für Hotspot
+    WiFi.config(0u, 0u, 0u); 
     
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
@@ -162,16 +159,15 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
-      currentRuntimeWifiMode = 2; // Echter Hotspot-Modus ist aktiv
+      currentRuntimeWifiMode = 2;
       setupGhostWLAN();
-      return; // Erfolg! Kaskade beenden.
+      return; 
     } else {
       blinkGreenLED(5);
-      // Fallback: Gehe zu Schritt 3 (AP)
     }
   }
 
-  // 3. AP-MODUS (Direkt gewählt oder alle vorherigen fehlgeschlagen)
+  // 3. AP-MODUS 
   setupFallbackAP();
 }
 
@@ -206,7 +202,7 @@ void initNetworkAndServer() {
     } else if (LittleFS.exists("/debug.html")) {
       request->send(LittleFS, "/debug.html", "text/html");
     } else {
-      request->send(404, "text/plain", "Debug-Seite nicht im Flash gefunden");
+      request->send(404, "text/plain", "Debug-Seite nicht gefunden");
     }
   };
   server.on("/debug", HTTP_GET, serveDebugPage);
@@ -281,13 +277,11 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
-  // Endpoints für voll konfigurierbares WLAN
   server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
   server.on("/api/setwificonfig", HTTP_POST, handlePostSetWifiConfig);
   server.on("/api/switchwifi", HTTP_POST, handlePostSwitchWifi);
   server.on("/api/trigger_sz_ota", HTTP_POST, handlePostTriggerSzOta);
 
-  // Abwärtskompatibilität
   server.on("/api/hotspot", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json = "{\"ssid\":\"" + hotspotSSID + "\",\"pass\":\"" + hotspotPass + "\"}";
     request->send(200, "application/json", json);
@@ -368,10 +362,6 @@ void initNetworkAndServer() {
 
   server.begin();
   
-  MDNS.end();
-  if (MDNS.begin("laptimer")) {
-    MDNS.addService("http", "tcp", 80);
-  }
   ArduinoOTA.setHostname("LapTimer-Base");
   ArduinoOTA.begin();
 }
@@ -381,19 +371,15 @@ void handleNetworkTasks() {
     ESP.restart();
   }
 
-  // Saubere LwIP Lösung: Ein kompletter Reboot löst den Zombiestatus bei Moduswechseln
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
     pendingWifiSwitch = false;
-    
-    Serial.println("[SYSTEM] Führe sauberen Neustart für WLAN-Wechsel durch...");
     ws.closeAll();
     server.end();
     delay(150);
-    ESP.restart(); // Radikaler, aber 100% stabiler Weg
+    ESP.restart(); 
   }
 
   ArduinoOTA.handle();
-  MDNS.update();
   ws.cleanupClients();
 }
 

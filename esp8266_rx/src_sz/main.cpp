@@ -348,6 +348,7 @@ void setup() {
   WiFi.disconnect(true);
   WiFi.setPhyMode(WIFI_PHY_MODE_11G);
   WiFi.mode(WIFI_STA);
+  WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   if (esp_now_init() == 0) {

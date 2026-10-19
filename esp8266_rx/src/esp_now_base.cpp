@@ -113,7 +113,7 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     HotspotAckPacket ack;
     memcpy(&ack, incomingData, sizeof(ack));
     if (ack.magicCode == HOTSPOT_ACK_MAGIC) {
-      Serial.printf("[ESP-NOW] Hotspot ACK von SZ-%d empfangen!\n", ack.stationId);
+      
     }
     return;
   }
@@ -157,7 +157,7 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
 
 void initESPNowBase() {
   if (esp_now_init() != 0) {
-    Serial.println("[ESP-NOW] Fehler bei Initialisierung!");
+    
     return;
   }
 
@@ -172,7 +172,7 @@ void initESPNowBase() {
     esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, currentCh, NULL, 0);
   }
   
-  Serial.printf("[ESP-NOW] Basis bereit auf Funkkanal %d\n", currentCh);
+  
 }
 
 void handleTimeSyncBroadcast() {

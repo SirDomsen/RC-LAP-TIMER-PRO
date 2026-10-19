@@ -332,7 +332,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       }
     }
 
-    Serial.printf("[Upload] Start: %s (PC-mtime: %u)\n", cleanPath, targetMtime);
+    
     uploadFile = LittleFS.open(cleanPath, "w");
   }
   
@@ -357,7 +357,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
         settimeofday(&oldTv, nullptr);
       }
 
-      Serial.printf("[Upload] Fertig: %s (%u Bytes, PC-mtime: %u)\n", filename.c_str(), index + len, targetMtime);
+      
 
       if (filename.indexOf("names.json") >= 0) {
         loadNamesFromFS();
