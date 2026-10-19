@@ -15,8 +15,8 @@ extern "C" {
   #include <espnow.h>
 }
 
-static AsyncWebServer server(80);
-static AsyncWebSocket ws("/ws");
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
 
 static IPAddress currentActiveIP(192, 168, 0, 8);
 
@@ -26,10 +26,8 @@ extern uint32_t perfAvgLoopUs;
 static bool pendingReset = false;
 static uint32_t resetTimer = 0;
 
-static bool pendingGhostApDisable = false;
-
 static bool pendingWifiSwitch = false;
-static uint32_t wifiSwitchTimer = 0; // NEU: Timer für den verzögerten Kamikaze-Disconnect
+static uint32_t wifiSwitchTimer = 0;
 static uint8_t targetWifiMode = 0;
 
 static String cacheHeaderStr; 
@@ -39,10 +37,16 @@ void scheduleESPReset(uint16_t delayMs) {
   resetTimer = millis() + delayMs;
 }
 
+void triggerWifiSwitch(uint8_t mode) {
+  targetWifiMode = mode;
+  // 400ms warten, damit das Frontend noch die "200 OK"-Antwort erhält
+  wifiSwitchTimer = millis() + 400; 
+  pendingWifiSwitch = true;
+}
+
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     Serial.printf("[WebSocket] Client #%u verbunden\n", client->id());
-    pendingGhostApDisable = true;
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
@@ -78,7 +82,6 @@ static void setupGhostWLAN() {
   }
   
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
-  
   WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
   digitalWrite(LED_READY, HIGH); 
   Serial.println("[WLAN] Verbunden! Geister-WLAN: " + ipApName);
@@ -89,81 +92,87 @@ static void setupFallbackAP() {
   delay(50);
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   IPAddress local_IP(192, 168, 0, 8);
-  IPAddress gateway(192, 168, 0, 1);
+  IPAddress gateway(192, 168, 0, 8);
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(local_IP, gateway, subnet);
-  WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
+  
+  const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
+  const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
+  
+  WiFi.softAP(apName, apKey, 1, 0, 8);
   currentActiveIP = local_IP;
   digitalWrite(LED_READY, HIGH); 
-  Serial.println("[WLAN] Reiner AP-Modus aktiv! IP: " + currentActiveIP.toString());
+  Serial.printf("[WLAN] AP-Modus aktiv: %s | IP: %s\n", apName, currentActiveIP.toString().c_str());
 }
 
-static void setupWLAN() {
-  digitalWrite(LED_READY, LOW); 
-  WiFi.disconnect(true);
-  delay(100);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  
-  IPAddress local_IP(192, 168, 0, 8);
-  IPAddress gateway(192, 168, 0, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  WiFi.config(local_IP, gateway, subnet);
-  
-  WiFi.begin(HOME_SSID, HOME_PASS);
-  int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 16) {
-    delay(250);
-    timeout++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    setupGhostWLAN();
-  } else {
-    blinkGreenLED(3);
+static void connectNetworkCascade(uint8_t startMode) {
+  // 1. HEIM-WLAN VERSUCHEN
+  if (startMode == 1) {
+    String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
+    String p = homePass.length() > 0 ? homePass : HOME_PASS;
+    
     digitalWrite(LED_READY, LOW);
-    delay(300);
-
-    if (hotspotSSID.length() > 0) {
-      WiFi.disconnect(true);
+    WiFi.disconnect(true);
+    delay(50);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    
+    IPAddress local_IP(192, 168, 0, 8);
+    IPAddress gateway(192, 168, 0, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.config(local_IP, gateway, subnet);
+    
+    WiFi.begin(s.c_str(), p.c_str());
+    uint32_t startMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 10000)) {
       delay(100);
-      WiFi.setPhyMode(WIFI_PHY_MODE_11G);
-      WiFi.mode(WIFI_STA);
-      WiFi.setSleepMode(WIFI_NONE_SLEEP);
-      WiFi.config(0u, 0u, 0u); 
-      
-      WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
-      timeout = 0;
-      while (WiFi.status() != WL_CONNECTED && timeout < 48) { 
-        delay(250);
-        timeout++;
-      }
-      
-      if (WiFi.status() == WL_CONNECTED) {
-        setupGhostWLAN();
-      } else {
-        blinkGreenLED(5);
-        setupFallbackAP();
-      }
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      setupGhostWLAN();
+      return; // Erfolg! Kaskade beenden.
     } else {
-      setupFallbackAP();
+      blinkGreenLED(3);
+      delay(300);
+      startMode = 2; // Fallback: Gehe zu Schritt 2 (Hotspot)
     }
   }
 
-  if (MDNS.begin("laptimer")) {
-    MDNS.addService("http", "tcp", 80);
+  // 2. HOTSPOT VERSUCHEN (Direkt gewählt oder Fallback von Heim-WLAN)
+  if (startMode == 2 && hotspotSSID.length() > 0) {
+    digitalWrite(LED_READY, LOW);
+    WiFi.disconnect(true);
+    delay(50);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    WiFi.config(0u, 0u, 0u); // DHCP für Hotspot
+    
+    WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+    uint32_t startMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 12000)) {
+      delay(100);
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      setupGhostWLAN();
+      return; // Erfolg! Kaskade beenden.
+    } else {
+      blinkGreenLED(5);
+      // Fallback: Gehe zu Schritt 3 (AP)
+    }
   }
 
-  ArduinoOTA.setHostname("LapTimer-Base");
-  ArduinoOTA.begin();
+  // 3. AP-MODUS (Direkt gewählt oder alle vorherigen fehlgeschlagen)
+  setupFallbackAP();
 }
 
 void initNetworkAndServer() {
-  setupWLAN();
+  connectNetworkCascade(activeWifiMode);
 
   cacheHeaderStr = webCacheEnabled ? "max-age=86400" : "no-cache";
 
@@ -268,64 +277,22 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
+  // Endpoints für voll konfigurierbares WLAN
+  server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
+  server.on("/api/setwificonfig", HTTP_POST, handlePostSetWifiConfig);
+  server.on("/api/switchwifi", HTTP_POST, handlePostSwitchWifi);
+  server.on("/api/trigger_sz_ota", HTTP_POST, handlePostTriggerSzOta);
+
+  // Abwärtskompatibilität
   server.on("/api/hotspot", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json = "{\"ssid\":\"" + hotspotSSID + "\",\"pass\":\"" + hotspotPass + "\"}";
     request->send(200, "application/json", json);
   });
-
   server.on("/api/sethotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
     String ssid = request->hasParam("ssid") ? request->getParam("ssid")->value() : "";
     String pass = request->hasParam("pass") ? request->getParam("pass")->value() : "";
     saveHotspotConfigToFS(ssid, pass);
     request->send(200, "text/plain", "OK");
-  });
-
-  // --- NEU: Korrigierte Switch-Logik (Erst Daten, dann Befehl, dann warten) ---
-  server.on("/api/switchwifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-    uint8_t mode = 0;
-    if (request->hasParam("mode")) {
-      mode = request->getParam("mode")->value().toInt();
-    }
-    
-    uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-    // 1. Wenn Modus = 2 (Hotspot), MÜSSEN wir den SZs vorher die SSID mitteilen!
-    if (mode == 2) {
-      HotspotSyncPacket syncPkt;
-      syncPkt.magicCode = HOTSPOT_SYNC_MAGIC;
-      strncpy(syncPkt.ssid, hotspotSSID.c_str(), sizeof(syncPkt.ssid) - 1);
-      syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
-      strncpy(syncPkt.pass, hotspotPass.c_str(), sizeof(syncPkt.pass) - 1);
-      syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
-
-      for(int i=0; i<3; i++) {
-        esp_now_send(broadcastMac, (uint8_t *)&syncPkt, sizeof(syncPkt));
-        delay(40);
-      }
-      delay(150); // Den SZs Zeit geben, das in den EEPROM zu brennen
-    }
-
-    // 2. Danach erst den eigentlichen Befehl zum sofortigen Umschalten senden
-    struct __attribute__((packed)) WifiSwitchPacket {
-      uint32_t magicCode;
-      uint8_t mode; 
-    };
-    
-    WifiSwitchPacket pkt;
-    pkt.magicCode = 0x08B2347; 
-    pkt.mode = mode;
-    
-    for(int i=0; i<3; i++) {
-      esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
-      delay(30);
-    }
-    
-    // 3. Basisstation merkt sich den Wechsel, kappt aber erst in 400ms ihr WLAN!
-    targetWifiMode = mode;
-    wifiSwitchTimer = millis() + 400; 
-    pendingWifiSwitch = true;
-    
-    request->send(200, "text/plain", "Switch initiated");
   });
 
   server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
@@ -396,6 +363,13 @@ void initNetworkAndServer() {
   server.addHandler(&ws);
 
   server.begin();
+  
+  MDNS.end();
+  if (MDNS.begin("laptimer")) {
+    MDNS.addService("http", "tcp", 80);
+  }
+  ArduinoOTA.setHostname("LapTimer-Base");
+  ArduinoOTA.begin();
 }
 
 void handleNetworkTasks() {
@@ -403,46 +377,15 @@ void handleNetworkTasks() {
     ESP.restart();
   }
 
-  if (pendingGhostApDisable) {
-    pendingGhostApDisable = false;
-    if (WiFi.getMode() == WIFI_AP_STA) {
-      WiFi.mode(WIFI_STA);
-    }
-  }
-  
-  // --- NEU: Basisstation kappt erst NACH dem 400ms Timer ihr WLAN ---
+  // Saubere LwIP Lösung: Ein kompletter Reboot löst den Zombiestatus bei Moduswechseln
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
     pendingWifiSwitch = false;
     
-    digitalWrite(LED_READY, LOW); 
-    WiFi.disconnect(true);
-    delay(100);
-    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-
-    uint32_t startMs = millis();
-    
-    if (targetWifiMode == 1) { 
-      IPAddress local_IP(192, 168, 0, 8);
-      IPAddress gateway(192, 168, 0, 1);
-      IPAddress subnet(255, 255, 255, 0);
-      WiFi.config(local_IP, gateway, subnet);
-      WiFi.begin(HOME_SSID, HOME_PASS);
-      while(WiFi.status() != WL_CONNECTED && millis() - startMs < 10000) { delay(100); }
-      if (WiFi.status() == WL_CONNECTED) { setupGhostWLAN(); } 
-      else { setupFallbackAP(); }
-    } 
-    else if (targetWifiMode == 2) { 
-      WiFi.config(0u, 0u, 0u); 
-      WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
-      while(WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) { delay(100); }
-      if (WiFi.status() == WL_CONNECTED) { setupGhostWLAN(); } 
-      else { setupFallbackAP(); }
-    } 
-    else { 
-      setupFallbackAP();
-    }
+    Serial.println("[SYSTEM] Führe sauberen Neustart für WLAN-Wechsel durch...");
+    ws.closeAll();
+    server.end();
+    delay(150);
+    ESP.restart(); // Radikaler, aber 100% stabiler Weg
   }
 
   ArduinoOTA.handle();

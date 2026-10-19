@@ -7,9 +7,14 @@ extern String driverNames[MAX_CARS + 1];
 extern String carNames[MAX_CARS + 1];
 extern bool webCacheEnabled;
 
-// NEU: Hotspot-Variablen
+// Vollständig konfigurierbares WLAN
+extern String homeSSID;
+extern String homePass;
 extern String hotspotSSID;
 extern String hotspotPass;
+extern String apSSID;
+extern String apPass;
+extern uint8_t activeWifiMode; // 0 = AP, 1 = Heim-WLAN, 2 = Hotspot
 
 // Puffer-Struktur mit vollständigen Sektorzeiten
 struct PendingLap {
@@ -32,8 +37,9 @@ void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 void saveCacheConfigToEEPROM(bool enable);
 
-// NEU: Hotspot-Ladefunktionen
-void loadHotspotConfigFromFS();
+// WLAN-Ladefunktionen
+void loadWifiConfigFromFS();
+void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, const String& hsSsid, const String& hsPass, const String& aSsid, const String& aPass);
 void saveHotspotConfigToFS(const String& ssid, const String& pass);
 
 void initFS();

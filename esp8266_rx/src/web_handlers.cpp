@@ -2,10 +2,15 @@
 #include "storage.h"
 #include "lap_logic.h"
 #include "esp_now_base.h"
+#include "web_server.h"
+#include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <sys/time.h>
 #include <utime.h>
+extern "C" {
+  #include <espnow.h>
+}
 
 void handleGetLaps(AsyncWebServerRequest *request) {
   AsyncResponseStream *response = request->beginResponseStream("application/json");
@@ -301,7 +306,6 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
-// Heap-schonender Upload-Handler mit PC-Zeitstempel (mtime)
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
   static char cleanPath[64];
   static uint32_t targetMtime = 0;
@@ -410,7 +414,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
   }
 }
 
-
 void handleGetCacheConfig(AsyncWebServerRequest *request) {
   String json = "{\"cache\":" + String(webCacheEnabled ? "true" : "false") + "}";
   request->send(200, "application/json", json);
@@ -422,4 +425,100 @@ void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
     saveCacheConfigToEEPROM(webCacheEnabled);
   }
   request->send(200, "text/plain", "OK");
+}
+
+// ========================================================
+// NEUE WLAN & SZ-OTA HANDLER
+// ========================================================
+
+void handleGetWifiConfig(AsyncWebServerRequest *request) {
+  JsonDocument doc;
+  doc["mode"] = activeWifiMode;
+  doc["homeSSID"] = homeSSID;
+  doc["homePass"] = homePass;
+  doc["hotspotSSID"] = hotspotSSID;
+  doc["hotspotPass"] = hotspotPass;
+  doc["apSSID"] = apSSID;
+  doc["apPass"] = apPass;
+  doc["currentIP"] = WiFi.localIP().toString();
+
+  String json;
+  serializeJson(doc, json);
+  request->send(200, "application/json", json);
+}
+
+void handlePostSetWifiConfig(AsyncWebServerRequest *request) {
+  String hSsid = request->hasParam("homeSSID") ? request->getParam("homeSSID")->value() : homeSSID;
+  String hPass = request->hasParam("homePass") ? request->getParam("homePass")->value() : homePass;
+  String hsSsid = request->hasParam("hotspotSSID") ? request->getParam("hotspotSSID")->value() : hotspotSSID;
+  String hsPass = request->hasParam("hotspotPass") ? request->getParam("hotspotPass")->value() : hotspotPass;
+  String aSsid = request->hasParam("apSSID") ? request->getParam("apSSID")->value() : apSSID;
+  String aPass = request->hasParam("apPass") ? request->getParam("apPass")->value() : apPass;
+  uint8_t m = request->hasParam("mode") ? request->getParam("mode")->value().toInt() : activeWifiMode;
+
+  saveWifiConfigToFS(m, hSsid, hPass, hsSsid, hsPass, aSsid, aPass);
+  request->send(200, "text/plain", "OK");
+}
+
+void handlePostSwitchWifi(AsyncWebServerRequest *request) {
+  uint8_t mode = 0;
+  if (request->hasParam("mode")) {
+    mode = request->getParam("mode")->value().toInt();
+  }
+
+  // Validierung: Hotspot-SSID muss vorhanden sein
+  if (mode == 2 && hotspotSSID.length() == 0) {
+    request->send(400, "text/plain", "Hotspot SSID fehlt!");
+    return;
+  }
+
+  // Modus sofort im Dateisystem dauerhaft persistieren
+  activeWifiMode = mode;
+  saveWifiConfigToFS(activeWifiMode, homeSSID, homePass, hotspotSSID, hotspotPass, apSSID, apPass);
+
+  // Zuerst Antwort an das Frontend senden, bevor das WLAN getrennt wird
+  request->send(200, "text/plain", "Switch initiated");
+
+  // Nicht-blockierenden Netzwerkwechsel im Hintergrund starten
+  triggerWifiSwitch(mode);
+}
+
+void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
+  // Restriktion: OTA auf den SZ ist im Hotspot-Modus gesperrt
+  if (activeWifiMode == 2) {
+    request->send(400, "text/plain", "OTA im Hotspot-Modus gesperrt! Bitte zu Heim-WLAN oder AP-Modus wechseln.");
+    return;
+  }
+
+  uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+  // 1. Zugangsdaten des aktuell aktiven Netzwerks an die Sektoren funken (für neue Firmware)
+  HotspotSyncPacket syncPkt;
+  syncPkt.magicCode = HOTSPOT_SYNC_MAGIC;
+
+  if (activeWifiMode == 1) { // Heim-WLAN
+    strncpy(syncPkt.ssid, homeSSID.c_str(), sizeof(syncPkt.ssid) - 1);
+    syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
+    strncpy(syncPkt.pass, homePass.c_str(), sizeof(syncPkt.pass) - 1);
+    syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
+  } else { // AP-Modus
+    const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
+    const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
+    strncpy(syncPkt.ssid, apName, sizeof(syncPkt.ssid) - 1);
+    syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
+    strncpy(syncPkt.pass, apKey, sizeof(syncPkt.pass) - 1);
+    syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
+  }
+
+  for (int i = 0; i < 3; i++) {
+    esp_now_send(broadcastMac, (uint8_t *)&syncPkt, sizeof(syncPkt));
+    delay(30);
+  }
+  delay(100);
+
+  // 2. Den eigentlichen OTA-Wartungsmodus-Befehl senden (Nutzt jetzt die Hilfsfunktion für Alt & Neu!)
+  uint8_t targetMode = (activeWifiMode == 1) ? 1 : 0;
+  sendSZOtaTrigger(targetMode, syncPkt.ssid, syncPkt.pass);
+
+  request->send(200, "text/plain", "SZ OTA Trigger (Legacy & Neu) gesendet");
 }

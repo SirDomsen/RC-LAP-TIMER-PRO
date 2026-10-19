@@ -9,9 +9,14 @@ String carNames[MAX_CARS + 1];
 
 bool webCacheEnabled = true;
 
-// NEU: Hotspot-Variablen Instanziierung
+// WLAN Variablen mit Default-Werten aus config.h
+String homeSSID = HOME_SSID;
+String homePass = HOME_PASS;
 String hotspotSSID = "";
 String hotspotPass = "";
+String apSSID = AP_SSID;
+String apPass = AP_PASS;
+uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 
 static const String defaultDrivers[MAX_CARS + 1] = {
   "-", "Fahrer 1", "Fahrer 2", "Fahrer 3", "Fahrer 4", "Fahrer 5",
@@ -38,8 +43,7 @@ void initFS() {
   }
 }
 
-// NEU: Hotspot aus LittleFS laden
-void loadHotspotConfigFromFS() {
+void loadWifiConfigFromFS() {
   if (LittleFS.exists("/wifi.json")) {
     File f = LittleFS.open("/wifi.json", "r");
     if (f) {
@@ -47,25 +51,53 @@ void loadHotspotConfigFromFS() {
       DeserializationError err = deserializeJson(doc, f);
       f.close();
       if (!err) {
-        hotspotSSID = doc["ssid"].as<String>();
-        hotspotPass = doc["pass"].as<String>();
+        if (doc["homeSSID"].is<String>()) homeSSID = doc["homeSSID"].as<String>();
+        if (doc["homePass"].is<String>()) homePass = doc["homePass"].as<String>();
+        if (doc["hotspotSSID"].is<String>()) hotspotSSID = doc["hotspotSSID"].as<String>();
+        else if (doc["ssid"].is<String>()) hotspotSSID = doc["ssid"].as<String>();
+        if (doc["hotspotPass"].is<String>()) hotspotPass = doc["hotspotPass"].as<String>();
+        else if (doc["pass"].is<String>()) hotspotPass = doc["pass"].as<String>();
+        if (doc["apSSID"].is<String>()) apSSID = doc["apSSID"].as<String>();
+        if (doc["apPass"].is<String>()) apPass = doc["apPass"].as<String>();
+        if (doc["mode"].is<uint8_t>()) activeWifiMode = doc["mode"].as<uint8_t>();
       }
     }
   }
 }
 
-// NEU: Hotspot in LittleFS speichern
-void saveHotspotConfigToFS(const String& ssid, const String& pass) {
-  hotspotSSID = ssid;
-  hotspotPass = pass;
+void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, const String& hsSsid, const String& hsPass, const String& aSsid, const String& aPass) {
+  activeWifiMode = mode;
+  homeSSID = hSsid;
+  homePass = hPass;
+  hotspotSSID = hsSsid;
+  hotspotPass = hsPass;
+  if (aSsid.length() > 0) apSSID = aSsid;
+  if (aPass.length() > 0) apPass = aPass;
+
   JsonDocument doc;
-  doc["ssid"] = ssid;
-  doc["pass"] = pass;
+  doc["mode"] = activeWifiMode;
+  doc["homeSSID"] = homeSSID;
+  doc["homePass"] = homePass;
+  doc["hotspotSSID"] = hotspotSSID;
+  doc["hotspotPass"] = hotspotPass;
+  doc["apSSID"] = apSSID;
+  doc["apPass"] = apPass;
+  
+  // Abwärtskompatibilität
+  doc["ssid"] = hotspotSSID;
+  doc["pass"] = hotspotPass;
+
   File f = LittleFS.open("/wifi.json", "w");
   if (f) {
     serializeJson(doc, f);
     f.close();
   }
+}
+
+void saveHotspotConfigToFS(const String& ssid, const String& pass) {
+  hotspotSSID = ssid;
+  hotspotPass = pass;
+  saveWifiConfigToFS(activeWifiMode, homeSSID, homePass, hotspotSSID, hotspotPass, apSSID, apPass);
 }
 
 void loadNamesFromFS() {
@@ -115,9 +147,7 @@ void saveAllNamesToFS() {
 void loadSettingsFromEEPROM() {
   EEPROM.begin(EEPROM_SIZE);
   loadNamesFromFS();
-  
-  // NEU: Hotspot Config beim Booten laden
-  loadHotspotConfigFromFS();
+  loadWifiConfigFromFS();
 
   if (EEPROM.read(0) != EEPROM_MAGIC) {
     EEPROM.write(0, EEPROM_MAGIC);
@@ -130,7 +160,7 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(307, 0);
     EEPROM.write(308, 0);
     EEPROM.write(309, 1);
-    EEPROM.write(310, 1); // Standard: Cache an
+    EEPROM.write(310, 1);
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;

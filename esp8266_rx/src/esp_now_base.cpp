@@ -86,7 +86,7 @@ const String& getDebugPacketsJSON() {
   return json;
 }
 
-#define RECENT_EVENTS_MAX 16
+#define RECENT_EVENTS_MAX 24
 struct RecentEvent {
   uint32_t eventId;
   unsigned long receivedAt;
@@ -108,21 +108,17 @@ bool isDuplicateEvent(uint32_t eventId) {
 }
 
 void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  if (!esp_now_is_peer_exist(mac)) {
-    esp_now_add_peer(mac, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
-  }
-
-  // --- NEU: ACK Paket vom Sektor abfangen ---
+  // 1. Hotspot ACK abfangen
   if (len == sizeof(HotspotAckPacket)) {
     HotspotAckPacket ack;
     memcpy(&ack, incomingData, sizeof(ack));
     if (ack.magicCode == HOTSPOT_ACK_MAGIC) {
-      Serial.printf("[ESP-NOW] Hotspot ACK von SZ-%d empfangen! Station bootet WLAN neu.\n", ack.stationId);
+      Serial.printf("[ESP-NOW] Hotspot ACK von SZ-%d empfangen!\n", ack.stationId);
     }
     return;
   }
 
-  // 1. Alive / Heartbeat verarbeiten
+  // 2. Alive / Heartbeat verarbeiten
   if (len == sizeof(AlivePacket)) {
     AlivePacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
@@ -136,7 +132,7 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 2. Sektor-Paket verarbeiten
+  // 3. Sektor-Paket verarbeiten
   if (len == sizeof(SectorPacket)) {
     SectorPacket packet;
     memcpy(&packet, incomingData, sizeof(packet));
@@ -146,12 +142,15 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     if (packet.stationId == 2) sz2LastSeen = now;
     if (packet.stationId == 3) sz3LastSeen = now;
 
-    logDebugPacket(packet.stationId, packet.carId, packet.timestamp);
+    // Eindeutige Event-ID aus Stations-ID und lokaler Sequenznummer
+    uint32_t eventId = ((uint32_t)packet.stationId << 16) | packet.seqNumber;
 
-    if (isDuplicateEvent(packet.eventId)) {
+    // Duplikate filtern
+    if (isDuplicateEvent(eventId)) {
       return; 
     }
 
+    logDebugPacket(packet.stationId, packet.carId, packet.timestamp);
     processSectorPacket(packet.stationId, packet.carId, packet.timestamp);
   }
 }
@@ -165,25 +164,76 @@ void initESPNowBase() {
   esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
   esp_now_register_recv_cb(onESPNowDataRecv);
 
+  uint8_t currentCh = WiFi.channel();
+  if (currentCh == 0) currentCh = 1;
+
   uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   if (!esp_now_is_peer_exist(broadcastAddress)) {
-    esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, WiFi.channel(), NULL, 0);
+    esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, currentCh, NULL, 0);
   }
   
-  Serial.printf("[ESP-NOW] Bereit auf Funkkanal %d\n", WiFi.channel());
+  Serial.printf("[ESP-NOW] Basis bereit auf Funkkanal %d\n", currentCh);
 }
 
 void handleTimeSyncBroadcast() {
   static uint32_t lastSyncTime = 0;
-  if (millis() - lastSyncTime > 3000UL) {
+  if (millis() - lastSyncTime >= 1000UL) {
     lastSyncTime = millis();
     
-    SyncPacket syncPkt;
-    syncPkt.baseTimeMs = millis();
-    syncPkt.stratum = 0;
+    uint8_t currentCh = WiFi.channel();
+    if (currentCh == 0) currentCh = 1;
 
     uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+    // Funkkanal des Broadcast-Peers dynamisch nachführen
+    static uint8_t registeredChannel = 0;
+    if (currentCh != registeredChannel) {
+      if (esp_now_is_peer_exist(broadcastAddress)) {
+        esp_now_del_peer(broadcastAddress);
+      }
+      esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, currentCh, NULL, 0);
+      registeredChannel = currentCh;
+    }
+    
+    BeaconSyncPacket syncPkt;
+    syncPkt.magicCode = BEACON_SYNC_MAGIC;
+    syncPkt.baseTimeMs = millis();
+    syncPkt.channel = currentCh;
+    syncPkt.stratum = 0;
+
     esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
+  }
+}
+
+void sendSZOtaTrigger(uint8_t targetMode, const char* ssid, const char* pass) {
+  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+  // 1. NEUER TRIGGER (101 Bytes) für die Zukunft (inklusive Ziel-WLAN Zugangsdaten)
+  OtaTriggerPacket pkt;
+  pkt.magicCode = OTA_MAGIC_CODE;
+  pkt.targetMode = targetMode;
+  memset(pkt.ssid, 0, sizeof(pkt.ssid));
+  memset(pkt.pass, 0, sizeof(pkt.pass));
+  strncpy(pkt.ssid, ssid, sizeof(pkt.ssid) - 1);
+  strncpy(pkt.pass, pass, sizeof(pkt.pass) - 1);
+
+  for (int i = 0; i < 3; i++) {
+    esp_now_send(broadcastAddress, (uint8_t *)&pkt, sizeof(pkt));
+    delay(25);
+  }
+  
+  delay(50);
+
+  // 2. LEGACY TRIGGER (4 Bytes) - Rettungsanker für die aktuell geflashten SZs
+  struct __attribute__((packed)) LegacyOtaPacket {
+    uint32_t magicCode;
+  };
+  LegacyOtaPacket legacyPkt;
+  legacyPkt.magicCode = OTA_MAGIC_CODE;
+
+  for (int i = 0; i < 3; i++) {
+    esp_now_send(broadcastAddress, (uint8_t *)&legacyPkt, sizeof(legacyPkt));
+    delay(25);
   }
 }
 

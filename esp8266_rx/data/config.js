@@ -14,11 +14,21 @@ function openConfigModal() {
   if (container) container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
   if (ttsContainer) ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
 
-  fetch('/api/hotspot').then(r => r.json()).then(data => {
-    let s = document.getElementById('cfg_hotspot_ssid');
-    let p = document.getElementById('cfg_hotspot_pass');
-    if (s) s.value = data.ssid || '';
-    if (p) p.value = data.pass || '';
+  // --- NEU: Komplette WLAN-Konfiguration laden ---
+  fetch('/api/wificonfig').then(r => r.json()).then(data => {
+    let homeS = document.getElementById('cfg_home_ssid');
+    let homeP = document.getElementById('cfg_home_pass');
+    let hotS = document.getElementById('cfg_hotspot_ssid');
+    let hotP = document.getElementById('cfg_hotspot_pass');
+    let apS = document.getElementById('cfg_ap_ssid');
+    let apP = document.getElementById('cfg_ap_pass');
+    
+    if (homeS) homeS.value = data.homeSSID || '';
+    if (homeP) homeP.value = data.homePass || '';
+    if (hotS) hotS.value = data.hotspotSSID || '';
+    if (hotP) hotP.value = data.hotspotPass || '';
+    if (apS) apS.value = data.apSSID || '';
+    if (apP) apP.value = data.apPass || '';
   }).catch(e => console.error(e));
 
   fetch('/api/deadtime').then(r => r.json()).then(data => {
@@ -72,8 +82,8 @@ function openConfigModal() {
       
       container.innerHTML += `<div class="modal-row">
         <span>ID <strong>${i}</strong>:</span>
-        <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer">
-        <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto">
+        <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer" style="width:30%;">
+        <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto" style="width:30%;">
       </div>`;
 
       let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
@@ -117,9 +127,16 @@ async function saveConfig() {
       localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
     }
 
-    let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
-    let hsPass = document.getElementById('cfg_hotspot_pass')?.value || '';
-    await fetch('/api/sethotspot?ssid=' + encodeURIComponent(hsSsid) + '&pass=' + encodeURIComponent(hsPass), { method: 'POST' });
+    // --- NEU: Alle 3 WLAN-Profile speichern ---
+    let hS = document.getElementById('cfg_home_ssid')?.value || '';
+    let hP = document.getElementById('cfg_home_pass')?.value || '';
+    let hsS = document.getElementById('cfg_hotspot_ssid')?.value || '';
+    let hsP = document.getElementById('cfg_hotspot_pass')?.value || '';
+    let aS = document.getElementById('cfg_ap_ssid')?.value || '';
+    let aP = document.getElementById('cfg_ap_pass')?.value || '';
+    
+    let wUrl = `/api/setwificonfig?homeSSID=${encodeURIComponent(hS)}&homePass=${encodeURIComponent(hP)}&hotspotSSID=${encodeURIComponent(hsS)}&hotspotPass=${encodeURIComponent(hsP)}&apSSID=${encodeURIComponent(aS)}&apPass=${encodeURIComponent(aP)}`;
+    await fetch(wUrl, { method: 'POST' });
 
     let deadtimeElem = document.getElementById('cfg_deadtime');
     if (deadtimeElem) {
@@ -183,10 +200,9 @@ async function saveConfig() {
 }
 
 async function forceWifiMode(mode) {
-  let s = document.getElementById('cfg_hotspot_ssid')?.value || '';
-  let p = document.getElementById('cfg_hotspot_pass')?.value || '';
+  let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
   
-  if (mode === 2 && !s) { 
+  if (mode === 2 && !hsSsid) { 
     alert("Bitte erst eine Hotspot SSID eintragen!"); 
     return; 
   }
@@ -198,18 +214,18 @@ async function forceWifiMode(mode) {
   
   if (mode === 1) { 
     modeName = "Heim-WLAN"; 
-    expectedSsid = "LT_Heimnetz-[IP-Adresse]"; 
+    expectedSsid = "Dein Heimnetzwerk (Die Basis nutzt ihre feste IP: 192.168.0.8)"; 
   }
   else if (mode === 2) { 
     modeName = "Hotspot"; 
     let maxLen = 31 - 4 - 15; 
-    let shortSsid = s;
+    let shortSsid = hsSsid;
     if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
     expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
   }
   else { 
     modeName = "AP-Modus"; 
-    expectedSsid = "Laptimer_AP (Kein Geister-WLAN)"; 
+    expectedSsid = (document.getElementById('cfg_ap_ssid')?.value || "RC-LapTimer") + " (Kein Geister-WLAN)"; 
   }
   
   let desc = document.getElementById('alertModalDesc');
@@ -220,7 +236,7 @@ async function forceWifiMode(mode) {
 
   let displayIp = document.getElementById('alertIpDisplay');
   if (displayIp) {
-    if (mode === 0) displayIp.innerText = "192.168.0.8";
+    if (mode === 0 || mode === 1) displayIp.innerText = "192.168.0.8";
     else displayIp.innerText = "DIE.ANGEZEIGTE.IP";
   }
 
@@ -233,13 +249,16 @@ async function confirmConnectionAlert() {
   let modal = document.getElementById('connectionAlertModal');
   if (modal) modal.style.display = 'none';
 
-  let s = document.getElementById('cfg_hotspot_ssid')?.value || '';
-  let p = document.getElementById('cfg_hotspot_pass')?.value || '';
+  let hS = document.getElementById('cfg_home_ssid')?.value || '';
+  let hP = document.getElementById('cfg_home_pass')?.value || '';
+  let hsS = document.getElementById('cfg_hotspot_ssid')?.value || '';
+  let hsP = document.getElementById('cfg_hotspot_pass')?.value || '';
+  let aS = document.getElementById('cfg_ap_ssid')?.value || '';
+  let aP = document.getElementById('cfg_ap_pass')?.value || '';
   
-  // Die eingegebenen Hotspot-Daten zur Sicherheit in den Flash schieben
-  if (pendingWifiMode === 2 || pendingWifiMode === 1) { 
-    await fetch('/api/sethotspot?ssid=' + encodeURIComponent(s) + '&pass=' + encodeURIComponent(p), { method: 'POST' });
-  }
+  // Die eingegebenen Daten zur Sicherheit in den Flash schieben
+  let wUrl = `/api/setwificonfig?homeSSID=${encodeURIComponent(hS)}&homePass=${encodeURIComponent(hP)}&hotspotSSID=${encodeURIComponent(hsS)}&hotspotPass=${encodeURIComponent(hsP)}&apSSID=${encodeURIComponent(aS)}&apPass=${encodeURIComponent(aP)}`;
+  await fetch(wUrl, { method: 'POST' });
   
   // Abflug! Basisstation triggern.
   fetch('/api/switchwifi?mode=' + pendingWifiMode, { method: 'POST' });
@@ -248,8 +267,14 @@ async function confirmConnectionAlert() {
 async function triggerSZOta() {
   if(!confirm("Wartungsmodus an alle Sektorstationen funken?\nDie Zeitmessung wird unterbrochen, bis die SZs neu gestartet werden!")) return;
   try {
-    await fetch('/api/trigger_sz_ota', { method: 'POST' });
-    alert("Signal erfolgreich gesendet!\nDie Stationen sollten nun dauerhaft schnell (3Hz) blinken, ihr WLAN hochfahren und sich mit der Basis verbinden.\nDu kannst sie in ca. 5-10 Sekunden über VS Code per IP-Adresse flashen.");
+    let res = await fetch('/api/trigger_sz_ota', { method: 'POST' });
+    let msg = await res.text();
+    
+    if (!res.ok) {
+      alert("⚠️ Fehler: " + msg);
+    } else {
+      alert("✅ Signal erfolgreich gesendet!\nDie Stationen sollten nun dauerhaft schnell (3Hz) blinken, ihr WLAN hochfahren und sich mit dem aktuellen Netzwerk verbinden.\nDu kannst sie in ca. 5-10 Sekunden über VS Code / PlatformIO flashen.");
+    }
   } catch(e) {
     alert("Fehler beim Senden: " + e.message);
   }

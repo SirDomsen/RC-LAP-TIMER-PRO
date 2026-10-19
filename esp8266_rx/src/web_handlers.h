@@ -37,4 +37,10 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 void handleGetCacheConfig(AsyncWebServerRequest *request);
 void handlePostSetCacheConfig(AsyncWebServerRequest *request);
 
+// Neue Handlers für voll konfigurierbares WLAN & SZ-OTA
+void handleGetWifiConfig(AsyncWebServerRequest *request);
+void handlePostSetWifiConfig(AsyncWebServerRequest *request);
+void handlePostSwitchWifi(AsyncWebServerRequest *request);
+void handlePostTriggerSzOta(AsyncWebServerRequest *request);
+
 #endif
