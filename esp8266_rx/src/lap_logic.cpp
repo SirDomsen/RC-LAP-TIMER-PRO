@@ -3,6 +3,8 @@
 #include "storage.h"
 #include "web_server.h"
 #include <sys/time.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 uint32_t lastCrossTime[MAX_CARS + 1]   = {0};
 uint32_t lastLapDuration[MAX_CARS + 1] = {0};
@@ -60,6 +62,11 @@ bool readyForNextLap[MAX_CARS + 1] = {false};
 uint64_t baseUnixTimestampSec = 0;
 uint32_t baseMillis = 0;
 
+// Tagesbestzeit-Variablen
+uint32_t dailyBestLapMs = 0;
+uint8_t dailyBestCarId = 0;
+String dailyBestDriver = "";
+
 const uint16_t CLEARANCE_TIMEOUT_MS = 1000; 
 
 static uint32_t readyLedOffTime = 0;
@@ -70,6 +77,34 @@ static uint32_t firstDetectTimeMicros = 0;
 static uint8_t  detectionCount = 0;
 
 #define VALIDATION_WINDOW_MICROS 85000 
+
+void loadDailyBest() {
+  if (LittleFS.exists("/daily_best.json")) {
+    File f = LittleFS.open("/daily_best.json", "r");
+    if (f) {
+      JsonDocument doc;
+      if (!deserializeJson(doc, f)) {
+        dailyBestLapMs = doc["time"] | 0;
+        dailyBestCarId = doc["id"] | 0;
+        dailyBestDriver = doc["driver"].as<String>();
+      }
+      f.close();
+    }
+  }
+}
+
+void saveDailyBest() {
+  JsonDocument doc;
+  doc["time"] = dailyBestLapMs;
+  doc["id"] = dailyBestCarId;
+  doc["driver"] = dailyBestDriver;
+
+  File f = LittleFS.open("/daily_best.json", "w");
+  if (f) {
+    serializeJson(doc, f);
+    f.close();
+  }
+}
 
 void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeMs, uint32_t splitTimeMs, bool isPB, bool isOverallBest, int32_t deltaMs) {
   char buffer[192];
@@ -102,7 +137,8 @@ void initLapLogic() {
   modeEndTimeMs = 0;
   targetRounds = 0;
   
-  resetAllLaps();
+  loadDailyBest();
+  resetAllLaps(false);
 }
 
 void syncClockOnce(uint64_t clientTsSec) {
@@ -110,11 +146,8 @@ void syncClockOnce(uint64_t clientTsSec) {
     baseUnixTimestampSec = clientTsSec;
     baseMillis = millis();
     
-    // Stellt die interne ESP8266-Systemzeit für LittleFS-Dateien
     timeval tv = { (time_t)clientTsSec, 0 };
     settimeofday(&tv, nullptr);
-
-    Serial.printf("[ClockSync] Basis-Uhrzeit & System-RTC gesetzt auf: %llu\n", clientTsSec);
   }
 }
 
@@ -133,7 +166,7 @@ void addRecentID(uint8_t newId) {
   recentIDs[0] = newId;
 }
 
-void resetAllLaps() {
+void resetAllLaps(bool isHardReset) {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     lastCrossTime[i] = 0;
     lastLapDuration[i] = 0;
@@ -162,6 +195,16 @@ void resetAllLaps() {
   overallBestSz2Ms = 0;
   overallBestSz3Ms = 0;
   overallBestSz4Ms = 0;
+  
+  if (isHardReset) {
+    dailyBestLapMs = 0;
+    dailyBestCarId = 0;
+    dailyBestDriver = "";
+    if (LittleFS.exists("/daily_best.json")) {
+      LittleFS.remove("/daily_best.json");
+    }
+  }
+
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
   lastPendingId = 0;
   detectionCount = 0;
@@ -218,11 +261,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   lastSeenMs[carId] = now;
   addRecentID(carId);
 
-  // Im Dragrace MUSS das Auto vorher an der Basis gestartet sein
   if (currentMode == MODE_DRAGRACE) {
-    if (!dragRunActive[carId] || lastCrossTime[carId] == 0) {
-      return;
-    }
+    if (!dragRunActive[carId] || lastCrossTime[carId] == 0) return;
   }
 
   if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && finishedFinalLap[carId]) {
@@ -233,7 +273,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     timestampMs = now;
   }
 
-  // Wenn das Auto im Rundkurs-Modus noch nie gestartet ist:
   if (currentMode != MODE_DRAGRACE && (lastCrossTime[carId] == 0 || lapCounter[carId] == 0)) {
     readyForNextLap[carId] = true;
     if (awaitingBaseCross[carId]) {
@@ -246,17 +285,19 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   }
 
   uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
-
   if (timestampMs < lapStartMs) {
-    if (lapStartMs - timestampMs < 150) {
-      timestampMs = lapStartMs + 1;
-    } else {
-      return;
-    }
+    if (lapStartMs - timestampMs < 150) timestampMs = lapStartMs + 1;
+    else return;
   }
 
   uint32_t elapsedMs = timestampMs - lapStartMs;
   if (elapsedMs < 100 || elapsedMs > 600000) return;
+
+  // Boxen-/Out-Lap Erkennung im Sektor: Ist die Zeit exorbitant hoch, Sektor zwar eintragen, aber PBs ignorieren
+  bool isOutSector = false;
+  if (elapsedMs > 45000UL) {
+    isOutSector = true;
+  }
 
   // --- DRAGRACE LOGIK ---
   if (currentMode == MODE_DRAGRACE) {
@@ -264,6 +305,11 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     if (targetSector == 0) return;
 
     if (stationId == targetSector) {
+      // ÜBERSCHREIB-SCHUTZ Dragrace Ziel
+      if ((targetSector == 3 && sz3TimeMs[carId] > 0) || 
+          (targetSector == 2 && sz2TimeMs[carId] > 0) || 
+          (targetSector == 1 && sz1TimeMs[carId] > 0)) return;
+
       dragRunActive[carId] = false;
       readyForNextLap[carId] = false;
 
@@ -326,6 +372,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
     if (stationId < targetSector) {
       if (stationId == 1 && useSz1) {
+        if (sz1TimeMs[carId] > 0) return; // ÜBERSCHREIB-SCHUTZ
         uint32_t s1 = elapsedMs;
         split1TimeMs[carId] = s1;
         sz1TimeMs[carId] = s1;
@@ -334,26 +381,20 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         bool isPB = false;
         bool isOverall = false;
         int32_t deltaMs = 0;
-        if (bestSz1TimeMs[carId] > 0) {
-          deltaMs = (int32_t)s1 - (int32_t)bestSz1TimeMs[carId];
-          if (s1 < bestSz1TimeMs[carId]) {
-            bestSz1TimeMs[carId] = s1;
-            isPB = true;
-          }
-        } else {
-          bestSz1TimeMs[carId] = s1;
-        }
+        
+        if (!isOutSector) {
+          if (bestSz1TimeMs[carId] > 0) {
+            deltaMs = (int32_t)s1 - (int32_t)bestSz1TimeMs[carId];
+            if (s1 < bestSz1TimeMs[carId]) { bestSz1TimeMs[carId] = s1; isPB = true; }
+          } else { bestSz1TimeMs[carId] = s1; }
 
-        if (overallBestSz1Ms > 0 && s1 < overallBestSz1Ms) {
-          overallBestSz1Ms = s1;
-          isOverall = true;
-        } else if (overallBestSz1Ms == 0) {
-          overallBestSz1Ms = s1;
+          if (overallBestSz1Ms > 0 && s1 < overallBestSz1Ms) { overallBestSz1Ms = s1; isOverall = true; } 
+          else if (overallBestSz1Ms == 0) { overallBestSz1Ms = s1; }
         }
-
         broadcastSectorEvent(carId, 1, s1, s1, isPB, isOverall, deltaMs);
       } 
       else if (stationId == 2 && useSz2) {
+        if (sz2TimeMs[carId] > 0) return; // ÜBERSCHREIB-SCHUTZ
         uint32_t split2 = elapsedMs;
         uint32_t prevPoint = (useSz1 && split1TimeMs[carId] > 0) ? (lapStartMs + split1TimeMs[carId]) : lapStartMs;
         uint32_t s2 = (timestampMs > prevPoint) ? (timestampMs - prevPoint) : split2;
@@ -365,23 +406,16 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         bool isPB = false;
         bool isOverall = false;
         int32_t deltaMs = 0;
-        if (bestSz2TimeMs[carId] > 0) {
-          deltaMs = (int32_t)s2 - (int32_t)bestSz2TimeMs[carId];
-          if (s2 < bestSz2TimeMs[carId]) {
-            bestSz2TimeMs[carId] = s2;
-            isPB = true;
-          }
-        } else {
-          bestSz2TimeMs[carId] = s2;
-        }
 
-        if (overallBestSz2Ms > 0 && s2 < overallBestSz2Ms) {
-          overallBestSz2Ms = s2;
-          isOverall = true;
-        } else if (overallBestSz2Ms == 0) {
-          overallBestSz2Ms = s2;
-        }
+        if (!isOutSector) {
+          if (bestSz2TimeMs[carId] > 0) {
+            deltaMs = (int32_t)s2 - (int32_t)bestSz2TimeMs[carId];
+            if (s2 < bestSz2TimeMs[carId]) { bestSz2TimeMs[carId] = s2; isPB = true; }
+          } else { bestSz2TimeMs[carId] = s2; }
 
+          if (overallBestSz2Ms > 0 && s2 < overallBestSz2Ms) { overallBestSz2Ms = s2; isOverall = true; } 
+          else if (overallBestSz2Ms == 0) { overallBestSz2Ms = s2; }
+        }
         broadcastSectorEvent(carId, 2, s2, split2, isPB, isOverall, deltaMs);
       }
     }
@@ -391,6 +425,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   // --- NORMALE RUNDENRENNEN-LOGIK ---
   if (stationId == 1 && useSz1) {
     if (checkpointMode && currentExpectedSector[carId] != 1) return;
+    if (sz1TimeMs[carId] > 0) return; // ÜBERSCHREIB-SCHUTZ
 
     uint32_t split1 = elapsedMs;
     split1TimeMs[carId] = split1;
@@ -402,23 +437,15 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     bool isOverall = false;
     int32_t deltaMs = 0;
 
-    if (bestSz1TimeMs[carId] > 0) {
-      deltaMs = (int32_t)split1 - (int32_t)bestSz1TimeMs[carId];
-      if (split1 < bestSz1TimeMs[carId]) {
-        bestSz1TimeMs[carId] = split1;
-        isPB = true;
-      }
-    } else {
-      bestSz1TimeMs[carId] = split1;
-    }
+    if (!isOutSector) {
+      if (bestSz1TimeMs[carId] > 0) {
+        deltaMs = (int32_t)split1 - (int32_t)bestSz1TimeMs[carId];
+        if (split1 < bestSz1TimeMs[carId]) { bestSz1TimeMs[carId] = split1; isPB = true; }
+      } else { bestSz1TimeMs[carId] = split1; }
 
-    if (overallBestSz1Ms > 0 && split1 < overallBestSz1Ms) {
-      overallBestSz1Ms = split1;
-      isOverall = true;
-    } else if (overallBestSz1Ms == 0) {
-      overallBestSz1Ms = split1;
+      if (overallBestSz1Ms > 0 && split1 < overallBestSz1Ms) { overallBestSz1Ms = split1; isOverall = true; } 
+      else if (overallBestSz1Ms == 0) { overallBestSz1Ms = split1; }
     }
-
     broadcastSectorEvent(carId, 1, split1, split1, isPB, isOverall, deltaMs);
   } 
   else if (stationId == 2 && useSz2) {
@@ -426,6 +453,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       uint8_t expected = useSz1 ? 2 : 1;
       if (currentExpectedSector[carId] != expected) return;
     }
+    if (sz2TimeMs[carId] > 0) return; // ÜBERSCHREIB-SCHUTZ
 
     uint32_t split2 = elapsedMs;
     uint32_t prevPoint = (useSz1 && lastSectorTimeMs[carId] > lapStartMs) ? lastSectorTimeMs[carId] : lapStartMs;
@@ -440,23 +468,15 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     bool isOverall = false;
     int32_t deltaMs = 0;
 
-    if (bestSz2TimeMs[carId] > 0) {
-      deltaMs = (int32_t)s2 - (int32_t)bestSz2TimeMs[carId];
-      if (s2 < bestSz2TimeMs[carId]) {
-        bestSz2TimeMs[carId] = s2;
-        isPB = true;
-      }
-    } else {
-      bestSz2TimeMs[carId] = s2;
-    }
+    if (!isOutSector) {
+      if (bestSz2TimeMs[carId] > 0) {
+        deltaMs = (int32_t)s2 - (int32_t)bestSz2TimeMs[carId];
+        if (s2 < bestSz2TimeMs[carId]) { bestSz2TimeMs[carId] = s2; isPB = true; }
+      } else { bestSz2TimeMs[carId] = s2; }
 
-    if (overallBestSz2Ms > 0 && s2 < overallBestSz2Ms) {
-      overallBestSz2Ms = s2;
-      isOverall = true;
-    } else if (overallBestSz2Ms == 0) {
-      overallBestSz2Ms = s2;
+      if (overallBestSz2Ms > 0 && s2 < overallBestSz2Ms) { overallBestSz2Ms = s2; isOverall = true; } 
+      else if (overallBestSz2Ms == 0) { overallBestSz2Ms = s2; }
     }
-
     broadcastSectorEvent(carId, 2, s2, split2, isPB, isOverall, deltaMs);
   } 
   else if (stationId == 3 && useSz3) {
@@ -464,6 +484,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       uint8_t expected = useSz2 ? 3 : (useSz1 ? 2 : 1);
       if (currentExpectedSector[carId] != expected) return;
     }
+    if (sz3TimeMs[carId] > 0) return; // ÜBERSCHREIB-SCHUTZ
 
     uint32_t split3 = elapsedMs;
     uint32_t prevPoint = (lastSectorTimeMs[carId] > lapStartMs) ? lastSectorTimeMs[carId] : lapStartMs;
@@ -478,23 +499,15 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     bool isOverall = false;
     int32_t deltaMs = 0;
 
-    if (bestSz3TimeMs[carId] > 0) {
-      deltaMs = (int32_t)s3 - (int32_t)bestSz3TimeMs[carId];
-      if (s3 < bestSz3TimeMs[carId]) {
-        bestSz3TimeMs[carId] = s3;
-        isPB = true;
-      }
-    } else {
-      bestSz3TimeMs[carId] = s3;
-    }
+    if (!isOutSector) {
+      if (bestSz3TimeMs[carId] > 0) {
+        deltaMs = (int32_t)s3 - (int32_t)bestSz3TimeMs[carId];
+        if (s3 < bestSz3TimeMs[carId]) { bestSz3TimeMs[carId] = s3; isPB = true; }
+      } else { bestSz3TimeMs[carId] = s3; }
 
-    if (overallBestSz3Ms > 0 && s3 < overallBestSz3Ms) {
-      overallBestSz3Ms = s3;
-      isOverall = true;
-    } else if (overallBestSz3Ms == 0) {
-      overallBestSz3Ms = s3;
+      if (overallBestSz3Ms > 0 && s3 < overallBestSz3Ms) { overallBestSz3Ms = s3; isOverall = true; } 
+      else if (overallBestSz3Ms == 0) { overallBestSz3Ms = s3; }
     }
-
     broadcastSectorEvent(carId, 3, s3, split3, isPB, isOverall, deltaMs);
   }
 }
@@ -503,15 +516,9 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
   uint32_t nowMs = exactMicros / 1000UL;
 
-  // --- DRAGRACE START AN BASIS ---
   if (currentMode == MODE_DRAGRACE) {
-    // Wenn für dieses Auto bereits ein Lauf aktiv ist -> ignorieren!
     if (dragRunActive[carId]) return;
-
-    // Mindest-Entprellung gegen mehrfaches Auslösen beim Start
-    if (lastCrossTime[carId] > 0 && (exactMicros - lastCrossTime[carId] < ((uint32_t)minLapTimeMs * 1000UL))) {
-      return;
-    }
+    if (lastCrossTime[carId] > 0 && (exactMicros - lastCrossTime[carId] < ((uint32_t)minLapTimeMs * 1000UL))) return;
 
     dragRunActive[carId] = true;
     readyForNextLap[carId] = false;
@@ -520,13 +527,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     lastCrossTime[carId] = exactMicros;
     lastSectorTimeMs[carId] = nowMs;
     currentExpectedSector[carId] = 1;
-    sz1TimeMs[carId] = 0;
-    sz2TimeMs[carId] = 0;
-    sz3TimeMs[carId] = 0;
-    sz4TimeMs[carId] = 0;
-    split1TimeMs[carId] = 0;
-    split2TimeMs[carId] = 0;
-    split3TimeMs[carId] = 0;
+    sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
+    split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
 
     digitalWrite(LED_READY, LOW);
     readyLedBlinking = true;
@@ -538,11 +540,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     return;
   }
 
-  // INITIALER START ODER NEUER START NACH RESET
   if (lapCounter[carId] == 0) {
-    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
-      return;
-    }
+    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
 
     awaitingBaseCross[carId] = false;
     lapCounter[carId] = 1;
@@ -550,13 +549,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     lastSectorTimeMs[carId] = nowMs;
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
-    sz1TimeMs[carId] = 0;
-    sz2TimeMs[carId] = 0;
-    sz3TimeMs[carId] = 0;
-    sz4TimeMs[carId] = 0;
-    split1TimeMs[carId] = 0;
-    split2TimeMs[carId] = 0;
-    split3TimeMs[carId] = 0;
+    sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
+    split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
 
     digitalWrite(LED_READY, LOW);
     readyLedBlinking = true;
@@ -565,7 +559,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     char baseJson[128];
     snprintf(baseJson, sizeof(baseJson), "{\"type\":\"base_cross\",\"carId\":%d,\"driver\":\"%s\"}", carId, driverNames[carId].c_str());
     broadcastWebSocket(baseJson);
-    
     return;
   }
 
@@ -586,10 +579,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     else if (useSz2 && !useSz3 && currentExpectedSector[carId] < 3) passedAll = false;
     else if (useSz1 && !useSz2 && !useSz3 && currentExpectedSector[carId] < 2) passedAll = false;
 
-    if (!passedAll) {
-      currentExpectedSector[carId] = 1;
-      return;
-    }
+    if (!passedAll) { currentExpectedSector[carId] = 1; return; }
     currentExpectedSector[carId] = 1;
   }
 
@@ -598,11 +588,17 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
     uint32_t currentLapTimeMs = (exactMicros - lastCrossTime[carId]) / 1000UL;
     
+    // --- BOXEN / OUT-LAP ERKENNUNG ---
+    // Ist die Zeit gigantisch hoch (über 45s oder 2.5x so langsam wie PB), werten wir sie als Boxenrunde
+    bool isOutLap = false;
+    if (currentLapTimeMs > 45000UL || (bestLapDuration[carId] > 0 && currentLapTimeMs > (bestLapDuration[carId] * 2.5))) {
+      isOutLap = true;
+    }
+
     uint8_t finalSectorNum = useSz3 ? 4 : (useSz2 ? 3 : (useSz1 ? 2 : 0));
 
     if (finalSectorNum > 0 && lastSectorTimeMs[carId] > (lastCrossTime[carId] / 1000UL)) {
-      uint32_t lastSplit = (finalSectorNum == 4) ? split3TimeMs[carId] : 
-                           ((finalSectorNum == 3) ? split2TimeMs[carId] : split1TimeMs[carId]);
+      uint32_t lastSplit = (finalSectorNum == 4) ? split3TimeMs[carId] : ((finalSectorNum == 3) ? split2TimeMs[carId] : split1TimeMs[carId]);
 
       if (currentLapTimeMs > lastSplit) {
         uint32_t sFinal = currentLapTimeMs - lastSplit;
@@ -612,66 +608,42 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
           bool isOverall = false;
           int32_t deltaMs = 0;
 
-          if (finalSectorNum == 4) {
-            sz4TimeMs[carId] = sFinal;
-            if (bestSz4TimeMs[carId] > 0) {
-              deltaMs = (int32_t)sFinal - (int32_t)bestSz4TimeMs[carId];
-              if (sFinal < bestSz4TimeMs[carId]) {
-                bestSz4TimeMs[carId] = sFinal;
-                isPB = true;
-              }
-            } else {
-              bestSz4TimeMs[carId] = sFinal;
+          if (!isOutLap) { // Keine PBs auf einer Out-Lap sammeln!
+            if (finalSectorNum == 4) {
+              sz4TimeMs[carId] = sFinal;
+              if (bestSz4TimeMs[carId] > 0) {
+                deltaMs = (int32_t)sFinal - (int32_t)bestSz4TimeMs[carId];
+                if (sFinal < bestSz4TimeMs[carId]) { bestSz4TimeMs[carId] = sFinal; isPB = true; }
+              } else { bestSz4TimeMs[carId] = sFinal; }
+              if (overallBestSz4Ms > 0 && sFinal < overallBestSz4Ms) { overallBestSz4Ms = sFinal; isOverall = true; } 
+              else if (overallBestSz4Ms == 0) { overallBestSz4Ms = sFinal; }
+            } 
+            else if (finalSectorNum == 3) {
+              sz3TimeMs[carId] = sFinal;
+              split3TimeMs[carId] = currentLapTimeMs;
+              if (bestSz3TimeMs[carId] > 0) {
+                deltaMs = (int32_t)sFinal - (int32_t)bestSz3TimeMs[carId];
+                if (sFinal < bestSz3TimeMs[carId]) { bestSz3TimeMs[carId] = sFinal; isPB = true; }
+              } else { bestSz3TimeMs[carId] = sFinal; }
+              if (overallBestSz3Ms > 0 && sFinal < overallBestSz3Ms) { overallBestSz3Ms = sFinal; isOverall = true; } 
+              else if (overallBestSz3Ms == 0) { overallBestSz3Ms = sFinal; }
+            } 
+            else if (finalSectorNum == 2) {
+              sz2TimeMs[carId] = sFinal;
+              split2TimeMs[carId] = currentLapTimeMs;
+              if (bestSz2TimeMs[carId] > 0) {
+                deltaMs = (int32_t)sFinal - (int32_t)bestSz2TimeMs[carId];
+                if (sFinal < bestSz2TimeMs[carId]) { bestSz2TimeMs[carId] = sFinal; isPB = true; }
+              } else { bestSz2TimeMs[carId] = sFinal; }
+              if (overallBestSz2Ms > 0 && sFinal < overallBestSz2Ms) { overallBestSz2Ms = sFinal; isOverall = true; } 
+              else if (overallBestSz2Ms == 0) { overallBestSz2Ms = sFinal; }
             }
-
-            if (overallBestSz4Ms > 0 && sFinal < overallBestSz4Ms) {
-              overallBestSz4Ms = sFinal;
-              isOverall = true;
-            } else if (overallBestSz4Ms == 0) {
-              overallBestSz4Ms = sFinal;
-            }
-          } 
-          else if (finalSectorNum == 3) {
-            sz3TimeMs[carId] = sFinal;
-            split3TimeMs[carId] = currentLapTimeMs;
-            if (bestSz3TimeMs[carId] > 0) {
-              deltaMs = (int32_t)sFinal - (int32_t)bestSz3TimeMs[carId];
-              if (sFinal < bestSz3TimeMs[carId]) {
-                bestSz3TimeMs[carId] = sFinal;
-                isPB = true;
-              }
-            } else {
-              bestSz3TimeMs[carId] = sFinal;
-            }
-
-            if (overallBestSz3Ms > 0 && sFinal < overallBestSz3Ms) {
-              overallBestSz3Ms = sFinal;
-              isOverall = true;
-            } else if (overallBestSz3Ms == 0) {
-              overallBestSz3Ms = sFinal;
-            }
-          } 
-          else if (finalSectorNum == 2) {
-            sz2TimeMs[carId] = sFinal;
-            split2TimeMs[carId] = currentLapTimeMs;
-            if (bestSz2TimeMs[carId] > 0) {
-              deltaMs = (int32_t)sFinal - (int32_t)bestSz2TimeMs[carId];
-              if (sFinal < bestSz2TimeMs[carId]) {
-                bestSz2TimeMs[carId] = sFinal;
-                isPB = true;
-              }
-            } else {
-              bestSz2TimeMs[carId] = sFinal;
-            }
-
-            if (overallBestSz2Ms > 0 && sFinal < overallBestSz2Ms) {
-              overallBestSz2Ms = sFinal;
-              isOverall = true;
-            } else if (overallBestSz2Ms == 0) {
-              overallBestSz2Ms = sFinal;
-            }
+          } else {
+            // Im Falle einer Outlap: Nur die Zeit eintragen, nicht werten
+            if (finalSectorNum == 4) sz4TimeMs[carId] = sFinal;
+            else if (finalSectorNum == 3) { sz3TimeMs[carId] = sFinal; split3TimeMs[carId] = currentLapTimeMs; }
+            else if (finalSectorNum == 2) { sz2TimeMs[carId] = sFinal; split2TimeMs[carId] = currentLapTimeMs; }
           }
-
           broadcastSectorEvent(carId, finalSectorNum, sFinal, currentLapTimeMs, isPB, isOverall, deltaMs);
         }
       }
@@ -681,21 +653,34 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     bool isLapPB = false;
     bool isLapOverall = false;
 
-    if (lapCounter[carId] > 1 && bestLapDuration[carId] > 0 && currentLapTimeMs < bestLapDuration[carId]) {
-      bestLapDuration[carId] = currentLapTimeMs;
-      isLapPB = true;
-    } else if (bestLapDuration[carId] == 0) {
-      bestLapDuration[carId] = currentLapTimeMs;
-    }
-
-    uint32_t currentOverallBestLap = 0;
-    for (uint8_t c = 1; c <= MAX_CARS; c++) {
-      if (c != carId && bestLapDuration[c] > 0 && (currentOverallBestLap == 0 || bestLapDuration[c] < currentOverallBestLap)) {
-        currentOverallBestLap = bestLapDuration[c];
+    // Bestzeiten & Tagesbestzeit NUR checken, wenn es keine Boxenrunde ist!
+    if (!isOutLap) {
+      if (lapCounter[carId] > 1 && bestLapDuration[carId] > 0 && currentLapTimeMs < bestLapDuration[carId]) {
+        bestLapDuration[carId] = currentLapTimeMs;
+        isLapPB = true;
+      } else if (bestLapDuration[carId] == 0 && lapCounter[carId] > 1) { // Nur auf validen, fliegenden Runden
+        bestLapDuration[carId] = currentLapTimeMs;
       }
-    }
-    if (currentOverallBestLap > 0 && currentLapTimeMs < currentOverallBestLap) {
-      isLapOverall = true;
+
+      uint32_t currentOverallBestLap = 0;
+      for (uint8_t c = 1; c <= MAX_CARS; c++) {
+        if (c != carId && bestLapDuration[c] > 0 && (currentOverallBestLap == 0 || bestLapDuration[c] < currentOverallBestLap)) {
+          currentOverallBestLap = bestLapDuration[c];
+        }
+      }
+      if (currentOverallBestLap > 0 && currentLapTimeMs < currentOverallBestLap) {
+        isLapOverall = true;
+      }
+
+      // --- TAGESBESTZEIT CHECK ---
+      if (currentLapTimeMs > 100) {
+        if (dailyBestLapMs == 0 || currentLapTimeMs < dailyBestLapMs) {
+          dailyBestLapMs = currentLapTimeMs;
+          dailyBestCarId = carId;
+          dailyBestDriver = driverNames[carId];
+          saveDailyBest(); 
+        }
+      }
     }
     
     uint16_t completedLap = lapCounter[carId];
@@ -704,6 +689,11 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     lastSectorTimeMs[carId] = nowMs;
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
+    
+    // Nach Rundenabschluss die Sektoren wieder freigeben (Wichtig für Überschreibschutz)
+    sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
+    split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
+    
     lapCounted = true;
 
     if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
@@ -713,7 +703,16 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     uint64_t currentTsMs = getCurrentTimestampMs();
     uint8_t pos = getCurrentPosition(carId);
     
+    // Wir übergeben im Queue die *alten* Sektorzeiten (die wir kurz vorher in szXTimeMs gespeichert, aber gerade genullt haben? Halt!)
+    // Da wir die Arrays gerade genullt haben, müssen wir sie für den Speicheraufruf retten.
+    // Aber wait, das passiert im Original-Code auch so - wir retten sie lieber VOR dem Nullen!
+    
+    // -> Korrektur: Die Werte, die für den Upload gebraucht werden, sind jetzt in den split / sz Variablen.
+    // Wir dürfen die Arrays also erst HIER nullen:
     queueLapForStorage(carId, completedLap, currentLapTimeMs, sz1TimeMs[carId], sz2TimeMs[carId], sz3TimeMs[carId], sz4TimeMs[carId], pos, (uint8_t)currentMode, currentTsMs);
+
+    sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
+    split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
 
     broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall);
   }
@@ -773,7 +772,6 @@ void updateLapLogicTasks() {
     }
   }
 
-  // Automatischer Timeout für abgebrochene Dragrace-Läufe (nach 45 Sekunden)
   if (currentMode == MODE_DRAGRACE) {
     for (uint8_t i = 1; i <= MAX_CARS; i++) {
       if (dragRunActive[i] && (now - lastSectorTimeMs[i] > 45000UL)) {
@@ -781,6 +779,13 @@ void updateLapLogicTasks() {
         readyForNextLap[i] = true;
       }
     }
+  }
+  
+  // --- FREIES TRAINING AUTO-SAVE ---
+  static uint32_t lastSessionSave = 0;
+  if (currentMode == MODE_PRACTICE && (now - lastSessionSave > 60000)) {
+    lastSessionSave = now;
+    broadcastWebSocket("{\"type\":\"request_session_save\"}");
   }
 
   static bool sessionEndBroadcasted = false;

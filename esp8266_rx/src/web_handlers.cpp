@@ -180,7 +180,7 @@ void handlePostRename(AsyncWebServerRequest *request) {
 }
 
 void handlePostReset(AsyncWebServerRequest *request) {
-  resetAllLaps();
+  resetAllLaps(true); // "true" zwingt den Hard-Reset samt Tagesbestzeit!
   request->send(200, "text/plain", "OK");
 }
 

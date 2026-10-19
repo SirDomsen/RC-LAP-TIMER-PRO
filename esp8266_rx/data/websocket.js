@@ -47,6 +47,11 @@ function handleLiveEvent(msg) {
     if (typeof finishSessionNow === 'function') {
       finishSessionNow();
     }
+  } else if (msg.type === 'request_session_save') {
+    // ---> NEU: Auto-Save Trigger der Basis <---
+    if (typeof window.autoSaveSessionResult === 'function') {
+      window.autoSaveSessionResult(currentMode, "Freies Training");
+    }  
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {

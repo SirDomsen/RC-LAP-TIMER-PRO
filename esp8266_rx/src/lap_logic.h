@@ -2,6 +2,7 @@
 #define LAP_LOGIC_H
 
 #include "config.h"
+#include <Arduino.h>
 
 enum RaceMode {
   MODE_PRACTICE,   // Freies Training
@@ -69,13 +70,24 @@ extern bool readyForNextLap[MAX_CARS + 1];
 extern uint64_t baseUnixTimestampSec;
 extern uint32_t baseMillis;
 
+// TAGESBESTZEIT (Track Record)
+extern uint32_t dailyBestLapMs;
+extern uint8_t dailyBestCarId;
+extern String dailyBestDriver;
+
 void initLapLogic();
+void loadDailyBest();
+void saveDailyBest();
+
 void processLapLogic();
 void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs);
 void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros);
 void updateLapLogicTasks(); 
 void updateLEDs();
-void resetAllLaps();
+
+// resetAllLaps erlaubt nun einen "Hard Reset", der auch die Tagesbestzeit löscht
+void resetAllLaps(bool isHardReset = false);
+
 void addRecentID(uint8_t newId);
 uint8_t getCurrentPosition(uint8_t carId);
 bool areAllActiveCarsFinished();
