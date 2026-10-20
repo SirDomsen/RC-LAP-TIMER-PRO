@@ -27,7 +27,13 @@ extern bool sectorAudioFeedback;
 // Status-Flags
 extern bool awaitingBaseCross[MAX_CARS + 1];
 extern bool finishedFinalLap[MAX_CARS + 1];
-extern bool dragRunActive[MAX_CARS + 1]; // Verhindert Mehrfachstart im Dragrace
+extern bool dragRunActive[MAX_CARS + 1];
+extern bool dragTrackOccupied;
+extern uint8_t activeDragCarId;
+
+// Dynamische Boxen- / Pause- / Outlap-Flags
+extern bool inPitOrPause[MAX_CARS + 1];
+extern bool isOutLap[MAX_CARS + 1];
 
 // Aktuelle Sektorzeiten pro Auto in Millisekunden
 extern uint32_t sz1TimeMs[MAX_CARS + 1];
@@ -70,10 +76,11 @@ extern bool readyForNextLap[MAX_CARS + 1];
 extern uint64_t baseUnixTimestampSec;
 extern uint32_t baseMillis;
 
-// TAGESBESTZEIT (Track Record)
+// TAGESBESTZEIT (Track Record - nur Rundenevents)
 extern uint32_t dailyBestLapMs;
 extern uint8_t dailyBestCarId;
 extern String dailyBestDriver;
+extern String dailyBestCar;
 
 void initLapLogic();
 void loadDailyBest();
@@ -85,12 +92,13 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros);
 void updateLapLogicTasks(); 
 void updateLEDs();
 
-// resetAllLaps erlaubt nun einen "Hard Reset", der auch die Tagesbestzeit löscht
+// resetAllLaps erlaubt einen "Hard Reset", der auch die Tagesbestzeit löscht
 void resetAllLaps(bool isHardReset = false);
 
 void addRecentID(uint8_t newId);
 uint8_t getCurrentPosition(uint8_t carId);
 bool areAllActiveCarsFinished();
+uint32_t getAverageLapTimeMs(uint8_t carId);
 
 void syncClockOnce(uint64_t clientTsSec);
 uint64_t getCurrentTimestampMs();

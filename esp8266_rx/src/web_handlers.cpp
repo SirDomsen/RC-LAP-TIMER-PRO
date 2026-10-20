@@ -17,14 +17,27 @@ void handleGetLaps(AsyncWebServerRequest *request) {
   response->print("[");
   bool first = true;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0) {
+    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0 || !awaitingBaseCross[i]) {
       if (!first) response->print(",");
+      
+      const char* stateStr = "normal";
+      if (currentMode == MODE_DRAGRACE) {
+        stateStr = dragRunActive[i] ? "drag_running" : "normal";
+      } else if (isOutLap[i]) {
+        stateStr = "outlap";
+      } else if (inPitOrPause[i]) {
+        stateStr = (currentMode == MODE_PRACTICE) ? "pause" : "box";
+      } else if (lapCounter[i] == 0 && !awaitingBaseCross[i]) {
+        stateStr = "outlap";
+      }
+
       response->printf("{\"id\":%d,\"driver\":\"%s\",\"car\":\"%s\",\"completedLaps\":%d,",
                        i, driverNames[i].c_str(), carNames[i].c_str(), (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0));
       response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", sz1TimeMs[i], sz2TimeMs[i], sz3TimeMs[i], sz4TimeMs[i]);
       response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", bestSz1TimeMs[i], bestSz2TimeMs[i], bestSz3TimeMs[i], bestSz4TimeMs[i]);
       response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", split1TimeMs[i], split2TimeMs[i], split3TimeMs[i]);
-      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"lastSeenMs\":%lu}", lastLapDuration[i], bestLapDuration[i], lastSeenMs[i]);
+      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
+                       lastLapDuration[i], bestLapDuration[i], getAverageLapTimeMs(i), lastSeenMs[i], stateStr);
       first = false;
     }
   }
@@ -52,7 +65,7 @@ void handlePostSession(AsyncWebServerRequest *request) {
     RaceMode newMode = (RaceMode)mode;
 
     if (newMode != currentMode) {
-      resetAllLaps();
+      resetAllLaps(false);
     }
 
     currentMode = newMode;
@@ -68,7 +81,11 @@ void handlePostSession(AsyncWebServerRequest *request) {
 
     for (uint8_t i = 0; i <= MAX_CARS; i++) {
       finishedFinalLap[i] = false;
+      inPitOrPause[i] = false;
+      isOutLap[i] = false;
     }
+    dragTrackOccupied = false;
+    activeDragCarId = 0;
   }
   request->send(200, "text/plain", "OK");
 }
@@ -83,7 +100,7 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
     }
   }
   String json;
-  json.reserve(160);
+  json.reserve(320);
   json = "{\"mode\":";
   json += (int)currentMode;
   json += ",\"secondsLeft\":";
@@ -92,7 +109,19 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += millis();
   json += ",\"allFinished\":";
   json += (areAllActiveCarsFinished() ? "true" : "false");
-  json += "}";
+  json += ",\"dragOccupied\":";
+  json += (dragTrackOccupied ? "true" : "false");
+  json += ",\"activeDragCar\":";
+  json += activeDragCarId;
+  json += ",\"dailyBestLap\":";
+  json += dailyBestLapMs;
+  json += ",\"dailyBestCarId\":";
+  json += dailyBestCarId;
+  json += ",\"dailyBestDriver\":\"";
+  json += dailyBestDriver;
+  json += "\",\"dailyBestCar\":\"";
+  json += dailyBestCar;
+  json += "\"}";
   request->send(200, "application/json", json);
 }
 
@@ -174,13 +203,22 @@ void handlePostRename(AsyncWebServerRequest *request) {
       driverNames[id] = driver;
       carNames[id] = car;
       saveNamesToEEPROM(id, driver, car);
+      if (dailyBestCarId == id) {
+        dailyBestDriver = driver;
+        dailyBestCar = car;
+        saveDailyBest();
+      }
     }
   }
   request->send(200, "text/plain", "OK");
 }
 
 void handlePostReset(AsyncWebServerRequest *request) {
-  resetAllLaps(true); // "true" zwingt den Hard-Reset samt Tagesbestzeit!
+  bool hard = true;
+  if (request->hasParam("hard")) {
+    hard = (request->getParam("hard")->value() == "1");
+  }
+  resetAllLaps(hard);
   request->send(200, "text/plain", "OK");
 }
 
@@ -332,7 +370,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       }
     }
 
-    
     uploadFile = LittleFS.open(cleanPath, "w");
   }
   
@@ -356,8 +393,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       if (timeSwapped) {
         settimeofday(&oldTv, nullptr);
       }
-
-      
 
       if (filename.indexOf("names.json") >= 0) {
         loadNamesFromFS();
@@ -427,10 +462,6 @@ void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
-// ========================================================
-// NEUE WLAN & SZ-OTA HANDLER
-// ========================================================
-
 void handleGetWifiConfig(AsyncWebServerRequest *request) {
   JsonDocument doc;
   doc["runtimeMode"] = currentRuntimeWifiMode;
@@ -467,25 +498,20 @@ void handlePostSwitchWifi(AsyncWebServerRequest *request) {
     mode = request->getParam("mode")->value().toInt();
   }
 
-  // Validierung: Hotspot-SSID muss vorhanden sein
   if (mode == 2 && hotspotSSID.length() == 0) {
     request->send(400, "text/plain", "Hotspot SSID fehlt!");
     return;
   }
 
-  // Modus sofort im Dateisystem dauerhaft persistieren
   activeWifiMode = mode;
   saveWifiConfigToFS(activeWifiMode, homeSSID, homePass, hotspotSSID, hotspotPass, apSSID, apPass);
 
-  // Zuerst Antwort an das Frontend senden, bevor das WLAN getrennt wird
   request->send(200, "text/plain", "Switch initiated");
 
-  // Nicht-blockierenden Netzwerkwechsel im Hintergrund starten
   triggerWifiSwitch(mode);
 }
 
 void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
-  // Restriktion: OTA auf den SZ ist im Hotspot-Modus gesperrt
   if (activeWifiMode == 2) {
     request->send(400, "text/plain", "OTA im Hotspot-Modus gesperrt! Bitte zu Heim-WLAN oder AP-Modus wechseln.");
     return;
@@ -493,16 +519,15 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
 
   uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-  // 1. Zugangsdaten des aktuell aktiven Netzwerks an die Sektoren funken (für neue Firmware)
   HotspotSyncPacket syncPkt;
   syncPkt.magicCode = HOTSPOT_SYNC_MAGIC;
 
-  if (activeWifiMode == 1) { // Heim-WLAN
+  if (activeWifiMode == 1) {
     strncpy(syncPkt.ssid, homeSSID.c_str(), sizeof(syncPkt.ssid) - 1);
     syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
     strncpy(syncPkt.pass, homePass.c_str(), sizeof(syncPkt.pass) - 1);
     syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
-  } else { // AP-Modus
+  } else {
     const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
     const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
     strncpy(syncPkt.ssid, apName, sizeof(syncPkt.ssid) - 1);
@@ -517,7 +542,6 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
   }
   delay(100);
 
-  // 2. Den eigentlichen OTA-Wartungsmodus-Befehl senden (Nutzt jetzt die Hilfsfunktion für Alt & Neu!)
   uint8_t targetMode = (activeWifiMode == 1) ? 1 : 0;
   sendSZOtaTrigger(targetMode, syncPkt.ssid, syncPkt.pass);
 
