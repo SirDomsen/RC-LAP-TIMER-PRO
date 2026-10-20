@@ -11,7 +11,7 @@
 </head>
 <body class="role-admin">
 
-  <!-- ECHTES OLED-SCHWARZ DASHBOARD (STROM SPAREN & WAKE-LOCK) -->
+  <!-- ECHTES OLED-SCHWARZ DASHBOARD (STROM SPAREN) -->
   <div id="oledDimOverlay" onclick="deactivateOledDimmer()">
     <!-- TOP: Modus & Timer -->
     <div class="dimmer-top">
@@ -70,9 +70,6 @@
         <span id="currentRoleBadge" class="role-pill" onclick="openRoleModal()" title="Klicken, um zwischen Rennleiter und Fahrer zu wechseln">
           👑 Modus: Rennleiter (Wechseln 🔄)
         </span>
-        <span id="wakeLockBadge" class="role-pill" onclick="toggleWakeLockManual()" style="border-color:var(--neon-green); color:var(--neon-green);">
-          📱 Display-Lock: Bereit
-        </span>
       </div>
     </div>
 
@@ -105,7 +102,7 @@
         <div class="track-record-title">
           <span>🏆 TAGESBESTZEIT (TRACK RECORD)</span>
         </div>
-        <div class="track-record-value" id="trackRecordDisplay">
+        <div class="trackRecordDisplay" id="trackRecordDisplay">
           <span style="color:var(--text-muted); font-size:13px;">Noch keine Bestzeit gesetzt</span>
         </div>
       </div>
@@ -171,7 +168,8 @@
         <button class="btn admin-only" onclick="openConfigModal()">⚙️ Einstellungen</button>
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
-        <button class="btn btn-purple" onclick="activateOledDimmer()" title="Dunkelt das Display ab, hält aber Sprachausgabe & Wake-Lock aktiv">🌙 OLED-Dimmer</button>
+        <button class="btn btn-purple" onclick="activateOledDimmer()" title="Dunkelt das Display ab auf echtes Schwarz zur Akkusparung">🌙 OLED-Dimmer</button>
+        <button class="btn btn-warning" id="hardReloadBtn" onclick="forceCleanReload()" title="Löscht den lokalen Browser-Cache für alle Skripte und lädt alles frisch vom ESP">🔄 Hard Reload</button>
         <button class="btn btn-light admin-only" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
         <button class="btn btn-purple admin-only" onclick="location.href='/debug'">📡 Debug</button>
       </div>
@@ -220,7 +218,7 @@
     <div class="modal-content" style="max-width: 560px; text-align: center; border: 1px solid var(--neon-cyan); box-shadow: 0 0 30px rgba(0, 229, 255, 0.35);">
       <h3 style="color:var(--neon-cyan); font-family:var(--font-display); margin-top:0; font-size:20px;">🏁 WILLKOMMEN BEIM RC LAP TIMER PRO</h3>
       <p style="font-size:14px; color:var(--text-muted); margin-bottom:10px;">
-        Bitte wähle deine Ansicht für dieses Gerät. Das Display wird automatisch vor dem Abschalten geschützt (Wake-Lock), damit die Sprachausgabe durchläuft!
+        Bitte wähle deine Ansicht für dieses Gerät.
       </p>
 
       <div class="role-choice-grid">
