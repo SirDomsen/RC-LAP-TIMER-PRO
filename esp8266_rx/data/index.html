@@ -11,11 +11,56 @@
 </head>
 <body class="role-admin">
 
-  <!-- OLED STROMSPAR-DIMMER OVERLAY (HÄLT DISPLAY & TTS AKTIV BEI MINIMALEM STROMVERBRAUCH) -->
+  <!-- ECHTES OLED-SCHWARZ DASHBOARD (STROM SPAREN & WAKE-LOCK) -->
   <div id="oledDimOverlay" onclick="deactivateOledDimmer()">
-    <div style="font-family:var(--font-display); color:var(--neon-cyan); font-size:28px; font-weight:bold; margin-bottom:10px;" id="dimmerTimerText">--:--</div>
-    <div style="font-family:var(--font-display); color:var(--neon-green); font-size:15px; margin-bottom:20px;">🔊 SPRACHAUSGABE & WAKE-LOCK AKTIV</div>
-    <div style="color:var(--text-muted); font-size:13px; border:1px dashed #333; padding:8px 16px; border-radius:6px;">Bildschirm antippen zum Aufwecken</div>
+    <!-- TOP: Modus & Timer -->
+    <div class="dimmer-top">
+      <div id="dimmerModeText" style="color:var(--text-muted); font-size:14px; text-transform:uppercase; letter-spacing:2px;">Lade...</div>
+      <div id="dimmerTimerText" style="color:var(--neon-cyan); font-size:42px; font-weight:900; font-family:var(--font-display); margin-top:2px;">--:--</div>
+      <div id="dimmerCarText" style="color:var(--neon-green); font-size:18px; margin-top:10px; font-family:var(--font-display);">Kein Fahrzeug gewählt</div>
+    </div>
+
+    <!-- CENTER: Bestzeiten & Letzte Runde -->
+    <div class="dimmer-center">
+      <div class="dimmer-time-box">
+        <div class="dimmer-label">Persönliche Bestzeit</div>
+        <div id="dimmerPbText" class="dimmer-val" style="color:var(--neon-green);">--:--</div>
+      </div>
+      <div class="dimmer-time-box">
+        <div class="dimmer-label">Absolute Bestzeit</div>
+        <div id="dimmerOverallText" class="dimmer-val" style="color:var(--neon-purple); text-shadow:0 0 10px rgba(181,50,255,0.6);">--:--</div>
+      </div>
+      <div class="dimmer-time-box" style="margin-top: 10px; border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05);">
+        <div class="dimmer-label" style="color: #fff;">Letzte Runde</div>
+        <div id="dimmerLastText" class="dimmer-val" style="color:var(--text-main);">--:--</div>
+        <div id="dimmerDeltaText" style="font-size:16px; font-weight:bold; margin-top:6px; font-family:var(--font-display);"></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM: Live-Sektorkacheln (mit 4s-Blinkeffekt) -->
+    <div class="dimmer-sectors" id="dimmerSectorsContainer">
+      <div class="dimmer-sector-box" id="dimmer-box-1" style="display:none;">
+        <div class="dimmer-sz-label">SZ 1</div>
+        <div id="dimmer-sz1-val" class="dimmer-sz-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-2" style="display:none;">
+        <div class="dimmer-sz-label">SZ 2</div>
+        <div id="dimmer-sz2-val" class="dimmer-sz-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-3" style="display:none;">
+        <div class="dimmer-sz-label">SZ 3</div>
+        <div id="dimmer-sz3-val" class="dimmer-sz-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-4" style="display:none;">
+        <div class="dimmer-sz-label">SZ 4</div>
+        <div id="dimmer-sz4-val" class="dimmer-sz-val">---</div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="color:var(--text-muted); font-size:12px; border:1px solid #333; padding:8px 16px; border-radius:6px; margin-top:25px; text-transform:uppercase;">
+      Bildschirm antippen zum Aufwecken
+    </div>
   </div>
 
   <div class="main-wrapper">

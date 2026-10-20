@@ -126,7 +126,6 @@ function onSectorLiveEvent(msg) {
     colorType = 'green';
   }
 
-  // 4-Sekunden-Blinkeffekt im State vermerken, damit updateData() ihn erhält
   if (typeof sectorFlashUntilMap !== 'undefined') {
     let key = `${carId}_${msg.sector}`;
     sectorFlashUntilMap[key] = {
@@ -149,10 +148,33 @@ function onSectorLiveEvent(msg) {
     let flashClass = `sector-flash-${colorType}`;
 
     cell.className = '';
-    void cell.offsetWidth; // Reflow für sauberen Animations-Neustart
+    void cell.offsetWidth;
     cell.className = `${textClass} ${flashClass}`;
   } else {
     updateData();
+  }
+
+  // --- OLED DIMMER KACHEL LIVE AKTUALISIEREN & BLINKEN LASSEN ---
+  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
+  if (isMyCar) {
+    let dimBox = document.getElementById(`dimmer-box-${msg.sector}`);
+    let dimVal = document.getElementById(`dimmer-sz${msg.sector}-val`);
+    if (dimBox && dimVal) {
+      if (currentMode === 4) {
+        let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
+        let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
+        dimVal.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splitDisp}</span><span>${valDisp}</span></div>`;
+      } else {
+        dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
+      }
+      dimBox.className = 'dimmer-sector-box'; 
+      void dimBox.offsetWidth; // Reflow erzwingen
+      dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
+      
+      let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
+      dimVal.style.color = textCol;
+      dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
+    }
   }
 
   if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {

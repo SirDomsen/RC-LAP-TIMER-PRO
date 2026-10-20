@@ -6,7 +6,6 @@ let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?
 let socket = null;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; // 'admin' oder 'driver'
-let wakeLockSentinel = null;
 
 let currentMode = 0;
 let targetLaps = 0;
@@ -53,63 +52,200 @@ let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
 // ==========================================
-// SCREEN WAKE LOCK & OLED DIMMER
+// UNIVERSAL SCREEN WAKE-LOCK (VIDEO FALLBACK) & OLED DIMMER
 // ==========================================
 
-async function requestScreenWakeLock() {
+let noSleepVideo = null;
+let isWakeLockActive = false;
+let wakeLockSentinel = null;
+
+function initNoSleepVideo() {
+  if (noSleepVideo) return;
+
+  noSleepVideo = document.createElement('video');
+  noSleepVideo.setAttribute('playsinline', '');
+  noSleepVideo.setAttribute('webkit-playsinline', '');
+  noSleepVideo.muted = true;
+  noSleepVideo.loop = true;
+  noSleepVideo.style.position = 'fixed';
+  noSleepVideo.style.left = '-9999px';
+  noSleepVideo.style.top = '-9999px';
+  noSleepVideo.style.width = '1px';
+  noSleepVideo.style.height = '1px';
+  noSleepVideo.style.opacity = '0.01';
+
+  // Minimales, stummes 1x1 MP4-Video im Loop (1,6 KB Base64) - Zwingt Android das Display anzulassen!
+  noSleepVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAAAAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAsVtZGF0AAACrgYF//+13wshSDEIQ4hDCEMIQAi70AAABrttb3Z2AAAAbG12aGQAAAAA1cA5ANXAOPQAAAPoAAAAAAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACMnRyYWsAAAAAbHRraGQAAAAB1cA5ANXAOPQAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAQAAAAEAAAAAAEFkdHMAAAAAJGVkdHMBAAAAAAAAABAAAAEAAAAAAAABAAAAAG1kaWEAAAAgbWRoZAAAAADVwDkA1cA49AAAB1QAAAPoFXzAAAAAAC1oZGxyAAAAAAAAAABzb3VuAAAAAAAAAAAAAAAAc291bmQgaGFuZGxlcgAAAAFwbWluZgAAAAxyZm10AAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAXNzdGJsAAAAanN0c2QAAAAAAAAAAQAAAFptcDRhAAAAAAAAAAEAAAAAAAAAAAACABAAAAAH1QAAAAAAN2VzZHMAAAAAA4CAgB8AAAABAgCAAwAAAAMBAgEBAgAAAAkCAgAAAAkDAAAAB2FhYyAAAAAHAgIAAAADAQAAABFzdHRzAAAAAAAAAAEAAAABAAAH1QAAAAxzdHN6AAAAAAAAAAAAAAABAAAAFnN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAXN0Y28AAAAAAAAAAQAAADg=';
+  document.body.appendChild(noSleepVideo);
+}
+
+async function enableScreenWakeLock() {
   let badge = document.getElementById('wakeLockBadge');
-  if (!('wakeLock' in navigator)) {
+
+  // Stufe 1: Native API testen (funktioniert meist nur bei HTTPS oder localhost)
+  if ('wakeLock' in navigator && window.isSecureContext) {
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      isWakeLockActive = true;
+      if (badge) {
+        badge.innerText = "📱 Display-Lock: Nativ AKTIV";
+        badge.style.borderColor = "var(--neon-green)";
+        badge.style.color = "var(--neon-green)";
+      }
+      return;
+    } catch (e) {}
+  }
+
+  // Stufe 2: Video-Loop Fallback für HTTP & ältere Android-Versionen
+  try {
+    initNoSleepVideo();
+    let playPromise = noSleepVideo.play();
+    if (playPromise !== undefined) {
+      await playPromise;
+      isWakeLockActive = true;
+      if (badge) {
+        badge.innerText = "📱 Display-Lock: AKTIV";
+        badge.style.borderColor = "var(--neon-green)";
+        badge.style.color = "var(--neon-green)";
+      }
+    }
+  } catch (err) {
     if (badge) {
-      badge.innerText = "📱 Wake-Lock: Nicht unterstützt";
+      badge.innerText = "📱 Klick nötig für Display-Lock";
       badge.style.borderColor = "var(--neon-orange)";
       badge.style.color = "var(--neon-orange)";
     }
-    return;
   }
-  try {
-    wakeLockSentinel = await navigator.wakeLock.request('screen');
+}
+
+function toggleWakeLockManual() {
+  if (isWakeLockActive) {
+    if (noSleepVideo) noSleepVideo.pause();
+    if (wakeLockSentinel) wakeLockSentinel.release();
+    isWakeLockActive = false;
+    let badge = document.getElementById('wakeLockBadge');
     if (badge) {
-      badge.innerText = "📱 Display-Lock: AKTIV";
-      badge.style.borderColor = "var(--neon-green)";
-      badge.style.color = "var(--neon-green)";
+      badge.innerText = "📱 Display-Lock: AUS";
+      badge.style.borderColor = "var(--neon-red)";
+      badge.style.color = "var(--neon-red)";
     }
-    wakeLockSentinel.addEventListener('release', () => {
-      if (badge && document.visibilityState === 'visible') {
-        badge.innerText = "📱 Display-Lock: Pausiert";
-        badge.style.borderColor = "var(--neon-orange)";
-        badge.style.color = "var(--neon-orange)";
-      }
-    });
-  } catch (err) {
-    console.warn("Wake-Lock Anfrage abgelehnt:", err);
-  }
-}
-
-async function toggleWakeLockManual() {
-  if (wakeLockSentinel !== null) {
-    await requestScreenWakeLock();
   } else {
-    await requestScreenWakeLock();
+    enableScreenWakeLock();
   }
 }
 
-document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible') {
-    await requestScreenWakeLock();
+// Bei Tab-Wechsel den Video-Lock automatisch auffrischen
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isWakeLockActive) {
+    if (noSleepVideo && noSleepVideo.paused) {
+      noSleepVideo.play().catch(() => {});
+    }
+    if ('wakeLock' in navigator && window.isSecureContext) {
+      navigator.wakeLock.request('screen').then(lock => { wakeLockSentinel = lock; }).catch(()=>{});
+    }
   }
 });
 
 function activateOledDimmer() {
-  requestScreenWakeLock();
+  enableScreenWakeLock(); // Stellt sicher, dass das Display wirklich an bleibt!
   if (!audioUnmuted) unmuteIOSAudio();
   let overlay = document.getElementById('oledDimOverlay');
   if (overlay) overlay.style.display = 'flex';
+  updateData(true); // Erzwingt ein sofortiges UI-Update für die großen Zahlen
 }
 
 function deactivateOledDimmer() {
   let overlay = document.getElementById('oledDimOverlay');
   if (overlay) overlay.style.display = 'none';
-  requestScreenWakeLock();
+  enableScreenWakeLock();
+}
+
+// ==========================================
+// OLED DIMMER UI UPDATER
+// ==========================================
+
+function updateDimmerUI(row, sessionOverallBestLap) {
+  let dCar = document.getElementById('dimmerCarText');
+  if (dCar) dCar.innerText = `${row.driver} (${row.car})`;
+
+  let dPb = document.getElementById('dimmerPbText');
+  if (dPb) dPb.innerText = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '--:--';
+
+  let dOver = document.getElementById('dimmerOverallText');
+  if (dOver) dOver.innerText = sessionOverallBestLap > 0 ? (sessionOverallBestLap / 1000).toFixed(2) + 's' : '--:--';
+
+  let dLast = document.getElementById('dimmerLastText');
+  let dDelta = document.getElementById('dimmerDeltaText');
+  
+  if (row.state === 'outlap' || row.state === 'box' || row.state === 'pause') {
+    if (dLast) {
+      dLast.innerText = row.state.toUpperCase();
+      dLast.style.color = 'var(--neon-orange)';
+    }
+    if (dDelta) dDelta.innerText = '';
+  } else {
+    if (dLast) {
+      dLast.innerText = row.lastLap > 0 ? (row.lastLap / 1000).toFixed(2) + 's' : '--:--';
+      let isOverall = (sessionOverallBestLap > 0 && row.lastLap <= sessionOverallBestLap);
+      let isPb = (row.bestLap > 0 && row.lastLap <= row.bestLap);
+      if (isOverall) dLast.style.color = 'var(--neon-purple)';
+      else if (isPb) dLast.style.color = 'var(--neon-green)';
+      else dLast.style.color = 'var(--text-main)';
+    }
+    
+    if (dDelta && row.lastLap > 0 && row.bestLap > 0) {
+      let diff = row.lastLap - row.bestLap;
+      if (row.lastLap <= sessionOverallBestLap && sessionOverallBestLap > 0) {
+        dDelta.innerText = "ABSOLUTE BESTZEIT!";
+        dDelta.style.color = 'var(--neon-purple)';
+      } else if (diff <= 0) {
+        dDelta.innerText = "NEUE PERSÖNLICHE BESTZEIT!";
+        dDelta.style.color = 'var(--neon-green)';
+      } else {
+        dDelta.innerText = "+" + (diff / 1000).toFixed(2) + "s";
+        dDelta.style.color = 'var(--neon-red)';
+      }
+    } else if (dDelta) {
+      dDelta.innerText = '';
+    }
+  }
+
+  let mask = getVisibleSectorsMask();
+  for (let i = 1; i <= 4; i++) {
+    let box = document.getElementById(`dimmer-box-${i}`);
+    let valElem = document.getElementById(`dimmer-sz${i}-val`);
+    let show = false;
+    if (i===1) show = mask.showSz1;
+    if (i===2) show = mask.showSz2;
+    if (i===3) show = mask.showSz3;
+    if (i===4) show = mask.showSz4;
+    
+    if (box) box.style.display = show ? 'block' : 'none';
+    
+    if (show && valElem) {
+      let szVal = row[`sz${i}`] || 0;
+      let splitVal = row[`split${i}`] || 0;
+      let bestSzVal = row[`bestSz${i}`] || 0;
+      
+      // Overall Best pro Sektor muss hier global abgeglichen werden (wird normal im Backend berechnet, 
+      // wir fangen es über die Farbklassen-Logik ab, die auch die Tabelle nutzt).
+      let isDrag = (currentMode === 4);
+      
+      if (szVal > 0) {
+        if (isDrag) {
+          let splStr = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+          let szStr = (szVal / 1000).toFixed(2) + 's';
+          valElem.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splStr}</span><span>${szStr}</span></div>`;
+        } else {
+          valElem.innerText = (szVal / 1000).toFixed(2) + 's';
+        }
+      } else {
+        valElem.innerText = '---';
+      }
+
+      // Die Farben und Flash-Klassen werden durch die generische Sektor-Logik unten in updateData befüllt
+    }
+  }
 }
 
 // ==========================================
@@ -147,10 +283,9 @@ function selectUserRole(role) {
   let modal = document.getElementById('roleSelectModal');
   if (modal) modal.style.display = 'none';
 
-  // Klick-Interaktion direkt nutzen, um Audio und Screen Wake Lock zu entsperren!
   if (!audioUnmuted) unmuteIOSAudio();
-  requestScreenWakeLock();
-  updateData();
+  enableScreenWakeLock(); // Sofort die Freigabe des Browsers nutzen!
+  updateData(true);
 }
 
 function populateDriverQuickSelect() {
@@ -176,7 +311,7 @@ function onDriverQuickSelectChange(val) {
   }
   localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
   updateTTSFilterDisplay();
-  updateData();
+  updateData(true);
   if (val !== 'all') {
     let dName = carNamesMap[Number(val)]?.driver || ('Fahrer ' + val);
     speak("Sprachausgabe aktiv für " + dName, true);
@@ -389,7 +524,6 @@ async function updateData(fullSync = false) {
   try {
     let response = await fetch('/api/laps');
     if (response.status === 503) {
-      // Server-Heap schützt sich gerade -> entspannt beim nächsten Zyklus wiederholen
       isUpdatingData = false;
       return;
     }
@@ -407,6 +541,8 @@ async function updateData(fullSync = false) {
     if (data.length === 0) {
       html = `<tr><td colspan="${totalCols}">Keine Autos erfasst</td></tr>`;
       currentLeaderId = null;
+      let dCar = document.getElementById('dimmerCarText');
+      if (dCar) dCar.innerText = "Kein Fahrzeug gewählt";
     } else {
       let leaderSearch = [...data];
       if (currentMode === 1 || currentMode === 4) {
@@ -544,6 +680,48 @@ async function updateData(fullSync = false) {
         let isMySelectedCar = (selectedTTSCars.length === 1 && selectedTTSCars[0] === row.id);
         let rowHighlightClass = isMySelectedCar ? ' class="my-selected-car-row"' : '';
 
+        // --- UPDATE OLED DIMMER UI WENN ES UNSER AUTO IST ---
+        if (isMySelectedCar) {
+          updateDimmerUI(row, minBestLap);
+          
+          // CSS der Kacheln im Dimmer synchronisieren
+          let setDimmerBoxStyle = (boxId, valId, cssClassStr, szVal) => {
+            let box = document.getElementById(boxId);
+            let valElem = document.getElementById(valId);
+            if (box && valElem) {
+              box.className = `dimmer-sector-box ${cssClassStr}`;
+              if (szVal > 0) {
+                if (cssClassStr.includes('purple')) {
+                  valElem.style.color = 'var(--neon-purple)';
+                  valElem.style.textShadow = '0 0 8px rgba(181,50,255,0.7)';
+                } else if (cssClassStr.includes('green')) {
+                  valElem.style.color = 'var(--neon-green)';
+                  valElem.style.textShadow = 'none';
+                } else {
+                  valElem.style.color = 'var(--neon-orange)';
+                  valElem.style.textShadow = 'none';
+                }
+              } else {
+                valElem.style.color = 'var(--text-main)';
+                valElem.style.textShadow = 'none';
+              }
+            }
+          };
+          setDimmerBoxStyle('dimmer-box-1', 'dimmer-sz1-val', sz1Class, row.sz1);
+          setDimmerBoxStyle('dimmer-box-2', 'dimmer-sz2-val', sz2Class, row.sz2);
+          setDimmerBoxStyle('dimmer-box-3', 'dimmer-sz3-val', sz3Class, row.sz3);
+          setDimmerBoxStyle('dimmer-box-4', 'dimmer-sz4-val', sz4Class, row.sz4);
+          
+          let dMode = document.getElementById('dimmerModeText');
+          if (dMode) {
+             if (currentMode === 0) dMode.innerText = "Freies Training";
+             else if (currentMode === 1) dMode.innerText = "Qualifying";
+             else if (currentMode === 2) dMode.innerText = `Rennen (Runde ${row.completedLaps+1} von ${targetLaps})`;
+             else if (currentMode === 3) dMode.innerText = "Rennen (Zeit)";
+             else if (currentMode === 4) dMode.innerText = "Dragrace";
+          }
+        }
+
         html += `<tr${rowHighlightClass}>
           <td><strong>P${defaultPosition}</strong></td>
           <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
@@ -565,8 +743,6 @@ async function updateData(fullSync = false) {
     isUpdatingData = false;
   }
 
-  // Wenn updateData nur durch ein schnelles Live-Event (WebSocket) getriggert wurde,
-  // sparen wir uns die zusätzlichen 3 HTTP-Requests, um den ESP8266-Heap bei vielen Clients zu schonen!
   if (!fullSync) return;
 
   try {
@@ -629,7 +805,6 @@ async function updateData(fullSync = false) {
     }
   } catch (err) {}
 
-  // Live-Sensor-IDs nur abfragen, wenn man als Rennleiter (Admin) angemeldet ist!
   if (userRole === 'admin') {
     try {
       let r = await fetch('/api/recent');
@@ -662,7 +837,7 @@ function finishSessionNow() {
 
   if (currentMode === 1) {
     qualiFinishedHold = true;
-    if (timerElem) timerElem.innerText = "QUALI BEENDET";
+    updateTimerDisplayString(0);
     let modeElem = document.getElementById('modeDisplay');
     if (modeElem) modeElem.innerText = "Qualifying (Beendet)";
 
@@ -753,11 +928,9 @@ async function pollData() {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    // SMART-POLLING: Wenn der WebSocket offen ist, kommen Runden & Sektoren ohnehin in Echtzeit!
-    // Fahrer-Clients fragen daher nur alle 12-16s im Hintergrund ab, Admin alle 6-8s.
     let wsConnected = (socket && socket.readyState === WebSocket.OPEN);
     let baseInterval = wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 4000;
-    let jitter = Math.floor(Math.random() * 3500); // Verhindert gleichzeitige Requests mehrerer Handys!
+    let jitter = Math.floor(Math.random() * 3500); 
     pollTimeout = setTimeout(pollData, baseInterval + jitter);
   }
 }
@@ -851,7 +1024,6 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
         if (leaderCar && currentLaps > leaderCar.completedLaps) {
           let oldLeaderId = currentLeaderId;
           currentLeaderId = carId;
-          // Führungswechsel ansagen, wenn alle Autos aktiv sind ODER der eigene Fahrer Führung gewinnt/verliert!
           if (isCarAllowedForTTS(carId) || isCarAllowedForTTS(oldLeaderId)) {
             leadChangeOccurred = true;
             speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", false);
@@ -904,7 +1076,6 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
 window.addEventListener('DOMContentLoaded', () => {
   window.sessionStartTs = Math.floor(Date.now() / 1000);
 
-  // Prüfen, ob eine Rolle per URL (?role=driver / ?role=admin) übergeben oder gespeichert wurde
   let params = new URLSearchParams(window.location.search);
   if (params.get('role') === 'driver' || params.get('driver') === '1') {
     userRole = 'driver';
@@ -915,7 +1086,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   if (!userRole) {
-    applyUserRoleUI('driver'); // Sicherer Standard im Hintergrund, bis der Nutzer im Modal klickt
+    applyUserRoleUI('driver'); 
     openRoleModal();
   } else {
     applyUserRoleUI(userRole);
@@ -962,5 +1133,5 @@ document.addEventListener('keydown', function(e) {
 
 document.addEventListener('click', function() {
   if (!audioUnmuted) unmuteIOSAudio();
-  if (!wakeLockSentinel) requestScreenWakeLock();
+  enableScreenWakeLock();
 }, { once: true });
