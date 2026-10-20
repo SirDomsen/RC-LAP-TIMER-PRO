@@ -9,11 +9,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="role-admin">
+
+  <!-- OLED STROMSPAR-DIMMER OVERLAY (HÄLT DISPLAY & TTS AKTIV BEI MINIMALEM STROMVERBRAUCH) -->
+  <div id="oledDimOverlay" onclick="deactivateOledDimmer()">
+    <div style="font-family:var(--font-display); color:var(--neon-cyan); font-size:28px; font-weight:bold; margin-bottom:10px;" id="dimmerTimerText">--:--</div>
+    <div style="font-family:var(--font-display); color:var(--neon-green); font-size:15px; margin-bottom:20px;">🔊 SPRACHAUSGABE & WAKE-LOCK AKTIV</div>
+    <div style="color:var(--text-muted); font-size:13px; border:1px dashed #333; padding:8px 16px; border-radius:6px;">Bildschirm antippen zum Aufwecken</div>
+  </div>
 
   <div class="main-wrapper">
     <div class="hero-header">
       <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+      <div class="role-badge-bar">
+        <span id="currentRoleBadge" class="role-pill" onclick="openRoleModal()" title="Klicken, um zwischen Rennleiter und Fahrer zu wechseln">
+          👑 Modus: Rennleiter (Wechseln 🔄)
+        </span>
+        <span id="wakeLockBadge" class="role-pill" onclick="toggleWakeLockManual()" style="border-color:var(--neon-green); color:var(--neon-green);">
+          📱 Display-Lock: Bereit
+        </span>
+      </div>
     </div>
 
     <div class="card">
@@ -56,7 +71,19 @@
         <div id="poleBannerText" class="pole-banner-val">---</div>
       </div>
 
-      <div class="control-grid">
+      <!-- FAHRER-MODUS: KOMPAKTE FAHRZEUGAUSWAHL -->
+      <div class="driver-quick-panel driver-only">
+        <div style="text-align:left;">
+          <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:</strong>
+          <div style="font-size:12px; color:var(--text-muted);">Wähle dein Auto – Rundenzeiten & Sektoren werden live vorgelesen</div>
+        </div>
+        <select id="driverQuickSelect" class="driver-quick-select" onchange="onDriverQuickSelectChange(this.value)">
+          <option value="all">🔊 Alle Fahrzeuge ansagen</option>
+        </select>
+      </div>
+
+      <!-- RENNLEITER STEUERUNG (NUR FÜR ADMIN SICHTBAR) -->
+      <div class="control-grid admin-only">
         <div class="control-group">
           <div class="control-group-title">PRACTICE</div>
           <button class="btn btn-success" onclick="startPractice()">Freies Training</button>
@@ -93,14 +120,15 @@
       </div>
 
       <div>
-        <button class="btn btn-warning" onclick="stopSession()">⏹ Durchgang Stoppen</button>
-        <button class="btn btn-danger" onclick="resetLaps()">Komplett-Reset</button>
+        <button class="btn btn-warning admin-only" onclick="stopSession()">⏹ Durchgang Stoppen</button>
+        <button class="btn btn-danger admin-only" onclick="resetLaps()">Komplett-Reset</button>
         <button class="btn btn-purple" onclick="openStatsOverviewModal()">📊 Statistiken</button>
-        <button class="btn" onclick="openConfigModal()">⚙️ Einstellungen</button>
+        <button class="btn admin-only" onclick="openConfigModal()">⚙️ Einstellungen</button>
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
-        <button class="btn btn-light" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
-        <button class="btn btn-purple" onclick="location.href='/debug'">📡 Debug</button>
+        <button class="btn btn-purple" onclick="activateOledDimmer()" title="Dunkelt das Display ab, hält aber Sprachausgabe & Wake-Lock aktiv">🌙 OLED-Dimmer</button>
+        <button class="btn btn-light admin-only" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
+        <button class="btn btn-purple admin-only" onclick="location.href='/debug'">📡 Debug</button>
       </div>
       <div style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
         Sprachausgabe für: <strong id="ttsSelectedCarsDisplay" style="color: var(--neon-cyan);">Alle Fahrzeuge</strong>
@@ -130,7 +158,7 @@
       </div>
     </div>
 
-    <div class="card" style="background: rgba(13, 17, 23, 0.9);">
+    <div class="card admin-only" style="background: rgba(13, 17, 23, 0.9);">
       <h3 style="color: var(--neon-orange); margin: 0 0 5px 0; font-size: 14px; font-family: var(--font-display); letter-spacing: 1px;">LIVE SENSOR DEBUG (LETZTE 5 IDS)</h3>
       <div class="recent-id-box" id="recentIdsContainer">
         <div class="recent-item">-</div>
@@ -138,6 +166,34 @@
         <div class="recent-item">-</div>
         <div class="recent-item">-</div>
         <div class="recent-item">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROLLEN-AUSWAHLFENSTER BEIM START (RENNLEITER VS. FAHRER) -->
+  <div id="roleSelectModal" class="modal" style="z-index: 9998;">
+    <div class="modal-content" style="max-width: 560px; text-align: center; border: 1px solid var(--neon-cyan); box-shadow: 0 0 30px rgba(0, 229, 255, 0.35);">
+      <h3 style="color:var(--neon-cyan); font-family:var(--font-display); margin-top:0; font-size:20px;">🏁 WILLKOMMEN BEIM RC LAP TIMER PRO</h3>
+      <p style="font-size:14px; color:var(--text-muted); margin-bottom:10px;">
+        Bitte wähle deine Ansicht für dieses Gerät. Das Display wird automatisch vor dem Abschalten geschützt (Wake-Lock), damit die Sprachausgabe durchläuft!
+      </p>
+
+      <div class="role-choice-grid">
+        <div class="role-choice-card driver-card" onclick="selectUserRole('driver')">
+          <div style="font-size:36px; margin-bottom:8px;">🏎️</div>
+          <div style="font-family:var(--font-display); color:var(--neon-green); font-size:16px; font-weight:bold; margin-bottom:6px;">FAHRER / ZUSCHAUER</div>
+          <div style="font-size:13px; color:var(--text-muted);">
+            Schlankes Live-Timing & persönliche Sprachausgabe ohne Gefahr von Fehlbedienungen. Spart massiv Speicher!
+          </div>
+        </div>
+
+        <div class="role-choice-card admin-card" onclick="selectUserRole('admin')">
+          <div style="font-size:36px; margin-bottom:8px;">👑</div>
+          <div style="font-family:var(--font-display); color:var(--neon-cyan); font-size:16px; font-weight:bold; margin-bottom:6px;">RENNLEITER / ADMIN</div>
+          <div style="font-size:13px; color:var(--text-muted);">
+            Volle Kontrolle über Rennmodi, Zeitvorgaben, Systemeinstellungen, WLAN und Sektor-Updates.
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -150,7 +206,7 @@
         <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsOverviewModal()">✕</button>
       </div>
 
-      <div class="backup-bar">
+      <div class="backup-bar admin-only">
         <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">DATENSICHERUNG:</span>
         <div>
           <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="downloadStatsBackup()">💾 Backup herunterladen</button>
@@ -174,7 +230,7 @@
       <div class="modal-body" id="statsTabDrag" style="display:none;"></div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
-        <button class="btn btn-danger" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
+        <button class="btn btn-danger admin-only" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
         <button class="btn btn-warning" onclick="closeStatsOverviewModal()">Schließen</button>
       </div>
     </div>
@@ -199,7 +255,7 @@
                 <th>Sektoren (SZ1-SZ4)</th>
                 <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
                 <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
-                <th>Aktion</th>
+                <th class="admin-only">Aktion</th>
               </tr>
             </thead>
             <tbody id="statsTableBody">
@@ -210,7 +266,7 @@
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
-        <button class="btn btn-danger" id="deleteDriverStatsBtn" onclick="confirmDeleteDriverStats()">Alle Statistiken dieses Fahrers löschen</button>
+        <button class="btn btn-danger admin-only" id="deleteDriverStatsBtn" onclick="confirmDeleteDriverStats()">Alle Statistiken dieses Fahrers löschen</button>
         <button class="btn btn-warning" onclick="closeStatsModal()">Schließen</button>
       </div>
     </div>

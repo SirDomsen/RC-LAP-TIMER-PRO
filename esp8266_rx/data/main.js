@@ -1,9 +1,12 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.2.0'; 
+window.UI_VERSION = '3.3.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
+
+let userRole = localStorage.getItem('rctl_user_role') || null; // 'admin' oder 'driver'
+let wakeLockSentinel = null;
 
 let currentMode = 0;
 let targetLaps = 0;
@@ -49,6 +52,143 @@ let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
+// ==========================================
+// SCREEN WAKE LOCK & OLED DIMMER
+// ==========================================
+
+async function requestScreenWakeLock() {
+  let badge = document.getElementById('wakeLockBadge');
+  if (!('wakeLock' in navigator)) {
+    if (badge) {
+      badge.innerText = "📱 Wake-Lock: Nicht unterstützt";
+      badge.style.borderColor = "var(--neon-orange)";
+      badge.style.color = "var(--neon-orange)";
+    }
+    return;
+  }
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    if (badge) {
+      badge.innerText = "📱 Display-Lock: AKTIV";
+      badge.style.borderColor = "var(--neon-green)";
+      badge.style.color = "var(--neon-green)";
+    }
+    wakeLockSentinel.addEventListener('release', () => {
+      if (badge && document.visibilityState === 'visible') {
+        badge.innerText = "📱 Display-Lock: Pausiert";
+        badge.style.borderColor = "var(--neon-orange)";
+        badge.style.color = "var(--neon-orange)";
+      }
+    });
+  } catch (err) {
+    console.warn("Wake-Lock Anfrage abgelehnt:", err);
+  }
+}
+
+async function toggleWakeLockManual() {
+  if (wakeLockSentinel !== null) {
+    await requestScreenWakeLock();
+  } else {
+    await requestScreenWakeLock();
+  }
+}
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    await requestScreenWakeLock();
+  }
+});
+
+function activateOledDimmer() {
+  requestScreenWakeLock();
+  if (!audioUnmuted) unmuteIOSAudio();
+  let overlay = document.getElementById('oledDimOverlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function deactivateOledDimmer() {
+  let overlay = document.getElementById('oledDimOverlay');
+  if (overlay) overlay.style.display = 'none';
+  requestScreenWakeLock();
+}
+
+// ==========================================
+// ROLLEN-MANAGEMENT (RENNLEITER VS. FAHRER)
+// ==========================================
+
+function applyUserRoleUI(role) {
+  userRole = role;
+  document.body.classList.remove('role-admin', 'role-driver');
+  document.body.classList.add(role === 'driver' ? 'role-driver' : 'role-admin');
+
+  let badge = document.getElementById('currentRoleBadge');
+  if (badge) {
+    if (role === 'driver') {
+      badge.innerText = "🏎️ Modus: Fahrer (Wechseln 🔄)";
+      badge.style.borderColor = "var(--neon-green)";
+      badge.style.color = "var(--neon-green)";
+    } else {
+      badge.innerText = "👑 Modus: Rennleiter (Wechseln 🔄)";
+      badge.style.borderColor = "var(--neon-cyan)";
+      badge.style.color = "var(--neon-cyan)";
+    }
+  }
+  populateDriverQuickSelect();
+}
+
+function openRoleModal() {
+  let modal = document.getElementById('roleSelectModal');
+  if (modal) modal.style.display = 'block';
+}
+
+function selectUserRole(role) {
+  localStorage.setItem('rctl_user_role', role);
+  applyUserRoleUI(role);
+  let modal = document.getElementById('roleSelectModal');
+  if (modal) modal.style.display = 'none';
+
+  // Klick-Interaktion direkt nutzen, um Audio und Screen Wake Lock zu entsperren!
+  if (!audioUnmuted) unmuteIOSAudio();
+  requestScreenWakeLock();
+  updateData();
+}
+
+function populateDriverQuickSelect() {
+  let sel = document.getElementById('driverQuickSelect');
+  if (!sel) return;
+
+  let currentVal = (selectedTTSCars.length === 1) ? String(selectedTTSCars[0]) : 'all';
+  let html = `<option value="all">🔊 Alle Fahrzeuge ansagen</option>`;
+  for (let i = 1; i <= MAX_CARS; i++) {
+    let dName = carNamesMap[i]?.driver || ('Fahrer ' + i);
+    let cName = carNamesMap[i]?.car || ('Auto ' + i);
+    let selectedAttr = (String(i) === currentVal) ? 'selected' : '';
+    html += `<option value="${i}" ${selectedAttr}>🎧 ID ${i}: ${dName} (${cName})</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function onDriverQuickSelectChange(val) {
+  if (val === 'all') {
+    selectedTTSCars = [];
+  } else {
+    selectedTTSCars = [Number(val)];
+  }
+  localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
+  updateTTSFilterDisplay();
+  updateData();
+  if (val !== 'all') {
+    let dName = carNamesMap[Number(val)]?.driver || ('Fahrer ' + val);
+    speak("Sprachausgabe aktiv für " + dName, true);
+  } else {
+    speak("Sprachausgabe für alle Fahrzeuge aktiv", true);
+  }
+}
+
+// ==========================================
+// INITIALISIERUNG & HELPER
+// ==========================================
+
 function syncTimeWithServerOnce() {
   let nowSec = Math.floor(Date.now() / 1000);
   fetch('/api/synctime?ts=' + nowSec, { 
@@ -81,6 +221,7 @@ async function loadCarNames() {
     for (let i = 1; i <= MAX_CARS; i++) {
       if (names[i]) carNamesMap[i] = names[i];
     }
+    populateDriverQuickSelect();
   } catch (e) {
     console.error("Fehler beim Laden der Namen:", e);
   }
@@ -114,7 +255,6 @@ function getVisibleSectorsMask() {
       showSz4: false
     };
   }
-  // Rundenrennen: Der Zielsektor an der Basis ist immer (höchster aktiver SZ + 1)
   let finalSectorNum = activeUseSz3 ? 4 : (activeUseSz2 ? 3 : (activeUseSz1 ? 2 : 0));
   return {
     showSz1: activeUseSz1,
@@ -187,30 +327,23 @@ function updateTrackRecordBar(info) {
 
 function updateTimerDisplayString(sec) {
   let timerElem = document.getElementById('timerDisplay');
-  if (!timerElem) return;
+  let dimTimer = document.getElementById('dimmerTimerText');
+  let textVal = "--:--";
 
   if (qualiFinishedHold) {
-    timerElem.innerText = "QUALI BEENDET";
-    return;
-  }
-
-  if (isSessionFinished) {
-    timerElem.innerText = (currentMode === 1) ? "QUALI BEENDET" : "ZIEL";
-    return;
-  }
-
-  if (timeExpiredAnnounced) {
-    timerElem.innerText = "LETZTE RUNDE";
-    return;
-  }
-
-  if (sec >= 0) {
+    textVal = "QUALI BEENDET";
+  } else if (isSessionFinished) {
+    textVal = (currentMode === 1) ? "QUALI BEENDET" : "ZIEL";
+  } else if (timeExpiredAnnounced) {
+    textVal = "LETZTE RUNDE";
+  } else if (sec >= 0) {
     let m = Math.floor(sec / 60);
     let s = sec % 60;
-    timerElem.innerText = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
-  } else {
-    timerElem.innerText = "--:--";
+    textVal = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
   }
+
+  if (timerElem) timerElem.innerText = textVal;
+  if (dimTimer) dimTimer.innerText = textVal;
 }
 
 function startLocalTimerTicker() {
@@ -245,12 +378,21 @@ function startLocalTimerTicker() {
   }, 1000);
 }
 
-async function updateData() {
+// ==========================================
+// HAUPT-DATENABRUF & RENDERING
+// ==========================================
+
+async function updateData(fullSync = false) {
   if (isUpdatingData) return;
   isUpdatingData = true;
 
   try {
     let response = await fetch('/api/laps');
+    if (response.status === 503) {
+      // Server-Heap schützt sich gerade -> entspannt beim nächsten Zyklus wiederholen
+      isUpdatingData = false;
+      return;
+    }
     let data = await response.json();
     
     lastLapsData = data;
@@ -315,7 +457,6 @@ async function updateData() {
         carNamesMap[row.id] = { driver: row.driver, car: row.car };
         let defaultPosition = row._defaultPos;
         
-        // Backend-Status synchronisieren
         if (row.state === 'box' || row.state === 'pause' || row.state === 'outlap') {
           statusCarsMap[row.id] = row.state;
         } else if (row.state === 'normal') {
@@ -328,7 +469,6 @@ async function updateData() {
         let lastClass = 'lap-time-neutral';
 
         if (isDrag) {
-          // Im Dragrace bleibt die Laufzeit immer bis zum nächsten Start stehen!
           if (row.state === 'drag_running') {
             lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
           } else if (row.lastLap > 0) {
@@ -339,7 +479,6 @@ async function updateData() {
             else if (isPB) lastClass = 'lap-time-green';
           }
         } else {
-          // Rundenbasierte Modi: Outlap, Box, Pause oder Rundenzeit
           if (statusCarsMap[row.id] === 'outlap' || row.state === 'outlap') {
             lastDisplay = '<span class="outlap-badge">Outlap</span>';
           } else if (statusCarsMap[row.id] === 'box' || row.state === 'box') {
@@ -402,7 +541,10 @@ async function updateData() {
         if (currentMode === 4) lapsDisplay = row.completedLaps > 0 ? (row.completedLaps + (row.completedLaps === 1 ? ' Lauf' : ' Läufe')) : '0';
         else if (targetLaps > 0) lapsDisplay += ' / ' + targetLaps;
 
-        html += `<tr>
+        let isMySelectedCar = (selectedTTSCars.length === 1 && selectedTTSCars[0] === row.id);
+        let rowHighlightClass = isMySelectedCar ? ' class="my-selected-car-row"' : '';
+
+        html += `<tr${rowHighlightClass}>
           <td><strong>P${defaultPosition}</strong></td>
           <td><span class="driver-name" onclick="openDriverStats(${row.id})">${row.driver}</span> <br><small style="color:var(--text-muted);">(${row.car} - ID ${row.id})</small></td>
           <td>${lapsDisplay}</td>
@@ -422,6 +564,50 @@ async function updateData() {
   } finally {
     isUpdatingData = false;
   }
+
+  // Wenn updateData nur durch ein schnelles Live-Event (WebSocket) getriggert wurde,
+  // sparen wir uns die zusätzlichen 3 HTTP-Requests, um den ESP8266-Heap bei vielen Clients zu schonen!
+  if (!fullSync) return;
+
+  try {
+    let r = await fetch('/api/timeleft');
+    if (r.ok) {
+      let info = await r.json();
+
+      currentMode = info.mode;
+      serverMillisOffset = info.serverMillis || 0;
+      updateTrackRecordBar(info);
+
+      let modeText = "Freies Training";
+      if (currentMode === 1) modeText = qualiFinishedHold ? "Qualifying (Beendet)" : "Qualifying";
+      if (currentMode === 2) modeText = "Rennen (Runden)";
+      if (currentMode === 3) modeText = "Rennen (Zeit)";
+      if (currentMode === 4) modeText = "Dragrace";
+      let modeElem = document.getElementById('modeDisplay');
+      if (modeElem) modeElem.innerText = modeText;
+
+      let serverSecondsLeft = info.secondsLeft;
+      if (qualiFinishedHold) {
+        updateTimerDisplayString(0);
+      } else if (serverSecondsLeft >= 0) {
+        if (localSecondsLeft === -1 || Math.abs(localSecondsLeft - serverSecondsLeft) > 1) {
+          localSecondsLeft = serverSecondsLeft;
+          updateTimerDisplayString(localSecondsLeft);
+        }
+        if (serverSecondsLeft === 0 && (currentMode === 1 || currentMode === 3)) {
+          if (!timeExpiredAnnounced) {
+            timeExpiredAnnounced = true;
+            updateTimerDisplayString(0);
+            speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
+          }
+          if (info.allFinished) finishSessionNow();
+        }
+      } else {
+        localSecondsLeft = -1;
+        updateTimerDisplayString(-1);
+      }
+    }
+  } catch (err) {}
 
   try {
     let resStations = await fetch('/api/stations');
@@ -443,59 +629,26 @@ async function updateData() {
     }
   } catch (err) {}
 
-  try {
-    let r = await fetch('/api/timeleft');
-    let info = await r.json();
-
-    currentMode = info.mode;
-    serverMillisOffset = info.serverMillis || 0;
-    updateTrackRecordBar(info);
-
-    let modeText = "Freies Training";
-    if (currentMode === 1) modeText = qualiFinishedHold ? "Qualifying (Beendet)" : "Qualifying";
-    if (currentMode === 2) modeText = "Rennen (Runden)";
-    if (currentMode === 3) modeText = "Rennen (Zeit)";
-    if (currentMode === 4) modeText = "Dragrace";
-    let modeElem = document.getElementById('modeDisplay');
-    if (modeElem) modeElem.innerText = modeText;
-
-    let serverSecondsLeft = info.secondsLeft;
-    if (qualiFinishedHold) {
-      updateTimerDisplayString(0);
-    } else if (serverSecondsLeft >= 0) {
-      if (localSecondsLeft === -1 || Math.abs(localSecondsLeft - serverSecondsLeft) > 1) {
-        localSecondsLeft = serverSecondsLeft;
-        updateTimerDisplayString(localSecondsLeft);
+  // Live-Sensor-IDs nur abfragen, wenn man als Rennleiter (Admin) angemeldet ist!
+  if (userRole === 'admin') {
+    try {
+      let r = await fetch('/api/recent');
+      if (r.ok) {
+        let ids = await r.json();
+        let html = '';
+        ids.forEach(id => {
+          if (id > 0) {
+            let title = carNamesMap[id] ? (carNamesMap[id].driver + " (" + carNamesMap[id].car + ")") : ("Auto " + id);
+            html += `<div class="recent-item active" title="${title}">ID ${id}</div>`;
+          } else {
+            html += `<div class="recent-item">-</div>`;
+          }
+        });
+        let recentCont = document.getElementById('recentIdsContainer');
+        if (recentCont) recentCont.innerHTML = html;
       }
-      if (serverSecondsLeft === 0 && (currentMode === 1 || currentMode === 3)) {
-        if (!timeExpiredAnnounced) {
-          timeExpiredAnnounced = true;
-          updateTimerDisplayString(0);
-          speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
-        }
-        if (info.allFinished) finishSessionNow();
-      }
-    } else {
-      localSecondsLeft = -1;
-      updateTimerDisplayString(-1);
-    }
-  } catch (err) {}
-
-  try {
-    let r = await fetch('/api/recent');
-    let ids = await r.json();
-    let html = '';
-    ids.forEach(id => {
-      if (id > 0) {
-        let title = carNamesMap[id] ? (carNamesMap[id].driver + " (" + carNamesMap[id].car + ")") : ("Auto " + id);
-        html += `<div class="recent-item active" title="${title}">ID ${id}</div>`;
-      } else {
-        html += `<div class="recent-item">-</div>`;
-      }
-    });
-    let recentCont = document.getElementById('recentIdsContainer');
-    if (recentCont) recentCont.innerHTML = html;
-  } catch (err) {}
+    } catch (err) {}
+  }
 }
 
 function finishSessionNow() {
@@ -523,7 +676,6 @@ function finishSessionNow() {
       let poleTimeDisp = (pole.bestLap / 1000).toFixed(2) + 's';
       let poleTimeSpeech = (pole.bestLap / 1000).toFixed(2).replace('.', ',');
 
-      // Pole-Banner auf der Hauptseite einblenden
       let banner = document.getElementById('poleBanner');
       let bannerTxt = document.getElementById('poleBannerText');
       if (banner && bannerTxt) {
@@ -531,7 +683,6 @@ function finishSessionNow() {
         banner.style.display = 'block';
       }
 
-      // Phonetisch optimierte Sprachausgabe ("Pohl Posischen") + alle weiteren Plätze
       let speechText = `Qualifying beendet! Herzlichen Glückwunsch ${poleDriver} auf ${poleCar} zur Pohl Posischen mit ${poleTimeSpeech} Sekunden!`;
 
       let p2 = activeCars[1];
@@ -557,7 +708,7 @@ function finishSessionNow() {
       speak("Das Qualifying ist beendet!", true);
     }
 
-    if (typeof window.autoSaveSessionResult === 'function') {
+    if (userRole === 'admin' && typeof window.autoSaveSessionResult === 'function') {
       window.autoSaveSessionResult(1, "Qualifying");
     }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
@@ -576,7 +727,7 @@ async function pollData() {
   if (isPolling) return;
   if (document.hidden) {
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 3000);
+    pollTimeout = setTimeout(pollData, 6000);
     return;
   }
   isPolling = true;
@@ -586,21 +737,28 @@ async function pollData() {
     let mStatsDriver = document.getElementById('statsModal');
     let mOtaAlert = document.getElementById('otaAlertModal');
     let mReset = document.getElementById('resetConfirmModal');
+    let mRole = document.getElementById('roleSelectModal');
     
     let isModalOpen = (mConfig && mConfig.style.display === 'block') ||
                       (mStatsOverview && mStatsOverview.style.display === 'block') ||
                       (mStatsDriver && mStatsDriver.style.display === 'block') ||
                       (mOtaAlert && mOtaAlert.style.display === 'block') ||
-                      (mReset && mReset.style.display === 'block');
+                      (mReset && mReset.style.display === 'block') ||
+                      (mRole && mRole.style.display === 'block');
                       
     if (!isModalOpen) {
-      await updateData();
+      await updateData(true);
     }
   } catch (e) {
   } finally {
     isPolling = false;
     clearTimeout(pollTimeout);
-    pollTimeout = setTimeout(pollData, 4000 + Math.floor(Math.random() * 1000));
+    // SMART-POLLING: Wenn der WebSocket offen ist, kommen Runden & Sektoren ohnehin in Echtzeit!
+    // Fahrer-Clients fragen daher nur alle 12-16s im Hintergrund ab, Admin alle 6-8s.
+    let wsConnected = (socket && socket.readyState === WebSocket.OPEN);
+    let baseInterval = wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 4000;
+    let jitter = Math.floor(Math.random() * 3500); // Verhindert gleichzeitige Requests mehrerer Handys!
+    pollTimeout = setTimeout(pollData, baseInterval + jitter);
   }
 }
 
@@ -616,7 +774,7 @@ function handleBaseCrossEvent(msg) {
 
   awaitingBaseCrossMap[carId] = false;
   statusCarsMap[carId] = null;
-  updateData();
+  updateData(false);
 }
 
 function handleSectorTrackEntryTTS(carId) {
@@ -691,9 +849,13 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       if (currentLeaderId !== null && currentLeaderId !== carId) {
         let leaderCar = lastLapsData.find(c => c.id === currentLeaderId);
         if (leaderCar && currentLaps > leaderCar.completedLaps) {
+          let oldLeaderId = currentLeaderId;
           currentLeaderId = carId;
-          leadChangeOccurred = true;
-          speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", true);
+          // Führungswechsel ansagen, wenn alle Autos aktiv sind ODER der eigene Fahrer Führung gewinnt/verliert!
+          if (isCarAllowedForTTS(carId) || isCarAllowedForTTS(oldLeaderId)) {
+            leadChangeOccurred = true;
+            speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", false);
+          }
         }
       }
     }
@@ -741,11 +903,32 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
 
 window.addEventListener('DOMContentLoaded', () => {
   window.sessionStartTs = Math.floor(Date.now() / 1000);
+
+  // Prüfen, ob eine Rolle per URL (?role=driver / ?role=admin) übergeben oder gespeichert wurde
+  let params = new URLSearchParams(window.location.search);
+  if (params.get('role') === 'driver' || params.get('driver') === '1') {
+    userRole = 'driver';
+    localStorage.setItem('rctl_user_role', 'driver');
+  } else if (params.get('role') === 'admin' || params.get('admin') === '1') {
+    userRole = 'admin';
+    localStorage.setItem('rctl_user_role', 'admin');
+  }
+
+  if (!userRole) {
+    applyUserRoleUI('driver'); // Sicherer Standard im Hintergrund, bis der Nutzer im Modal klickt
+    openRoleModal();
+  } else {
+    applyUserRoleUI(userRole);
+  }
+
   loadVersion();
   syncTimeWithServerOnce();
   initWebSocket();
   loadSectorConfigInitial();
-  loadCarNames().then(() => updateTTSFilterDisplay());
+  loadCarNames().then(() => {
+    updateTTSFilterDisplay();
+    populateDriverQuickSelect();
+  });
   loadWifiStatus();
   startLocalTimerTicker();
   pollData();
@@ -756,6 +939,9 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('statsModal')) closeStatsModal();
   if (event.target === document.getElementById('statsOverviewModal')) closeStatsOverviewModal();
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
+  if (event.target === document.getElementById('roleSelectModal') && userRole) {
+    document.getElementById('roleSelectModal').style.display = 'none';
+  }
   if (event.target === document.getElementById('otaAlertModal')) {
     if (typeof closeOtaAlert === 'function') closeOtaAlert();
   }
@@ -767,8 +953,14 @@ document.addEventListener('keydown', function(e) {
     closeStatsModal();
     closeStatsOverviewModal();
     closeResetModal();
+    if (userRole && document.getElementById('roleSelectModal')) {
+      document.getElementById('roleSelectModal').style.display = 'none';
+    }
     if (typeof closeOtaAlert === 'function') closeOtaAlert();
   }
 });
 
-document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });
+document.addEventListener('click', function() {
+  if (!audioUnmuted) unmuteIOSAudio();
+  if (!wakeLockSentinel) requestScreenWakeLock();
+}, { once: true });

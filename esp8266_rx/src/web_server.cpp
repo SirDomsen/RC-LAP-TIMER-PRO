@@ -33,6 +33,69 @@ static uint8_t targetWifiMode = 0;
 
 static String cacheHeaderStr; 
 
+// --- DYNAMISCHE HEAP-SCHUTZMAUER ---
+const size_t HEAP_CRITICAL_MIN_BYTES = 13500;
+const uint8_t HEAP_CRITICAL_MAX_FRAG = 58;
+
+static const char BUSY_HTML_PROGMEM[] PROGMEM = 
+  "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+  "<meta http-equiv='refresh' content='2'>"
+  "<title>RC Lap Timer - Warteschlange</title>"
+  "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
+  ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
+  "</style></head><body><div class='box'><h3>⏳ Verbindungs-Warteschlange</h3>"
+  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in 2 Sekunden...</p></div></body></html>";
+
+bool isHeapCriticalForFileTransfer() {
+  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG);
+}
+
+static const char* getContentType(const String& path) {
+  if (path.endsWith(".html")) return "text/html";
+  if (path.endsWith(".css"))  return "text/css";
+  if (path.endsWith(".js"))   return "application/javascript";
+  if (path.endsWith(".json")) return "application/json";
+  if (path.endsWith(".svg"))  return "image/svg+xml";
+  if (path.endsWith(".ico"))  return "image/x-icon";
+  return "text/plain";
+}
+
+// Zentraler, RAM-geschützter Datei-Streamer mit Auto-Gzip und Connection: close
+static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
+  if (path == "/" || path.length() == 0) path = "/index.html";
+
+  if (isHeapCriticalForFileTransfer()) {
+    if (path.endsWith(".html")) {
+      AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
+      res->addHeader("Retry-After", "2");
+      res->addHeader("Connection", "close");
+      request->send(res);
+    } else {
+      AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
+      res->addHeader("Retry-After", "2");
+      res->addHeader("Connection", "close");
+      request->send(res);
+    }
+    return true;
+  }
+
+  String gzPath = path + ".gz";
+  bool hasGz = LittleFS.exists(gzPath);
+  bool hasRaw = !hasGz && LittleFS.exists(path);
+
+  if (!hasGz && !hasRaw) return false;
+
+  const char* mime = getContentType(path);
+  AsyncWebServerResponse *response = request->beginResponse(LittleFS, hasGz ? gzPath : path, mime);
+  if (hasGz) {
+    response->addHeader("Content-Encoding", "gzip");
+  }
+  response->addHeader("Cache-Control", cacheHeaderStr.c_str());
+  response->addHeader("Connection", "close"); // Zwingt Browser, TCP-Puffer nach Download sofort freizugeben!
+  request->send(response);
+  return true;
+}
+
 void scheduleESPReset(uint16_t delayMs) {
   pendingReset = true;
   resetTimer = millis() + delayMs;
@@ -69,7 +132,7 @@ static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP_STA);
-  WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
+  WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   String ipStr = currentActiveIP.toString();
@@ -81,7 +144,7 @@ static void setupGhostWLAN() {
   }
   
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
-  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
+  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 8);
   digitalWrite(LED_READY, HIGH); 
 }
 
@@ -90,7 +153,7 @@ static void setupFallbackAP() {
   delay(50);
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
   WiFi.mode(WIFI_AP);
-  WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
+  WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   IPAddress local_IP(192, 168, 0, 8);
@@ -101,6 +164,7 @@ static void setupFallbackAP() {
   const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
+  // 8 = Hardware-Maximum des ESP8266 SoftAP Stacks
   WiFi.softAP(apName, apKey, 1, 0, 8);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
@@ -108,7 +172,6 @@ static void setupFallbackAP() {
 }
 
 static void connectNetworkCascade(uint8_t startMode) {
-  // 1. HEIM-WLAN VERSUCHEN (Jetzt mit reinem DHCP)
   if (startMode == 1) {
     String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
     String p = homePass.length() > 0 ? homePass : HOME_PASS;
@@ -118,10 +181,8 @@ static void connectNetworkCascade(uint8_t startMode) {
     delay(50);
     WiFi.setPhyMode(WIFI_PHY_MODE_11G);
     WiFi.mode(WIFI_STA);
-    WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
+    WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    
-    // DHCP erzwingen
     WiFi.config(0u, 0u, 0u);
     
     WiFi.begin(s.c_str(), p.c_str());
@@ -141,14 +202,13 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
   }
 
-  // 2. HOTSPOT VERSUCHEN 
   if (startMode == 2 && hotspotSSID.length() > 0) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
     WiFi.setPhyMode(WIFI_PHY_MODE_11G);
     WiFi.mode(WIFI_STA);
-    WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
+    WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u); 
     
@@ -167,7 +227,6 @@ static void connectNetworkCascade(uint8_t startMode) {
     }
   }
 
-  // 3. AP-MODUS 
   setupFallbackAP();
 }
 
@@ -176,18 +235,8 @@ void initNetworkAndServer() {
 
   cacheHeaderStr = webCacheEnabled ? "max-age=86400" : "no-cache";
 
-  server.serveStatic("/", LittleFS, "/")
-      .setDefaultFile("index.html")
-      .setCacheControl(cacheHeaderStr.c_str());
-
   auto serveUpdatePage = [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/update.html.gz")) {
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/update.html.gz", "text/html");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-    } else if (LittleFS.exists("/update.html")) {
-      request->send(LittleFS, "/update.html", "text/html");
-    } else {
+    if (!serveStaticWithHeapGuard(request, "/update.html")) {
       request->send(200, "text/html", "<h2>Update</h2><form method='POST' action='/api/upload' enctype='multipart/form-data'><input type='file' name='data'><input type='submit' value='Upload'></form>");
     }
   };
@@ -195,13 +244,7 @@ void initNetworkAndServer() {
   server.on("/update.html", HTTP_GET, serveUpdatePage);
 
   auto serveDebugPage = [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/debug.html.gz")) {
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/debug.html.gz", "text/html");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-    } else if (LittleFS.exists("/debug.html")) {
-      request->send(LittleFS, "/debug.html", "text/html");
-    } else {
+    if (!serveStaticWithHeapGuard(request, "/debug.html")) {
       request->send(404, "text/plain", "Debug-Seite nicht gefunden");
     }
   };
@@ -325,6 +368,7 @@ void initNetworkAndServer() {
   server.on("/api/cacheconfig", HTTP_GET, handleGetCacheConfig);
   server.on("/api/setcacheconfig", HTTP_POST, handlePostSetCacheConfig);
 
+  // Alle statischen Webdateien (.html, .js, .css) laufen jetzt durch die Heap-Schutzmauer!
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
 
@@ -333,24 +377,7 @@ void initNetworkAndServer() {
       return;
     }
 
-    if (LittleFS.exists(url)) {
-      request->send(LittleFS, url, "text/html");
-      return;
-    } 
-    if (LittleFS.exists(url + ".gz")) {
-      AsyncWebServerResponse *response = request->beginResponse(LittleFS, url + ".gz", "text/html");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-      return;
-    } 
-    if (url == "/" || url == "/index.html") {
-      if (LittleFS.exists("/index.html.gz")) {
-        AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html.gz", "text/html");
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-      } else {
-        request->send(LittleFS, "/index.html", "text/html");
-      }
+    if (serveStaticWithHeapGuard(request, url)) {
       return;
     }
 
