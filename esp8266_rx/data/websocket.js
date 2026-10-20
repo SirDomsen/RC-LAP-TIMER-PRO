@@ -33,8 +33,11 @@ let lastDragStartTs = {};
 function handleLiveEvent(msg) {
   if (msg.type === 'sector') {
     onSectorLiveEvent(msg);
+  } else if (msg.type === 'outlap') {
+    onOutlapLiveEvent(msg);
   } else if (msg.type === 'track_seen') {
     handleSectorTrackEntryTTS(msg.carId);
+    updateData();
   } else if (msg.type === 'base_cross') {
     handleBaseCrossEvent(msg);
   } else if (msg.type === 'lap') {
@@ -48,18 +51,29 @@ function handleLiveEvent(msg) {
       finishSessionNow();
     }
   } else if (msg.type === 'request_session_save') {
-    // ---> NEU: Auto-Save Trigger der Basis <---
     if (typeof window.autoSaveSessionResult === 'function') {
-      window.autoSaveSessionResult(currentMode, "Freies Training");
+      window.autoSaveSessionResult(currentMode, currentMode === 4 ? "Dragrace" : "Freies Training");
     }  
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
       lastResetTimestamp = now;
       if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
-      resetLapsDataSilent();
+      if (typeof sectorFlashUntilMap !== 'undefined') sectorFlashUntilMap = {};
+      updateData();
     }
   }
+}
+
+function onOutlapLiveEvent(msg) {
+  let carId = msg.carId;
+  if (typeof handleSectorTrackEntryTTS === 'function') {
+    handleSectorTrackEntryTTS(carId);
+  }
+  if (typeof statusCarsMap !== 'undefined') {
+    statusCarsMap[carId] = 'outlap';
+  }
+  updateData();
 }
 
 function onDragStartEvent(msg) {
@@ -88,33 +102,57 @@ function onDragFinishEvent(msg) {
     }
     speak(text);
   }
-  updateData();
+  updateData().then(() => {
+    if (typeof window.autoSaveSessionResult === 'function') {
+      window.autoSaveSessionResult(4, "Dragrace");
+    }
+  });
 }
 
 function onSectorLiveEvent(msg) {
   let carId = msg.carId;
 
-  // Boxenausfahrt oder Ende der Pause bei Sektordurchfahrt ansagen & Status aufheben
   if (typeof statusCarsMap !== 'undefined' && (statusCarsMap[carId] === 'pause' || statusCarsMap[carId] === 'box')) {
     if (typeof handleSectorTrackEntryTTS === 'function') {
       handleSectorTrackEntryTTS(carId);
     }
-  } else if (typeof statusCarsMap !== 'undefined' && statusCarsMap[carId]) {
-    statusCarsMap[carId] = null;
+    statusCarsMap[carId] = 'outlap';
+  }
+
+  let colorType = 'yellow';
+  if (msg.isOverallBest) {
+    colorType = 'purple';
+  } else if (msg.isPB) {
+    colorType = 'green';
+  }
+
+  // 4-Sekunden-Blinkeffekt im State vermerken, damit updateData() ihn erhält
+  if (typeof sectorFlashUntilMap !== 'undefined') {
+    let key = `${carId}_${msg.sector}`;
+    sectorFlashUntilMap[key] = {
+      until: Date.now() + 4000,
+      color: colorType
+    };
   }
 
   let cell = document.getElementById(`sz-cell-${carId}-${msg.sector}`);
   if (cell) {
-    cell.innerText = (msg.time / 1000).toFixed(2) + 's';
-    cell.className = '';
-    
-    if (msg.isOverallBest) {
-      cell.className = 'sector-best-purple';
-    } else if (msg.isPB) {
-      cell.className = 'sector-best-green';
+    if (currentMode === 4) {
+      let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
+      let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
+      cell.innerHTML = `<div class="drag-cell"><span class="drag-split">Spl: ${splitDisp}</span><span class="drag-sector">${valDisp}</span></div>`;
     } else {
-      cell.className = 'sector-yellow';
+      cell.innerText = (msg.time / 1000).toFixed(2) + 's';
     }
+
+    let textClass = (colorType === 'purple') ? 'sector-best-purple' : ((colorType === 'green') ? 'sector-best-green' : 'sector-yellow');
+    let flashClass = `sector-flash-${colorType}`;
+
+    cell.className = '';
+    void cell.offsetWidth; // Reflow für sauberen Animations-Neustart
+    cell.className = `${textClass} ${flashClass}`;
+  } else {
+    updateData();
   }
 
   if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {

@@ -72,7 +72,7 @@ window.autoSaveSessionResult = function(mode, modeName) {
   let startSec = window.sessionStartTs ? window.sessionStartTs : (nowSec - 300);
 
   let sessionData = {
-    ts: nowSec,
+    ts: startSec, // Eindeutiger Ankerpunkt der Session für saubere Updates während eines Durchgangs
     startTs: startSec,
     endTs: nowSec,
     mode: mode,
@@ -284,9 +284,9 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
     let orphanLaps = allFlashLaps.filter(l => {
       let lapSec = l.ts < 10000000000 ? l.ts : Math.floor(l.ts / 1000);
       for (let s of savedSessions) {
-        let sStart = s.startTs ? (s.startTs < 10000000000 ? s.startTs : Math.floor(s.startTs / 1000)) : (s.ts - 3600);
+        let sStart = s.startTs ? (s.startTs < 10000000000 ? s.startTs : Math.floor(s.startTs / 1000)) : (s.ts - 1800);
         let sEnd = s.endTs ? (s.endTs < 10000000000 ? s.endTs : Math.floor(s.endTs / 1000)) : s.ts;
-        if (lapSec >= (sStart - 5) && lapSec <= (sEnd + 5)) {
+        if (lapSec >= (sStart - 10) && lapSec <= (sEnd + 15)) {
           return false;
         }
       }
@@ -299,7 +299,7 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
     }
 
     let allSessions = [...savedSessions, ...orphanSessions];
-    allSessions.sort((a, b) => a.ts - b.ts);
+    allSessions.sort((a, b) => (a.endTs || a.ts) - (b.endTs || b.ts));
 
     if (allSessions.length === 0) {
       container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:25px;">Keine gespeicherten Durchgänge vorhanden.</p>';
@@ -317,7 +317,7 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
       else if (s.mode === 2 || s.mode === 3) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
       else if (s.mode === 4) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
 
-      let dateStr = formatTimestamp(s.ts);
+      let dateStr = formatTimestamp(s.endTs || s.ts);
 
       let sessionOverallBest = 0;
       (s.results || []).forEach(r => {
@@ -326,7 +326,7 @@ async function loadSessionsOverviewByMode(modeFilter, containerId) {
         }
       });
 
-      let startTs = s.startTs || s.ts;
+      let startTs = s.startTs || (s.ts - 1800);
       let endTs = s.endTs || s.ts;
 
       html += `<div class="${badgeClass}">
@@ -395,19 +395,28 @@ function clusterLapsIntoSessions(lapsArray, modeFilter) {
   let sessions = [];
   let currentCluster = [];
   let clusterTimeoutMs = 10 * 60 * 1000;
+  let lastLapByCar = {};
 
   lapsArray.forEach(l => {
     let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
     if (currentCluster.length === 0) {
       currentCluster.push(l);
+      lastLapByCar[l.carId] = l.lap;
     } else {
       let prevLap = currentCluster[currentCluster.length - 1];
       let prevTsMs = prevLap.ts < 10000000000 ? prevLap.ts * 1000 : prevLap.ts;
-      if (lapTsMs - prevTsMs > clusterTimeoutMs) {
+      
+      // Ein neues Rennevent liegt vor, wenn >10 Min Pause war ODER die Rundenzahl eines Autos wieder bei 1 beginnt
+      let lapResetDetected = (lastLapByCar[l.carId] !== undefined && l.lap <= lastLapByCar[l.carId] && l.lap === 1);
+
+      if ((lapTsMs - prevTsMs > clusterTimeoutMs) || lapResetDetected) {
         sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
         currentCluster = [l];
+        lastLapByCar = {};
+        lastLapByCar[l.carId] = l.lap;
       } else {
         currentCluster.push(l);
+        lastLapByCar[l.carId] = l.lap;
       }
     }
   });
@@ -518,7 +527,7 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
 
     let candidatesBeforeEnd = modeLaps.filter(l => {
       let lapMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
-      return endMs > 0 ? (lapMs <= endMs + 5000) : true;
+      return endMs > 0 ? (lapMs <= endMs + 15000) : true;
     });
 
     let runLaps = [];
@@ -527,13 +536,21 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
         let l = candidatesBeforeEnd[i];
         let lapMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
 
-        if (startMs > 0 && lapMs < (startMs - 5000)) {
+        // Zeitfenster-Prüfung (mit großzügiger Toleranz)
+        if (startMs > 0 && lapMs < (startMs - 15000) && runLaps.length >= (targetLapsCount || 1)) {
+          break;
+        }
+
+        // Wenn wir bereits Runden gesammelt haben und die vorherige Runde im Array eine HÖHERE
+        // Rundennummer hat als das gerade betrachtete Element, gehören ältere Einträge zu einer früheren Session!
+        if (runLaps.length > 0 && l.lap >= runLaps[0].lap && !isDrag) {
           break;
         }
 
         runLaps.unshift(l);
 
-        if (l.lap === 1) {
+        // Wenn wir die exakte Anzahl der Läufe/Runden dieser Session erreicht haben und bei Lauf 1 sind, fertig!
+        if (targetLapsCount > 0 && runLaps.length >= targetLapsCount) {
           break;
         }
       }
@@ -555,20 +572,25 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
   let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0, minTime = 0;
   let maxSz1 = 0, maxSz2 = 0, maxSz3 = 0, maxSz4 = 0, maxTime = 0;
 
+  let anySz2 = false, anySz3 = false, anySz4 = false;
+
   laps.forEach(l => {
     if (l.sz1 > 0) {
       if (minSz1 === 0 || l.sz1 < minSz1) minSz1 = l.sz1;
       if (maxSz1 === 0 || l.sz1 > maxSz1) maxSz1 = l.sz1;
     }
     if (l.sz2 > 0) {
+      anySz2 = true;
       if (minSz2 === 0 || l.sz2 < minSz2) minSz2 = l.sz2;
       if (maxSz2 === 0 || l.sz2 > maxSz2) maxSz2 = l.sz2;
     }
     if (l.sz3 > 0) {
+      anySz3 = true;
       if (minSz3 === 0 || l.sz3 < minSz3) minSz3 = l.sz3;
       if (maxSz3 === 0 || l.sz3 > maxSz3) maxSz3 = l.sz3;
     }
     if (!isDrag && l.sz4 > 0) {
+      anySz4 = true;
       if (minSz4 === 0 || l.sz4 < minSz4) minSz4 = l.sz4;
       if (maxSz4 === 0 || l.sz4 > maxSz4) maxSz4 = l.sz4;
     }
@@ -577,6 +599,10 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
       if (maxTime === 0 || l.time > maxTime) maxTime = l.time;
     }
   });
+
+  let showSz2Col = anySz2 || activeUseSz2 || activeUseSz1;
+  let showSz3Col = anySz3 || activeUseSz3 || activeUseSz2;
+  let showSz4Col = !isDrag && (anySz4 || activeUseSz3);
 
   let allowWorst = (laps.length > 1);
   let effectiveSessionBest = (sessionOverallBest > 0) ? sessionOverallBest : minTime;
@@ -589,9 +615,9 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
       <tr>
         <th>${roundLabel}</th>
         <th>SZ1</th>
-        <th>SZ2</th>
-        <th>SZ3</th>
-        ${isDrag ? '' : '<th>SZ4</th>'}
+        ${showSz2Col ? '<th>SZ2</th>' : ''}
+        ${showSz3Col ? '<th>SZ3</th>' : ''}
+        ${showSz4Col ? '<th>SZ4</th>' : ''}
         <th>${timeLabel}</th>
         <th>Platz</th>
         <th>Uhrzeit</th>
@@ -599,7 +625,9 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
     </thead>
     <tbody>`;
 
-  laps.slice().reverse().forEach(l => {
+  laps.slice().reverse().forEach((l, revIdx) => {
+    let displayNum = isDrag ? (laps.length - revIdx) : l.lap;
+
     let getSectorStyle = (val, bestVal, worstVal) => {
       if (!val || val === 0) return 'color: var(--text-muted);';
       if (val === bestVal) return 'color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 6px rgba(181, 50, 255, 0.6);';
@@ -624,7 +652,7 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
     let styleSz1 = getSectorStyle(l.sz1, minSz1, maxSz1);
     let styleSz2 = getSectorStyle(l.sz2, minSz2, maxSz2);
     let styleSz3 = getSectorStyle(l.sz3, minSz3, maxSz3);
-    let styleSz4 = isDrag ? '' : getSectorStyle(l.sz4, minSz4, maxSz4);
+    let styleSz4 = showSz4Col ? getSectorStyle(l.sz4, minSz4, maxSz4) : '';
     let styleTime = getTimeStyle(l.time, minTime, maxTime);
 
     let formatCell = (szVal, splitVal, style) => {
@@ -636,21 +664,21 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
       return `<span style="${style}">${valDisp}</span>`;
     };
 
-    let split1 = l.sz1;
-    let split2 = (l.sz1 > 0 && l.sz2 > 0) ? (l.sz1 + l.sz2) : 0;
-    let split3 = l.time;
+    let split1 = l.sz1 || 0;
+    let split2 = (l.sz2 > 0) ? (split1 + l.sz2) : 0;
+    let split3 = (l.sz3 > 0) ? (isDrag ? l.time : (split2 + l.sz3)) : 0;
 
     let sz1Content = formatCell(l.sz1, split1, styleSz1);
     let sz2Content = formatCell(l.sz2, split2, styleSz2);
     let sz3Content = formatCell(l.sz3, split3, styleSz3);
-    let sz4Content = isDrag ? '' : formatCell(l.sz4, 0, styleSz4);
+    let sz4Content = showSz4Col ? formatCell(l.sz4, 0, styleSz4) : '';
 
     html += `<tr>
-      <td>${roundLabel} ${l.lap}</td>
+      <td>${roundLabel} ${displayNum}</td>
       <td>${sz1Content}</td>
-      <td>${sz2Content}</td>
-      <td>${sz3Content}</td>
-      ${isDrag ? '' : `<td>${sz4Content}</td>`}
+      ${showSz2Col ? `<td>${sz2Content}</td>` : ''}
+      ${showSz3Col ? `<td>${sz3Content}</td>` : ''}
+      ${showSz4Col ? `<td>${sz4Content}</td>` : ''}
       <td style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
       <td style="color:var(--neon-orange); font-weight:bold;">${l.pos ? 'P' + l.pos : '---'}</td>
       <td style="color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
@@ -722,7 +750,7 @@ function formatTimestamp(ts) {
 
 function loadDriverStats(carId) {
   let tbody = document.getElementById('statsTableBody');
-  tbody.innerHTML = '<tr><td colspan="5">Lade Daten...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6">Lade Daten...</td></tr>';
 
   fetch('/api/stats?id=' + carId)
     .then(r => r.json())
@@ -731,14 +759,14 @@ function loadDriverStats(carId) {
       renderDriverStatsTable();
     }).catch(err => {
       console.error(err);
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--neon-red);">Fehler beim Laden.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--neon-red);">Fehler beim Laden.</td></tr>';
     });
 }
 
 function renderDriverStatsTable() {
   let tbody = document.getElementById('statsTableBody');
   if (!rawDriverLapsData || rawDriverLapsData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5">Keine gespeicherten Runden vorhanden.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6">Keine gespeicherten Runden vorhanden.</td></tr>';
     return;
   }
 
@@ -764,6 +792,8 @@ function renderDriverStatsTable() {
       if (valA > valB) return statsSortDir === 'asc' ? 1 : -1;
       return 0;
     });
+  } else {
+    sorted.reverse();
   }
 
   let html = '';
@@ -783,9 +813,17 @@ function renderDriverStatsTable() {
       timeColor = 'var(--neon-red)';
     }
 
+    let secParts = [];
+    if (l.sz1 > 0) secParts.push(`S1: ${(l.sz1 / 1000).toFixed(2)}s`);
+    if (l.sz2 > 0) secParts.push(`S2: ${(l.sz2 / 1000).toFixed(2)}s`);
+    if (l.sz3 > 0) secParts.push(`S3: ${(l.sz3 / 1000).toFixed(2)}s`);
+    if (l.sz4 > 0 && l.mode !== 4) secParts.push(`S4: ${(l.sz4 / 1000).toFixed(2)}s`);
+    let sectorsStr = secParts.length > 0 ? secParts.join(' | ') : '---';
+
     html += `<tr>
       <td>${l.mode === 4 ? 'Lauf' : 'Runde'} ${l.lap}</td>
       <td style="color:${timeColor}; font-weight:bold;">${timeSec}</td>
+      <td style="color:var(--neon-cyan); font-size:12px;">${sectorsStr}</td>
       <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
       <td>${modeStr}</td>
       <td>
@@ -844,7 +882,6 @@ function confirmDeleteAllStats() {
   }
 }
 
-// PERFORMANCE FIX: Blockiert den Download-Button visuell, während die 15 Dateien abgerufen werden
 async function downloadStatsBackup() {
   let btn = document.querySelector('button[onclick="downloadStatsBackup()"]');
   let originalText = btn ? btn.innerText : "💾 Backup herunterladen";

@@ -29,7 +29,6 @@ function openConfigModal() {
     if (apS) apS.value = data.apSSID || '';
     if (apP) apP.value = data.apPass || '';
 
-    // WLAN-Badge mit Fallback-Erkennung aktualisieren
     let badge = document.getElementById('activeWifiBadge');
     if (badge) {
       let configured = data.mode;
@@ -101,6 +100,10 @@ function openConfigModal() {
     if (sz3) sz3.checked = data.useSz3;
     if (cp) cp.checked = data.checkpointMode;
     if (dr) dr.checked = data.dragraceMode;
+
+    if (typeof activeUseSz1 !== 'undefined') activeUseSz1 = data.useSz1;
+    if (typeof activeUseSz2 !== 'undefined') activeUseSz2 = data.useSz2;
+    if (typeof activeUseSz3 !== 'undefined') activeUseSz3 = data.useSz3;
 
     if (data.sectorAudio !== undefined) {
       sectorAudioEnabled = data.sectorAudio;
@@ -198,11 +201,18 @@ async function saveConfig() {
       }
     }
 
-    let sz1 = document.getElementById('cfg_use_sz1')?.checked ? "1" : "0";
-    let sz2 = document.getElementById('cfg_use_sz2')?.checked ? "1" : "0";
-    let sz3 = document.getElementById('cfg_use_sz3')?.checked ? "1" : "0";
+    let bSz1 = document.getElementById('cfg_use_sz1')?.checked ?? true;
+    let bSz2 = document.getElementById('cfg_use_sz2')?.checked ?? true;
+    let bSz3 = document.getElementById('cfg_use_sz3')?.checked ?? true;
+    let sz1 = bSz1 ? "1" : "0";
+    let sz2 = bSz2 ? "1" : "0";
+    let sz3 = bSz3 ? "1" : "0";
     let cp = document.getElementById('cfg_checkpoint_mode')?.checked ? "1" : "0";
     let dr = document.getElementById('cfg_dragrace_mode')?.checked ? "1" : "0";
+
+    if (typeof activeUseSz1 !== 'undefined') activeUseSz1 = bSz1;
+    if (typeof activeUseSz2 !== 'undefined') activeUseSz2 = bSz2;
+    if (typeof activeUseSz3 !== 'undefined') activeUseSz3 = bSz3;
 
     let audioCb = document.getElementById('cfg_sector_audio');
     if (audioCb) {
@@ -233,6 +243,7 @@ async function saveConfig() {
     console.error("Fehler beim Speichern der Konfiguration:", err); 
   } finally {
     closeConfigModal();
+    if (typeof applySectorColumnVisibility === 'function') applySectorColumnVisibility();
     updateData();
     if (typeof loadWifiStatus === 'function') loadWifiStatus();
   }
