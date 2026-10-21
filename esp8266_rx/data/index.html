@@ -161,7 +161,7 @@
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
         <button class="btn btn-purple" onclick="activateOledDimmer()" title="Dunkelt das Display ab auf echtes Schwarz zur Akkusparung">🌙 OLED-Dimmer</button>
-        <button class="btn btn-warning" id="hardReloadBtn" onclick="forceCleanReload()" title="Löscht den lokalen Browser-Cache für alle Skripte und lädt alles frisch vom ESP">🔄 Hard Reload</button>
+
         <button class="btn btn-light admin-only" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
         <button class="btn btn-purple admin-only" onclick="location.href='/debug'">📡 Debug</button>
       </div>
@@ -415,6 +415,9 @@
           <label style="cursor:pointer; display: block;">
             <input type="checkbox" id="cfg_web_cache" style="transform: scale(1.3); margin-right: 8px;">
             <strong>Browser-Caching für Webdateien aktivieren</strong> <span style="font-size: 11px; color: var(--text-muted);">(Deaktivieren für UI-Tests, benötigt ESP Neustart)</span>
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn btn-warning" id="hardReloadBtn" onclick="event.preventDefault(); event.stopPropagation(); forceCleanReload();" title="Löscht den lokalen Browser-Cache für alle Skripte und lädt alles frisch vom ESP" style="font-size: 11px; padding: 6px 12px; cursor: pointer;">🔄 Hard Reload</button>
+          </div>
           </label>
         </div>
 

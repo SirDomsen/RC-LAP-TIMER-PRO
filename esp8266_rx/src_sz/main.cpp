@@ -208,6 +208,7 @@ void connectOtaNetwork() {
 
   // Stufe 1: Zuerst dynamisch per DHCP probieren (Standard)
   WiFi.config(0u, 0u, 0u);
+  WiFi.hostname(String("SZ-") + String(STATION_ID));
   WiFi.begin(targetSsid.c_str(), targetPass.c_str());
 
   uint32_t startMs = millis();

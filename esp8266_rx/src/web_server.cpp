@@ -207,6 +207,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
+    WiFi.hostname("RCLaptimerPro");
     
     WiFi.begin(s.c_str(), p.c_str());
     uint32_t startMs = millis();
@@ -233,7 +234,8 @@ static void connectNetworkCascade(uint8_t startMode) {
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    WiFi.config(0u, 0u, 0u); 
+    WiFi.config(0u, 0u, 0u);
+    WiFi.hostname("RCLaptimerPro"); 
     
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
