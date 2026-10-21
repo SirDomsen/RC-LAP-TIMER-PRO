@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.5.0'; 
+window.UI_VERSION = '3.5.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -1067,4 +1067,11 @@ document.addEventListener('keydown', function(e) {
     closeStatsModal();
     closeStatsOverviewModal();
     closeResetModal();
-    if (userRole && document.getElementById('roleSelectModal'))
+    if (userRole && document.getElementById('roleSelectModal')) {
+      document.getElementById('roleSelectModal').style.display = 'none';
+    }
+    if (typeof closeOtaAlert === 'function') closeOtaAlert();
+  }
+});
+
+document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });

@@ -31,6 +31,10 @@ static bool pendingWifiSwitch = false;
 static uint32_t wifiSwitchTimer = 0;
 static uint8_t targetWifiMode = 0;
 
+// --- GHOST-WLAN AUTO-OFF LOGIK ---
+static bool ghostWlanActive = false;
+static uint32_t ghostWlanOffTimer = 0;
+
 static String cacheHeaderStr; 
 
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
@@ -60,9 +64,22 @@ static const char* getContentType(const String& path) {
   return "text/plain";
 }
 
+// Verkürzt die Restlaufzeit des Ghost-WLANs auf 15 Sekunden, sobald die Webseite geladen wurde
+static void triggerGhostWlanEarlyShutdown() {
+  if (ghostWlanActive && ghostWlanOffTimer == 0) {
+    // Startet den 15s-Countdown erst jetzt, da der erste Client die Seite geladen hat
+    ghostWlanOffTimer = millis() + 15000UL;
+  }
+}
+
 // Zentraler, RAM-geschützter Datei-Streamer mit Auto-Gzip und Connection: close
 static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
   if (path == "/" || path.length() == 0) path = "/index.html";
+
+  // Sobald jemand die Hauptseite anfordert, ist die IP bekannt -> Ghost-WLAN Abschalt-Countdown starten!
+  if (path == "/index.html") {
+    triggerGhostWlanEarlyShutdown();
+  }
 
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
@@ -91,7 +108,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
     response->addHeader("Content-Encoding", "gzip");
   }
   response->addHeader("Cache-Control", cacheHeaderStr.c_str());
-  response->addHeader("Connection", "close"); // Zwingt Browser, TCP-Puffer nach Download sofort freizugeben!
+  response->addHeader("Connection", "close");
   request->send(response);
   return true;
 }
@@ -108,7 +125,10 @@ void triggerWifiSwitch(uint8_t mode) {
 }
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-  if (type == WS_EVT_DATA) {
+  if (type == WS_EVT_CONNECT) {
+    // Sobald der erste Browser-WebSocket steht, Ghost-WLAN zeitnah abschalten
+    triggerGhostWlanEarlyShutdown();
+  } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
@@ -144,11 +164,18 @@ static void setupGhostWLAN() {
   }
   
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
-  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 8);
+  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
+
+  // Ghost-WLAN aktivieren, aber KEIN automatischer Timeout nach Zeit!
+  // Schaltet sich erst ab, wenn die Seite erfolgreich geöffnet wurde.
+  ghostWlanActive = true;
+  ghostWlanOffTimer = 0; 
+
   digitalWrite(LED_READY, HIGH); 
 }
 
 static void setupFallbackAP() {
+  ghostWlanActive = false;
   WiFi.disconnect(true);
   delay(50);
   WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
@@ -368,7 +395,6 @@ void initNetworkAndServer() {
   server.on("/api/cacheconfig", HTTP_GET, handleGetCacheConfig);
   server.on("/api/setcacheconfig", HTTP_POST, handlePostSetCacheConfig);
 
-  // Alle statischen Webdateien (.html, .js, .css) laufen jetzt durch die Heap-Schutzmauer!
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
 
@@ -396,6 +422,14 @@ void initNetworkAndServer() {
 void handleNetworkTasks() {
   if (pendingReset && millis() >= resetTimer) {
     ESP.restart();
+  }
+
+  // --- GHOST-WLAN AUTOMATISCH ABSCHALTEN (SPART AIRTIME, PING & HEAP) ---
+  if (ghostWlanActive && ghostWlanOffTimer > 0 && millis() >= ghostWlanOffTimer) {
+  ghostWlanActive = false;
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
