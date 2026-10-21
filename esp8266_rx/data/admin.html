@@ -1,0 +1,485 @@
+<!DOCTYPE HTML>
+<html lang="de">
+<head>
+  <title>RC Lap Timer Pro - Rennleiter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=3.6.1">
+</head>
+<body class="role-admin">
+
+  <!-- ECHTES OLED-SCHWARZ DASHBOARD (STROM SPAREN) -->
+  <div id="oledDimOverlay" onclick="deactivateOledDimmer()">
+    <div class="dimmer-top">
+      <div id="dimmerModeText" style="color:var(--text-muted); font-size:14px; text-transform:uppercase; letter-spacing:2px;">Lade...</div>
+      <div id="dimmerTimerText" style="color:var(--neon-cyan); font-size:42px; font-weight:900; font-family:var(--font-display); margin-top:2px;">--:--</div>
+      <div id="dimmerCarText" style="color:var(--neon-green); font-size:18px; margin-top:10px; font-family:var(--font-display);">Kein Fahrzeug gewählt</div>
+    </div>
+
+    <div class="dimmer-center">
+      <div class="dimmer-time-box">
+        <div class="dimmer-label">Persönliche Bestzeit</div>
+        <div id="dimmerPbText" class="dimmer-val" style="color:var(--neon-green);">--:--</div>
+      </div>
+      <div class="dimmer-time-box">
+        <div class="dimmer-label">Absolute Bestzeit</div>
+        <div id="dimmerOverallText" class="dimmer-val" style="color:var(--neon-purple); text-shadow:0 0 10px rgba(181,50,255,0.6);">--:--</div>
+      </div>
+      <div class="dimmer-time-box" style="margin-top: 10px; border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05);">
+        <div class="dimmer-label" style="color: #fff;">Letzte Runde</div>
+        <div id="dimmerLastText" class="dimmer-val" style="color:var(--text-main);">--:--</div>
+        <div id="dimmerDeltaText" style="font-size:16px; font-weight:bold; margin-top:6px; font-family:var(--font-display);"></div>
+      </div>
+    </div>
+
+    <div class="dimmer-sectors" id="dimmerSectorsContainer">
+      <div class="dimmer-sector-box" id="dimmer-box-1" style="display:none;">
+        <div class="dimmer-sz-label">SZ 1</div>
+        <div id="dimmer-sz1-val" class="dimmer-sz-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-2" style="display:none;">
+        <div class="dimmer-sz-label">SZ 2</div>
+        <div id="dimmer-sz2-val" class="dimmer-sz2-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-3" style="display:none;">
+        <div class="dimmer-sz-label">SZ 3</div>
+        <div id="dimmer-sz3-val" class="dimmer-sz3-val">---</div>
+      </div>
+      <div class="dimmer-sector-box" id="dimmer-box-4" style="display:none;">
+        <div class="dimmer-sz-label">SZ 4</div>
+        <div id="dimmer-sz4-val" class="dimmer-sz4-val">---</div>
+      </div>
+    </div>
+
+    <div style="color:var(--text-muted); font-size:12px; border:1px solid #333; padding:8px 16px; border-radius:6px; margin-top:25px; text-transform:uppercase;">
+      Bildschirm antippen zum Aufwecken
+    </div>
+  </div>
+
+  <div class="main-wrapper">
+    <div class="hero-header">
+      <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+      <div class="role-badge-bar">
+        <span id="currentRoleBadge" class="role-pill" onclick="location.href='/'" title="Zurück zur Fahrer-Ansicht wechseln">
+          👑 Modus: Rennleiter (Zu Fahrer 🏎️)
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-label">Modus</span>
+          <span id="modeDisplay" class="status-val" style="color:var(--neon-green);">Freies Training</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Restzeit</span>
+          <span id="timerDisplay" class="status-val timer-display">--:--</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Führende Runde</span>
+          <span id="leaderLapDisplay" class="status-val" style="color:var(--neon-orange);">0</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Sektorstationen</span>
+          <span class="status-val" style="font-size: 15px; letter-spacing: 2px;">
+            SZ1:<span id="sz1Status" style="color:var(--neon-red);">●</span> 
+            SZ2:<span id="sz2Status" style="color:var(--neon-red);">●</span> 
+            SZ3:<span id="sz3Status" style="color:var(--neon-red);">●</span>
+          </span>
+        </div>
+      </div>
+
+      <div id="trackRecordBar" class="track-record-bar">
+        <div class="track-record-title">
+          <span>🏆 TAGESBESTZEIT (TRACK RECORD)</span>
+        </div>
+        <div class="trackRecordDisplay" id="trackRecordDisplay">
+          <span style="color:var(--text-muted); font-size:13px;">Noch keine Bestzeit gesetzt</span>
+        </div>
+      </div>
+
+      <div id="poleBanner" class="pole-banner" style="display:none;">
+        <div class="pole-banner-title">👑 QUALIFYING BEENDET – POLE POSITION 👑</div>
+        <div id="poleBannerText" class="pole-banner-val">---</div>
+      </div>
+
+      <div class="driver-quick-panel driver-only">
+        <div style="text-align:left;">
+          <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:</strong>
+          <div style="font-size:12px; color:var(--text-muted);">Wähle dein Auto – Rundenzeiten & Sektoren werden live vorgelesen</div>
+        </div>
+        <select id="driverQuickSelect" class="driver-quick-select" onchange="onDriverQuickSelectChange(this.value)">
+          <option value="all">🔊 Alle Fahrzeuge ansagen</option>
+        </select>
+      </div>
+
+      <div class="control-grid admin-only">
+        <div class="control-group">
+          <div class="control-group-title">PRACTICE</div>
+          <button class="btn btn-success" onclick="startPractice()">Freies Training</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">QUALIFYING</div>
+          <div>
+            <input type="number" id="qualiTimeInput" min="1" max="60" value="5" style="width: 60px;"> Min.
+          </div>
+          <button class="btn btn-purple" onclick="startQuali()">Start Quali</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">RENNEN (RUNDEN)</div>
+          <div>
+            <input type="number" id="raceLapsInput" min="1" max="100" value="15" style="width: 60px;"> Rnd.
+          </div>
+          <button class="btn btn-success" onclick="startRaceLaps()">Start Runden</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">RENNEN (ZEIT)</div>
+          <div>
+            <input type="number" id="raceTimeInput" min="1" max="60" value="8" style="width: 60px;"> Min.
+          </div>
+          <button class="btn btn-success" onclick="startRaceTime()">Start Zeit</button>
+        </div>
+
+        <div class="control-group">
+          <div class="control-group-title">DRAGRACE</div>
+          <button class="btn btn-warning" onclick="startDragrace()">Start Dragrace</button>
+        </div>
+      </div>
+
+      <div>
+        <button class="btn btn-warning admin-only" onclick="stopSession()">⏹ Durchgang Stoppen</button>
+        <button class="btn btn-danger admin-only" onclick="resetLaps()">Komplett-Reset</button>
+        <button class="btn btn-purple" onclick="openStatsOverviewModal()">📊 Statistiken</button>
+        <button class="btn admin-only" onclick="openConfigModal()">⚙️ Einstellungen</button>
+        <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
+        <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
+        <button class="btn btn-purple" onclick="activateOledDimmer()" title="Dunkelt das Display ab auf echtes Schwarz zur Akkusparung">🌙 OLED-Dimmer</button>
+        <button class="btn btn-light admin-only" onclick="window.open('/update.html', '_blank')">⬆ Web-Update</button>
+        <button class="btn btn-purple admin-only" onclick="location.href='/debug'">📡 Debug</button>
+      </div>
+      <div style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
+        Sprachausgabe für: <strong id="ttsSelectedCarsDisplay" style="color: var(--neon-cyan);">Alle Fahrzeuge</strong>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('default')">Pos <span id="sort-icon-default" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('driver')">Fahrer / Auto <span id="sort-icon-driver" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('laps')"><span id="th-laps-label">Runde</span> <span id="sort-icon-laps" class="sort-icon"></span></th>
+              <th id="th-sz1" class="sortable" onclick="sortTable('sz1')"><span id="th-sz1-label">SZ1</span> <span id="sort-icon-sz1" class="sort-icon"></span></th>
+              <th id="th-sz2" class="sortable" onclick="sortTable('sz2')"><span id="th-sz2-label">SZ2</span> <span id="sort-icon-sz2" class="sort-icon"></span></th>
+              <th id="th-sz3" class="sortable" onclick="sortTable('sz3')"><span id="th-sz3-label">SZ3</span> <span id="sort-icon-sz3" class="sort-icon"></span></th>
+              <th id="th-sz4" class="sortable" onclick="sortTable('sz4')"><span id="th-sz4-label">SZ4</span> <span id="sort-icon-sz4" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('lastLap')"><span id="th-last-label">Letzte Zeit</span> <span id="sort-icon-lastLap" class="sort-icon"></span></th>
+              <th class="sortable" onclick="sortTable('bestLap')"><span id="th-best-label">Beste Zeit</span> <span id="sort-icon-bestLap" class="sort-icon"></span></th>
+            </tr>
+          </thead>
+          <tbody id="lapTable">
+            <tr><td colspan="9">Warte auf Signal...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card admin-only" style="background: rgba(13, 17, 23, 0.9);">
+      <h3 style="color: var(--neon-orange); margin: 0 0 5px 0; font-size: 14px; font-family: var(--font-display); letter-spacing: 1px;">LIVE SENSOR DEBUG (LETZTE 5 IDS)</h3>
+      <div class="recent-id-box" id="recentIdsContainer">
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+        <div class="recent-item">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statsOverviewModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="color:var(--neon-green); margin:0; font-family:var(--font-display);">📊 STATISTIKEN & RENN-HISTORIE</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsOverviewModal()">✕</button>
+      </div>
+
+      <div class="backup-bar admin-only">
+        <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">DATENSICHERUNG:</span>
+        <div>
+          <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="downloadStatsBackup()">💾 Backup herunterladen</button>
+          <button class="btn btn-warning" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="triggerRestoreBackup()">📂 Wiederherstellen</button>
+          <input type="file" id="backupFileInput" accept=".json" style="display:none;" onclick="event.stopPropagation()" onchange="handleRestoreBackup(event)">
+        </div>
+      </div>
+
+      <div class="tab-container">
+        <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
+        <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freie Trainings</button>
+        <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifyings</button>
+        <button class="tab-btn" id="tabRaceBtn" onclick="switchStatsTab('race')">🏎️ Rennen</button>
+        <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
+      </div>
+      
+      <div class="modal-body" id="statsTabDrivers"></div>
+      <div class="modal-body" id="statsTabTraining" style="display:none;"></div>
+      <div class="modal-body" id="statsTabQuali" style="display:none;"></div>
+      <div class="modal-body" id="statsTabRace" style="display:none;"></div>
+      <div class="modal-body" id="statsTabDrag" style="display:none;"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
+        <button class="btn btn-danger admin-only" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
+        <button class="btn btn-warning" onclick="closeStatsOverviewModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="statsModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <button class="btn" style="padding:4px 8px;" onclick="backToStatsOverview()">← Zurück</button>
+        <h3 id="statsModalTitle" style="color:var(--neon-green); margin:0; font-family:var(--font-display);">Statistik</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsModal()">✕</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortStatsTable('lap')">Runde <span id="sort-stats-icon-lap" class="sort-icon"></span></th>
+                <th class="sortable" onclick="sortStatsTable('time')">Zeit <span id="sort-stats-icon-time" class="sort-icon"></span></th>
+                <th>Sektoren (SZ1-SZ4)</th>
+                <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
+                <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
+                <th class="admin-only">Aktion</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody">
+              <tr><td colspan="6">Lade Statistik...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
+        <button class="btn btn-danger admin-only" id="deleteDriverStatsBtn" onclick="confirmDeleteDriverStats()">Alle Statistiken dieses Fahrers löschen</button>
+        <button class="btn btn-warning" onclick="closeStatsModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <h3 style="color:var(--neon-cyan); margin:0; font-family:var(--font-display);">SYSTEM-EINSTELLUNGEN</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeConfigModal()">✕</button>
+      </div>
+      
+      <div class="modal-body">
+        
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-cyan);">
+          <h4 style="color:var(--neon-cyan); margin:0 0 8px 0; font-family:var(--font-display);">Sektorstationen & Modi</h4>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz1" style="transform: scale(1.2); margin-right: 8px;"> SZ1 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz2" style="transform: scale(1.2); margin-right: 8px;"> SZ2 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_use_sz3" style="transform: scale(1.2); margin-right: 8px;"> SZ3 verwenden
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
+            <input type="checkbox" id="cfg_checkpoint_mode" style="transform: scale(1.2); margin-right: 8px;"> Checkpoint-Modus (Alle aktiven SZ Pflicht)
+          </label>
+          <label style="cursor:pointer; display: block; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15);">
+            <input type="checkbox" id="cfg_sector_audio" style="transform: scale(1.2); margin-right: 8px;"> 📢 Sektor-Bestzeiten Sprachansage
+          </label>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
+            <strong>📢 Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>
+          </label>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
+          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">
+            📶 WLAN Kontrollzentrum
+            <span id="activeWifiBadge" style="float:right; font-size:11px; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.1); border:1px solid #555; color:var(--text-main);">Lade...</span>
+          </h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
+            Hier Daten für alle Netzwerke pflegen. Ein Klick auf die Buttons zwingt die Basis sofort ins gewählte WLAN.
+          </p>
+          
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">Heim-WLAN SSID:</label>
+              <input type="text" id="cfg_home_ssid" placeholder="WLAN Name" style="width: 100%; margin-top: 3px;">
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
+              <input type="text" id="cfg_home_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">Hotspot SSID:</label>
+              <input type="text" id="cfg_hotspot_ssid" placeholder="z.B. Poco F7" style="width: 100%; margin-top: 3px;">
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
+              <input type="text" id="cfg_hotspot_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">AP SSID (Name):</label>
+              <input type="text" id="cfg_ap_ssid" placeholder="z.B. RC-LapTimer" style="width: 100%; margin-top: 3px;">
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted);">Passwort (AP):</label>
+              <input type="text" id="cfg_ap_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+            </div>
+          </div>
+          
+          <div style="display:flex; gap: 5px; flex-wrap: wrap;">
+            <button class="btn btn-success" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(1)">🏠 Zu Heim-WLAN</button>
+            <button class="btn btn-warning" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(2)">📱 Zu Hotspot</button>
+            <button class="btn btn-purple" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(0)">📡 Zu AP-Modus</button>
+          </div>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-red);">
+          <h4 style="color:var(--neon-red); margin:0 0 5px 0; font-family:var(--font-display);">⚙️ Sektorstationen Wartung (OTA)</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
+            Versetzt die Sektorstationen in den Flash-Modus. Sie verbinden sich mit dem aktuellen Netzwerk (Ausnahme: Hotspot-Modus nicht unterstützt).
+          </p>
+          <button class="btn btn-red" style="width: 100%; padding:8px; font-size:12px;" onclick="triggerSZOta()">⚡ SZ OTA-Wartungsmodus starten</button>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
+          <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
+            Wähle, welche Fahrzeuge auf <strong>diesem Gerät</strong> angesagt werden sollen
+          </p>
+          <div style="margin-bottom: 8px;">
+            <button class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" onclick="selectAllTTS(true)">Alle anhaken</button>
+            <button class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" onclick="selectAllTTS(false)">Alle abwählen</button>
+          </div>
+          <div class="tts-filter-grid" id="ttsFilterContainer"></div>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid #222;">
+          <label><strong>Mindest-Rundenzeit / Deadtime (Sek.):</strong></label><br>
+          <input type="number" id="cfg_deadtime" step="0.1" min="0.5" max="30" value="2.0" style="margin-top:5px; width:100px;">
+        </div>
+        
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-purple);">
+          <h4 style="color:var(--neon-purple); margin:0 0 5px 0; font-family:var(--font-display);">Entwickler / UI-Caching</h4>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="cfg_web_cache" style="transform: scale(1.3); margin-right: 8px;">
+            <strong>Browser-Caching für Webdateien aktivieren</strong> <span style="font-size: 11px; color: var(--text-muted);">(Deaktivieren für UI-Tests, benötigt ESP Neustart)</span>
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn btn-warning" id="hardReloadBtn" onclick="event.preventDefault(); event.stopPropagation(); forceCleanReload();" title="Löscht den lokalen Browser-Cache für alle Skripte und lädt alles frisch vom ESP" style="font-size: 11px; padding: 6px 12px; cursor: pointer;">🔄 Hard Reload</button>
+          </div>
+          </label>
+        </div>
+
+        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid #222;">
+          <label style="cursor:pointer; display: block; margin-bottom: 8px;">
+            <input type="checkbox" id="cfg_two_frames" style="transform: scale(1.3); margin-right: 8px;">
+            <strong>2-Frame Entprellung aktivieren</strong>
+          </label>
+        </div>
+
+        <h4 style="color:var(--neon-cyan); margin-bottom:8px; font-family:var(--font-display);">Transponder-IDs zuweisen (Fahrer & Auto)</h4>
+        <div id="configRows"></div>
+      </div>
+
+      <div style="text-align: right; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+        <button class="btn btn-success" onclick="saveConfig()">Speichern & Schließen</button>
+        <button class="btn btn-warning" onclick="closeConfigModal()">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="resetConfirmModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.45);">
+      <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚠️ KOMPLETT-RESET</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;">
+        Möchtest du wirklich alle aktuellen Runden, Sektorzeiten und den laufenden Durchgang komplett zurücksetzen?
+      </p>
+      
+      <div style="background:rgba(0,0,0,0.6); padding:14px; border-radius:8px; border:1px dashed var(--neon-orange); margin-bottom:20px; text-align:left;">
+        <label style="cursor:pointer; display:flex; align-items:center; gap:10px; font-size:14px; color:var(--neon-orange); font-weight:bold;">
+          <input type="checkbox" id="resetDailyBestCheckbox" checked style="transform:scale(1.3); cursor:pointer;">
+          <span>🏆 Tagesbestzeit (Track Record) ebenfalls zurücksetzen</span>
+        </label>
+      </div>
+      
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeResetModal()">ABBRECHEN</button>
+        <button class="btn btn-danger" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmResetModal()">JETZT ZURÜCKSETZEN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
+      <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 WLAN WIRD GEWECHSELT</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="alertModalDesc">
+        Das System bricht nun alle aktuellen Verbindungen ab und startet den Wechsel.
+      </p>
+      
+      <div style="background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
+        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">1. Scanne nach diesem Geister-WLAN:</p>
+        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:18px; color:var(--neon-cyan); font-weight:bold;">LT_Netzwerk-IP</p>
+        <p style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">2. Öffne im Browser:</p>
+        <p style="margin:0; font-family:monospace; font-size:18px; color:var(--neon-green); font-weight:bold;">http://<span id="alertIpDisplay" style="color:var(--text-main);">DIE.ANGEZEIGTE.IP</span></p>
+      </div>
+      
+      <button class="btn btn-warning" style="width:100%; padding:14px; font-size:15px; font-weight:bold;" onclick="confirmConnectionAlert()">ALLES KLAR, AUSFÜHREN!</button>
+    </div>
+  </div>
+
+  <div id="otaAlertModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);">
+      <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚡ SZ WARTUNGSMODUS (OTA)</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="otaModalDesc">
+        Wartungsmodus an alle Sektorstationen funken?<br>Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!
+      </p>
+      
+      <div id="otaModalStatus" style="display:none; background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
+        <p id="otaStatusText" style="margin:0; font-size:14px; color:var(--neon-green); font-weight:bold;">Status...</p>
+      </div>
+      
+      <div id="otaModalButtons" style="display:flex; gap:10px;">
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
+        <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.6.1</span></div>
+    <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
+    <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
+  </footer>
+
+  <script src="tts.js?v=3.6.1"></script>
+  <script src="websocket.js?v=3.6.1"></script>
+  <script src="modes.js?v=3.6.1"></script>
+  <script src="stats.js?v=3.6.1"></script>
+  <script src="config.js?v=3.6.1"></script>
+  <script src="main.js?v=3.6.1"></script>
+</body>
+</html>

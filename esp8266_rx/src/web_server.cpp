@@ -38,8 +38,9 @@ static uint32_t ghostWlanOffTimer = 0;
 static String cacheHeaderStr; 
 
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 13500;
-const uint8_t HEAP_CRITICAL_MAX_FRAG = 58;
+const size_t HEAP_CRITICAL_MIN_BYTES = 20000;
+const uint8_t HEAP_CRITICAL_MAX_FRAG = 47;
+const size_t HEAP_CRITICAL_MIN_BLOCK = 4096;
 
 static const char BUSY_HTML_PROGMEM[] PROGMEM = 
   "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -51,7 +52,7 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in 2 Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
-  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG);
+  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
 }
 
 static const char* getContentType(const String& path) {
@@ -72,8 +73,9 @@ static void triggerGhostWlanEarlyShutdown() {
 
 static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
   if (path == "/" || path.length() == 0) path = "/index.html";
+  if (path == "/admin") path = "/admin.html";
 
-  if (path == "/index.html") {
+  if (path == "/index.html" || path == "/admin.html") {
     triggerGhostWlanEarlyShutdown();
   }
 

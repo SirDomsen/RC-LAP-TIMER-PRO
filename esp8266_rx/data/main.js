@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.6.0'; 
+window.UI_VERSION = '3.6.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -67,6 +67,7 @@ async function forceCleanReload() {
     '/modes.js',
     '/stats.js',
     '/config.js',
+    '/admin.html',
     '/main.js'
   ];
 
@@ -91,7 +92,167 @@ async function forceCleanReload() {
     } catch (e) {}
   }
 
-  window.location.replace(window.location.origin + '/?v=' + Date.now());
+  window.location.replace(window.location.href.split('?')[0] + '?v=' + Date.now());
+}
+
+// --- ADMIN CONFIRMATION MODAL ---
+function openAdminConfirmModal() {
+  let cb = document.getElementById('adminConfirmCheckbox');
+  let btn = document.getElementById('adminGoBtn');
+  if (cb) cb.checked = false;
+  if (btn) {
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+  }
+  let modal = document.getElementById('adminConfirmModal');
+  if (modal) modal.style.display = 'block';
+}
+
+function closeAdminConfirmModal() {
+  let modal = document.getElementById('adminConfirmModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function toggleAdminConfirmBtn() {
+  let cb = document.getElementById('adminConfirmCheckbox');
+  let btn = document.getElementById('adminGoBtn');
+  if (cb && btn) {
+    if (cb.checked) {
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    } else {
+      btn.style.opacity = '0.5';
+      btn.style.pointerEvents = 'none';
+    }
+  }
+}
+
+function proceedToAdmin() {
+  window.location.href = '/admin';
+}
+
+// --- TABLE SORTING & LIVE TIMING HELPERS ---
+function sortTable(column) {
+  if (currentSortColumn === column) {
+    currentSortDir = (currentSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    currentSortColumn = column;
+    currentSortDir = 'asc';
+  }
+  updateSortIcons();
+  updateData();
+}
+
+function updateSortIcons() {
+  const columns = ['default', 'driver', 'laps', 'sz1', 'sz2', 'sz3', 'sz4', 'lastLap', 'bestLap'];
+  columns.forEach(col => {
+    let iconElem = document.getElementById('sort-icon-' + col);
+    if (!iconElem) return;
+    if (currentSortColumn === col) {
+      iconElem.innerText = currentSortDir === 'asc' ? '▲' : '▼';
+    } else {
+      iconElem.innerText = '';
+    }
+  });
+}
+
+function sortLapData(data) {
+  let defaultSorted = [...data];
+  if (currentMode === 1 || currentMode === 4) {
+    defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
+  } else {
+    defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+  }
+
+  defaultSorted.forEach((item, index) => {
+    item._defaultPos = index + 1;
+  });
+
+  if (currentSortColumn === 'default') {
+    if (currentSortDir === 'desc') {
+      defaultSorted.reverse();
+    }
+    return defaultSorted;
+  }
+
+  let sorted = [...defaultSorted];
+  sorted.sort((a, b) => {
+    let valA, valB;
+    if (currentSortColumn === 'driver') {
+      valA = (a.driver || '').toLowerCase();
+      valB = (b.driver || '').toLowerCase();
+      return currentSortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    } else if (currentSortColumn === 'laps') {
+      valA = a.completedLaps || 0;
+      valB = b.completedLaps || 0;
+    } else if (currentSortColumn === 'sz1') {
+      valA = a.sz1 > 0 ? a.sz1 : 99999999;
+      valB = b.sz1 > 0 ? b.sz1 : 99999999;
+    } else if (currentSortColumn === 'sz2') {
+      valA = a.sz2 > 0 ? a.sz2 : 99999999;
+      valB = b.sz2 > 0 ? b.sz2 : 99999999;
+    } else if (currentSortColumn === 'sz3') {
+      valA = a.sz3 > 0 ? a.sz3 : 99999999;
+      valB = b.sz3 > 0 ? b.sz3 : 99999999;
+    } else if (currentSortColumn === 'sz4') {
+      valA = a.sz4 > 0 ? a.sz4 : 99999999;
+      valB = b.sz4 > 0 ? b.sz4 : 99999999;
+    } else if (currentSortColumn === 'lastLap') {
+      valA = a.lastLap > 0 ? a.lastLap : 99999999;
+      valB = b.lastLap > 0 ? b.lastLap : 99999999;
+    } else if (currentSortColumn === 'bestLap') {
+      valA = a.bestLap > 0 ? a.bestLap : 99999999;
+      valB = b.bestLap > 0 ? b.bestLap : 99999999;
+    }
+
+    if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  return sorted;
+}
+
+// --- LAZY-LOADING DER STATISTIKEN ---
+let statsLoading = false;
+async function openStatsOverviewModal() {
+  if (typeof switchStatsTab !== 'function') {
+    if (statsLoading) return;
+    statsLoading = true;
+    let btn = document.getElementById('statsOverviewBtn');
+    let orig = btn ? btn.innerText : '';
+    if (btn) btn.innerText = "⏳ Lade...";
+    let s = document.createElement('script');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.6.0');
+    s.onload = async () => {
+      statsLoading = false;
+      if (btn) btn.innerText = orig;
+      if (typeof openStatsOverviewModal === 'function') {
+        openStatsOverviewModal();
+      }
+    };
+    s.onerror = () => {
+      statsLoading = false;
+      if (btn) btn.innerText = orig;
+      alert("Fehler beim Laden der Statistiken.");
+    };
+    document.body.appendChild(s);
+  } else {
+    let m = document.getElementById('statsOverviewModal');
+    if (m) m.style.display = 'block';
+    await loadCarNames();
+    switchStatsTab(currentTab);
+  }
+}
+
+function closeStatsOverviewModal() {
+  let m = document.getElementById('statsOverviewModal');
+  if (m) m.style.display = 'none';
+}
+
+function closeStatsModal() {
+  let m = document.getElementById('statsModal');
+  if (m) m.style.display = 'none';
 }
 
 function activateOledDimmer() {
@@ -245,7 +406,8 @@ function onDriverQuickSelectChange(val) {
   updateData(true);
   if (val !== 'all') {
     let dName = carNamesMap[Number(val)]?.driver || ('Fahrer ' + val);
-    speak("Sprachausgabe aktiv für " + dName, true);
+    let cName = carNamesMap[Number(val)]?.car || ('Auto ' + val);
+    speak("Sprachausgabe aktiv für " + dName + " auf " + cName, true);
   } else {
     speak("Sprachausgabe für alle Fahrzeuge aktiv", true);
   }
@@ -1008,7 +1170,9 @@ window.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('rctl_user_role', 'admin');
   }
 
-  if (!userRole) {
+  if (window.location.pathname.includes('admin')) {
+    userRole = 'admin';
+  } else if (!userRole) {
     applyUserRoleUI('driver'); 
     openRoleModal();
   } else {
@@ -1034,6 +1198,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.onclick = function(event) {
+  if (event.target === document.getElementById('adminConfirmModal')) closeAdminConfirmModal();
   if (event.target === document.getElementById('configModal')) closeConfigModal();
   if (event.target === document.getElementById('statsModal')) closeStatsModal();
   if (event.target === document.getElementById('statsOverviewModal')) closeStatsOverviewModal();
@@ -1048,6 +1213,7 @@ window.onclick = function(event) {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    closeAdminConfirmModal();
     closeConfigModal();
     closeStatsModal();
     closeStatsOverviewModal();
