@@ -1,11 +1,11 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.5.1'; 
+window.UI_VERSION = '3.6.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
-let userRole = localStorage.getItem('rctl_user_role') || null; // 'admin' oder 'driver'
+let userRole = localStorage.getItem('rctl_user_role') || null; 
 
 let currentMode = 0;
 let targetLaps = 0;
@@ -51,10 +51,6 @@ let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
-// ==========================================
-// ECHTER EINZELDATEI-CACHE-BUSTER FÜR FIREFOX & CHROME
-// ==========================================
-
 async function forceCleanReload() {
   let btn = document.getElementById('hardReloadBtn');
   if (btn) {
@@ -97,10 +93,6 @@ async function forceCleanReload() {
 
   window.location.replace(window.location.origin + '/?v=' + Date.now());
 }
-
-// ==========================================
-// OLED DIMMER STEUERUNG & UI UPDATER
-// ==========================================
 
 function activateOledDimmer() {
   if (!audioUnmuted) unmuteIOSAudio();
@@ -192,10 +184,6 @@ function updateDimmerUI(row, sessionOverallBestLap) {
   }
 }
 
-// ==========================================
-// ROLLEN-MANAGEMENT (RENNLEITER VS. FAHRER)
-// ==========================================
-
 function applyUserRoleUI(role) {
   userRole = role;
   document.body.classList.remove('role-admin', 'role-driver');
@@ -262,10 +250,6 @@ function onDriverQuickSelectChange(val) {
     speak("Sprachausgabe für alle Fahrzeuge aktiv", true);
   }
 }
-
-// ==========================================
-// INITIALISIERUNG & HELPER
-// ==========================================
 
 function syncTimeWithServerOnce() {
   let nowSec = Math.floor(Date.now() / 1000);
@@ -455,10 +439,6 @@ function startLocalTimerTicker() {
     }
   }, 1000);
 }
-
-// ==========================================
-// HAUPT-DATENABRUF & RENDERING
-// ==========================================
 
 async function updateData(fullSync = false) {
   if (isUpdatingData) return;
@@ -1037,7 +1017,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
   loadVersion();
   syncTimeWithServerOnce();
-  initWebSocket();
+
+  // Zufälliger Jitter (0 - 800ms) beim Start, um WebSocket-Stürme auf die ESP-CPU zu brechen
+  setTimeout(() => {
+    initWebSocket();
+  }, Math.floor(Math.random() * 800));
+
   loadSectorConfigInitial();
   loadCarNames().then(() => {
     updateTTSFilterDisplay();
@@ -1074,4 +1059,6 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-document.addEventListener('click', function() { if (!audioUnmuted) unmuteIOSAudio(); }, { once: true });
+document.addEventListener('click', function() {
+  if (!audioUnmuted) unmuteIOSAudio();
+}, { once: true });

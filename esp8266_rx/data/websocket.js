@@ -5,6 +5,7 @@ function initWebSocket() {
     socket = new WebSocket(wsUrl);
     socket.onopen = function() {
       console.log("[WebSocket] Verbunden mit Basis");
+      hideConnectionNotice();
     };
     socket.onmessage = function(event) {
       try {
@@ -14,9 +15,15 @@ function initWebSocket() {
         console.error("[WebSocket] Parse-Fehler:", e);
       }
     };
-    socket.onclose = function() {
-      console.log("[WebSocket] Getrennt, verbinde neu in 2s...");
-      setTimeout(initWebSocket, 2000);
+    socket.onclose = function(event) {
+      if (event.code === 1013) {
+        console.log("[WebSocket] Server überlastet (1013), warte auf Freigabe...");
+        showConnectionNotice("⏳ Boxengasse voll: Verbinde in wenigen Sekunden...");
+        setTimeout(initWebSocket, 2500);
+      } else {
+        console.log("[WebSocket] Getrennt, verbinde neu in 2s...");
+        setTimeout(initWebSocket, 2000);
+      }
     };
     socket.onerror = function(err) {
       console.error("[WebSocket] Fehler:", err);
@@ -25,6 +32,24 @@ function initWebSocket() {
   } catch (e) {
     console.error("[WebSocket] Setup-Fehler:", e);
   }
+}
+
+function showConnectionNotice(text) {
+  let notice = document.getElementById('connectionNoticeBanner');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'connectionNoticeBanner';
+    notice.style.cssText = "background:rgba(255,153,0,0.15); border:1px solid var(--neon-orange); color:var(--neon-orange); padding:10px 15px; border-radius:8px; margin-bottom:12px; font-family:var(--font-display); font-size:13px; text-align:center;";
+    let wrapper = document.querySelector('.main-wrapper');
+    if (wrapper) wrapper.insertBefore(notice, wrapper.firstChild);
+  }
+  notice.innerText = text;
+  notice.style.display = 'block';
+}
+
+function hideConnectionNotice() {
+  let notice = document.getElementById('connectionNoticeBanner');
+  if (notice) notice.style.display = 'none';
 }
 
 let lastResetTimestamp = 0;
@@ -154,7 +179,6 @@ function onSectorLiveEvent(msg) {
     updateData();
   }
 
-  // --- OLED DIMMER KACHEL LIVE AKTUALISIEREN & BLINKEN LASSEN ---
   let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
   if (isMyCar) {
     let dimBox = document.getElementById(`dimmer-box-${msg.sector}`);
@@ -168,7 +192,7 @@ function onSectorLiveEvent(msg) {
         dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
       }
       dimBox.className = 'dimmer-sector-box'; 
-      void dimBox.offsetWidth; // Reflow erzwingen
+      void dimBox.offsetWidth; 
       dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
       
       let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');

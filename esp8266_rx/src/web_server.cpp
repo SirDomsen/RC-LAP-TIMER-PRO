@@ -64,19 +64,15 @@ static const char* getContentType(const String& path) {
   return "text/plain";
 }
 
-// Verkürzt die Restlaufzeit des Ghost-WLANs auf 15 Sekunden, sobald die Webseite geladen wurde
 static void triggerGhostWlanEarlyShutdown() {
   if (ghostWlanActive && ghostWlanOffTimer == 0) {
-    // Startet den 15s-Countdown erst jetzt, da der erste Client die Seite geladen hat
-    ghostWlanOffTimer = millis() + 15000UL;
+    ghostWlanOffTimer = millis() + 15000UL; 
   }
 }
 
-// Zentraler, RAM-geschützter Datei-Streamer mit Auto-Gzip und Connection: close
 static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
   if (path == "/" || path.length() == 0) path = "/index.html";
 
-  // Sobald jemand die Hauptseite anfordert, ist die IP bekannt -> Ghost-WLAN Abschalt-Countdown starten!
   if (path == "/index.html") {
     triggerGhostWlanEarlyShutdown();
   }
@@ -126,7 +122,10 @@ void triggerWifiSwitch(uint8_t mode) {
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    // Sobald der erste Browser-WebSocket steht, Ghost-WLAN zeitnah abschalten
+    if (isHeapCriticalForFileTransfer()) {
+      client->close(1013, "Server busy");
+      return;
+    }
     triggerGhostWlanEarlyShutdown();
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
@@ -166,8 +165,6 @@ static void setupGhostWLAN() {
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
   WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
 
-  // Ghost-WLAN aktivieren, aber KEIN automatischer Timeout nach Zeit!
-  // Schaltet sich erst ab, wenn die Seite erfolgreich geöffnet wurde.
   ghostWlanActive = true;
   ghostWlanOffTimer = 0; 
 
@@ -191,7 +188,6 @@ static void setupFallbackAP() {
   const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
-  // 8 = Hardware-Maximum des ESP8266 SoftAP Stacks
   WiFi.softAP(apName, apKey, 1, 0, 8);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
@@ -424,12 +420,11 @@ void handleNetworkTasks() {
     ESP.restart();
   }
 
-  // --- GHOST-WLAN AUTOMATISCH ABSCHALTEN (SPART AIRTIME, PING & HEAP) ---
   if (ghostWlanActive && ghostWlanOffTimer > 0 && millis() >= ghostWlanOffTimer) {
-  ghostWlanActive = false;
-  WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    ghostWlanActive = false;
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {

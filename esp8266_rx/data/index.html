@@ -13,14 +13,12 @@
 
   <!-- ECHTES OLED-SCHWARZ DASHBOARD (STROM SPAREN) -->
   <div id="oledDimOverlay" onclick="deactivateOledDimmer()">
-    <!-- TOP: Modus & Timer -->
     <div class="dimmer-top">
       <div id="dimmerModeText" style="color:var(--text-muted); font-size:14px; text-transform:uppercase; letter-spacing:2px;">Lade...</div>
       <div id="dimmerTimerText" style="color:var(--neon-cyan); font-size:42px; font-weight:900; font-family:var(--font-display); margin-top:2px;">--:--</div>
       <div id="dimmerCarText" style="color:var(--neon-green); font-size:18px; margin-top:10px; font-family:var(--font-display);">Kein Fahrzeug gewählt</div>
     </div>
 
-    <!-- CENTER: Bestzeiten & Letzte Runde -->
     <div class="dimmer-center">
       <div class="dimmer-time-box">
         <div class="dimmer-label">Persönliche Bestzeit</div>
@@ -37,7 +35,6 @@
       </div>
     </div>
 
-    <!-- BOTTOM: Live-Sektorkacheln (mit 4s-Blinkeffekt) -->
     <div class="dimmer-sectors" id="dimmerSectorsContainer">
       <div class="dimmer-sector-box" id="dimmer-box-1" style="display:none;">
         <div class="dimmer-sz-label">SZ 1</div>
@@ -45,19 +42,18 @@
       </div>
       <div class="dimmer-sector-box" id="dimmer-box-2" style="display:none;">
         <div class="dimmer-sz-label">SZ 2</div>
-        <div id="dimmer-sz2-val" class="dimmer-sz-val">---</div>
+        <div id="dimmer-sz2-val" class="dimmer-sz2-val">---</div>
       </div>
       <div class="dimmer-sector-box" id="dimmer-box-3" style="display:none;">
         <div class="dimmer-sz-label">SZ 3</div>
-        <div id="dimmer-sz3-val" class="dimmer-sz-val">---</div>
+        <div id="dimmer-sz3-val" class="dimmer-sz3-val">---</div>
       </div>
       <div class="dimmer-sector-box" id="dimmer-box-4" style="display:none;">
         <div class="dimmer-sz-label">SZ 4</div>
-        <div id="dimmer-sz4-val" class="dimmer-sz-val">---</div>
+        <div id="dimmer-sz4-val" class="dimmer-sz4-val">---</div>
       </div>
     </div>
 
-    <!-- FOOTER -->
     <div style="color:var(--text-muted); font-size:12px; border:1px solid #333; padding:8px 16px; border-radius:6px; margin-top:25px; text-transform:uppercase;">
       Bildschirm antippen zum Aufwecken
     </div>
@@ -97,7 +93,6 @@
         </div>
       </div>
 
-      <!-- TAGESBESTZEIT (TRACK RECORD - NUR RUNDENEVENTS) -->
       <div id="trackRecordBar" class="track-record-bar">
         <div class="track-record-title">
           <span>🏆 TAGESBESTZEIT (TRACK RECORD)</span>
@@ -107,13 +102,11 @@
         </div>
       </div>
 
-      <!-- POLE POSITION BANNER (ERSCHEINT AM QUALI-ENDE) -->
       <div id="poleBanner" class="pole-banner" style="display:none;">
         <div class="pole-banner-title">👑 QUALIFYING BEENDET – POLE POSITION 👑</div>
         <div id="poleBannerText" class="pole-banner-val">---</div>
       </div>
 
-      <!-- FAHRER-MODUS: KOMPAKTE FAHRZEUGAUSWAHL -->
       <div class="driver-quick-panel driver-only">
         <div style="text-align:left;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:</strong>
@@ -124,7 +117,6 @@
         </select>
       </div>
 
-      <!-- RENNLEITER STEUERUNG (NUR FÜR ADMIN SICHTBAR) -->
       <div class="control-grid admin-only">
         <div class="control-group">
           <div class="control-group-title">PRACTICE</div>
@@ -213,7 +205,6 @@
     </div>
   </div>
 
-  <!-- ROLLEN-AUSWAHLFENSTER BEIM START (RENNLEITER VS. FAHRER) -->
   <div id="roleSelectModal" class="modal" style="z-index: 9998;">
     <div class="modal-content" style="max-width: 560px; text-align: center; border: 1px solid var(--neon-cyan); box-shadow: 0 0 30px rgba(0, 229, 255, 0.35);">
       <h3 style="color:var(--neon-cyan); font-family:var(--font-display); margin-top:0; font-size:20px;">🏁 WILLKOMMEN BEIM RC LAP TIMER PRO</h3>
@@ -241,7 +232,6 @@
     </div>
   </div>
 
-  <!-- STATISTIK ÜBERSICHT MODAL -->
   <div id="statsOverviewModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -279,7 +269,6 @@
     </div>
   </div>
 
-  <!-- FAHRER DETAIL STATISTIK MODAL -->
   <div id="statsModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
@@ -315,7 +304,6 @@
     </div>
   </div>
 
-  <!-- EINSTELLUNGEN MODAL -->
   <div id="configModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
@@ -325,7 +313,6 @@
       
       <div class="modal-body">
         
-        <!-- Sektor-Config -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-cyan);">
           <h4 style="color:var(--neon-cyan); margin:0 0 8px 0; font-family:var(--font-display);">Sektorstationen & Modi</h4>
           <label style="cursor:pointer; display: block; margin-bottom: 6px;">
@@ -349,7 +336,6 @@
           </label>
         </div>
 
-        <!-- WLAN Kontrollzentrum -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
           <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">
             📶 WLAN Kontrollzentrum
@@ -399,7 +385,6 @@
           </div>
         </div>
 
-        <!-- SZ-OTA Wartung -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-red);">
           <h4 style="color:var(--neon-red); margin:0 0 5px 0; font-family:var(--font-display);">⚙️ Sektorstationen Wartung (OTA)</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
@@ -408,7 +393,6 @@
           <button class="btn btn-red" style="width: 100%; padding:8px; font-size:12px;" onclick="triggerSZOta()">⚡ SZ OTA-Wartungsmodus starten</button>
         </div>
 
-        <!-- TTS / Sprachausgabe -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
           <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
@@ -421,13 +405,11 @@
           <div class="tts-filter-grid" id="ttsFilterContainer"></div>
         </div>
 
-        <!-- Deadtime -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid #222;">
           <label><strong>Mindest-Rundenzeit / Deadtime (Sek.):</strong></label><br>
           <input type="number" id="cfg_deadtime" step="0.1" min="0.5" max="30" value="2.0" style="margin-top:5px; width:100px;">
         </div>
         
-        <!-- Web Cache -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-purple);">
           <h4 style="color:var(--neon-purple); margin:0 0 5px 0; font-family:var(--font-display);">Entwickler / UI-Caching</h4>
           <label style="cursor:pointer; display: block;">
@@ -436,7 +418,6 @@
           </label>
         </div>
 
-        <!-- Zusätzliche Filter Logik -->
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid #222;">
           <label style="cursor:pointer; display: block; margin-bottom: 8px;">
             <input type="checkbox" id="cfg_two_frames" style="transform: scale(1.3); margin-right: 8px;">
@@ -455,7 +436,6 @@
     </div>
   </div>
 
-  <!-- KOMPLETT-RESET MODAL -->
   <div id="resetConfirmModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.45);">
       <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚠️ KOMPLETT-RESET</h3>
@@ -477,7 +457,6 @@
     </div>
   </div>
 
-  <!-- WLAN Switch Modal -->
   <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
       <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 WLAN WIRD GEWECHSELT</h3>
@@ -496,7 +475,6 @@
     </div>
   </div>
 
-  <!-- OTA Wartungsmodus Modal -->
   <div id="otaAlertModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);">
       <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚡ SZ WARTUNGSMODUS (OTA)</h3>
@@ -517,7 +495,7 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">--</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.6.0</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
