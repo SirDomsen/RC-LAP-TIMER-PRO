@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.6.1'; 
+window.UI_VERSION = '3.6.4'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -128,7 +128,7 @@ function toggleAdminConfirmBtn() {
 }
 
 function proceedToAdmin() {
-  window.location.href = '/admin';
+  window.location.href = '/admin.html';
 }
 
 // --- TABLE SORTING & LIVE TIMING HELPERS ---
@@ -223,7 +223,7 @@ async function openStatsOverviewModal() {
     let orig = btn ? btn.innerText : '';
     if (btn) btn.innerText = "⏳ Lade...";
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.6.0');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.6.4');
     s.onload = async () => {
       statsLoading = false;
       if (btn) btn.innerText = orig;
@@ -353,11 +353,13 @@ function applyUserRoleUI(role) {
   let badge = document.getElementById('currentRoleBadge');
   if (badge) {
     if (role === 'driver') {
-      badge.innerText = "🏎️ Modus: Fahrer (Wechseln 🔄)";
+      badge.innerText = "🏎️ Aktueller Modus: Fahrer. Zu Rennleiter wechseln 👑";
+      badge.onclick = (typeof openAdminConfirmModal === 'function') ? openAdminConfirmModal : () => { location.href = '/admin'; };
       badge.style.borderColor = "var(--neon-green)";
       badge.style.color = "var(--neon-green)";
     } else {
-      badge.innerText = "👑 Modus: Rennleiter (Wechseln 🔄)";
+      badge.innerText = "👑 Aktueller Modus: Rennleiter. Zu Fahrer wechseln 🏎️";
+      badge.onclick = () => { location.href = '/'; };
       badge.style.borderColor = "var(--neon-cyan)";
       badge.style.color = "var(--neon-cyan)";
     }
@@ -1161,23 +1163,11 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
 window.addEventListener('DOMContentLoaded', () => {
   window.sessionStartTs = Math.floor(Date.now() / 1000);
 
-  let params = new URLSearchParams(window.location.search);
-  if (params.get('role') === 'driver' || params.get('driver') === '1') {
-    userRole = 'driver';
-    localStorage.setItem('rctl_user_role', 'driver');
-  } else if (params.get('role') === 'admin' || params.get('admin') === '1') {
-    userRole = 'admin';
-    localStorage.setItem('rctl_user_role', 'admin');
-  }
-
-  if (window.location.pathname.includes('admin')) {
-    userRole = 'admin';
-  } else if (!userRole) {
-    applyUserRoleUI('driver'); 
-    openRoleModal();
-  } else {
-    applyUserRoleUI(userRole);
-  }
+  // Rolle verbindlich anhand der aufgerufenen Seite festlegen
+  let isAdminPage = window.location.pathname.toLowerCase().includes('admin');
+  userRole = isAdminPage ? 'admin' : 'driver';
+  localStorage.setItem('rctl_user_role', userRole);
+  applyUserRoleUI(userRole);
 
   loadVersion();
   syncTimeWithServerOnce();

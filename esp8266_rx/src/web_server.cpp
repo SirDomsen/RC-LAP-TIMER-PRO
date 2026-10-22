@@ -73,7 +73,7 @@ static void triggerGhostWlanEarlyShutdown() {
 
 static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
   if (path == "/" || path.length() == 0) path = "/index.html";
-  if (path == "/admin") path = "/admin.html";
+  if (path == "/admin" || path == "/admin/") path = "/admin.html";
 
   if (path == "/index.html" || path == "/admin.html") {
     triggerGhostWlanEarlyShutdown();
