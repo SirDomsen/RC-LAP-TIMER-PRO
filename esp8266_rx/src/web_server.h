@@ -2,11 +2,18 @@
 #define WEB_SERVER_H
 
 #include "config.h"
-#include <DNSServer.h>
+#include <ESPAsyncWebServer.h>
 
-extern DNSServer dnsServer;
+extern AsyncWebServer server;
+extern AsyncWebSocket ws;
+extern uint8_t currentRuntimeWifiMode;
 
 void initNetworkAndServer();
 void handleNetworkTasks();
+void broadcastWebSocket(const String& msg);
+void scheduleESPReset(uint16_t delayMs = 500);
+
+// Netzwerk-Wechsel auslösen
+void triggerWifiSwitch(uint8_t mode);
 
 #endif

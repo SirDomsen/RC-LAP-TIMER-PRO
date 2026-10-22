@@ -1,276 +1,494 @@
-<!DOCTYPE html>
+<!DOCTYPE HTML>
 <html lang="de">
 <head>
+  <title>RC Lap Timer Pro - Speicher & Web Update</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RC Lap Timer Pro - Web Update</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0c10;
-      --card-bg: rgba(22, 27, 34, 0.85);
+      --card-bg: rgba(22, 27, 34, 0.95);
       --card-border: rgba(255, 255, 255, 0.08);
       --neon-green: #00ff66;
       --neon-cyan: #00e5ff;
       --neon-orange: #ff9900;
       --neon-red: #ff3366;
+      --neon-purple: #b532ff;
       --text-main: #f0f6fc;
       --text-muted: #8b949e;
-      --font-display: 'Orbitron', sans-serif;
-      --font-body: 'Rajdhani', sans-serif;
     }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      font-family: var(--font-body);
-      font-size: 16px;
-      padding: 15px;
+      font-family: 'Rajdhani', sans-serif;
       background-color: var(--bg-dark);
-      background-image: 
-        linear-gradient(27deg, #151515 5px, transparent 5px),
-        linear-gradient(207deg, #151515 5px, transparent 5px),
-        linear-gradient(27deg, #222 5px, transparent 5px),
-        linear-gradient(207deg, #222 5px, transparent 5px);
-      background-size: 20px 20px;
-      background-position: 0 0, 10px 10px, 0 10px, 10px 0;
       color: var(--text-main);
+      margin: 0;
+      padding: 20px 15px;
       text-align: center;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
     }
-
-    .hero-header {
-      position: relative;
-      width: 100%;
-      max-width: 600px;
-      margin: 0 auto 15px auto;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
-      border: 1px solid var(--card-border);
-      background: linear-gradient(to right, rgba(0,0,0,0.8), rgba(0,0,0,0.4)), 
-                  url('https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;
-      padding: 25px 15px;
-    }
-
-    h1 {
-      font-family: var(--font-display);
-      font-size: 1.8rem;
-      font-weight: 900;
-      color: #fff;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      text-shadow: 0 0 12px var(--neon-cyan);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-    }
-
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-family: 'Orbitron', sans-serif; color: var(--neon-cyan); margin-bottom: 25px; font-size: 24px; }
     .card {
       background: var(--card-bg);
-      backdrop-filter: blur(10px);
-      padding: 24px 20px;
-      border-radius: 12px;
-      width: 100%;
-      max-width: 600px;
       border: 1px solid var(--card-border);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-
-    .card h2 {
-      font-family: var(--font-display);
-      font-size: 1.2rem;
-      color: var(--neon-cyan);
-      margin-bottom: 10px;
-      letter-spacing: 1px;
-    }
-
-    .info {
-      font-size: 0.95rem;
-      color: var(--text-muted);
+      border-radius: 12px;
+      padding: 20px;
       margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      text-align: left;
+    }
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--neon-green);
+      font-size: 16px;
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+    .info-box {
+      background: #0d1117;
+      border-left: 3px solid var(--neon-cyan);
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      color: var(--text-muted);
       line-height: 1.4;
     }
-
-    .file-input-wrapper {
-      margin-bottom: 18px;
-    }
-
-    input[type="file"] {
+    .storage-bar-bg {
       width: 100%;
-      padding: 12px;
+      height: 14px;
       background: #0d1117;
-      border: 1px dashed var(--card-border);
-      border-radius: 8px;
-      color: var(--text-main);
-      font-family: var(--font-body);
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    input[type="file"]:hover {
-      border-color: var(--neon-cyan);
-      box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
-    }
-
-    .btn {
-      width: 100%;
-      font-family: var(--font-display);
-      background: linear-gradient(135deg, #1f293d, #111827);
-      color: var(--neon-cyan);
-      border: 1px solid var(--neon-cyan);
-      padding: 12px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      border-radius: 6px;
-      transition: all 0.2s ease;
-      text-transform: uppercase;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 0 12px var(--neon-cyan);
-      background: var(--neon-cyan);
-      color: #000;
-    }
-
-    .btn:disabled {
-      border-color: #444;
-      color: #666;
-      cursor: not-allowed;
-      background: #111;
-    }
-
-    .progress-container {
-      margin-top: 20px;
-      display: none;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 15px;
-      border-radius: 8px;
+      border-radius: 7px;
+      overflow: hidden;
+      margin: 10px 0 6px 0;
       border: 1px solid var(--card-border);
     }
-
-    .progress-bar {
+    .storage-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+      transition: width 0.3s;
+    }
+    .storage-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+    .file-dropzone {
+      border: 2px dashed rgba(0, 229, 255, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      background: rgba(0, 229, 255, 0.02);
+      cursor: pointer;
+      margin-bottom: 15px;
+    }
+    .file-dropzone:hover {
+      border-color: var(--neon-cyan);
+      background: rgba(0, 229, 255, 0.05);
+    }
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      display: inline-block;
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: all 0.2s;
+    }
+    .btn-cyan { background: #111827; color: var(--neon-cyan); border-color: var(--neon-cyan); }
+    .btn-cyan:hover { background: var(--neon-cyan); color: #000; }
+    .btn-green { background: #00ff66; color: #000; }
+    .btn-green:hover { background: #00cc52; }
+    .btn-red { background: rgba(255, 51, 102, 0.15); color: var(--neon-red); border-color: var(--neon-red); margin-top: 10px; }
+    .btn-red:hover { background: var(--neon-red); color: #fff; }
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--neon-red);
+      cursor: pointer;
+      font-size: 15px;
+      padding: 2px 6px;
+    }
+    .btn-icon:hover { transform: scale(1.2); }
+    .progress-bar-bg {
       width: 100%;
       height: 10px;
-      background-color: #0d1117;
+      background: #0d1117;
       border-radius: 5px;
       overflow: hidden;
-      border: 1px solid #333;
-    }
-
-    .progress-fill {
-      width: 0%;
-      height: 100%;
-      background-color: var(--neon-green);
-      box-shadow: 0 0 10px var(--neon-green);
-      transition: width 0.2s ease;
-    }
-
-    #status {
-      margin-top: 10px;
-      font-family: var(--font-display);
-      font-size: 0.9rem;
-      letter-spacing: 0.5px;
-    }
-
-    .nav-back {
       margin-top: 15px;
-      display: inline-block;
-      color: var(--text-muted);
-      text-decoration: none;
-      font-size: 0.9rem;
-      transition: color 0.2s;
+      display: none;
     }
-
-    .nav-back:hover {
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--neon-green);
+      transition: width 0.1s;
+    }
+    #statusText {
+      font-size: 13px;
+      margin-top: 10px;
+      text-align: center;
+      min-height: 18px;
+      font-family: monospace;
+    }
+    table {
+      width: 100%;
+      margin-top: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      border-collapse: collapse;
+    }
+    th {
       color: var(--neon-cyan);
+      border-bottom: 1px solid var(--card-border);
+      padding: 8px 6px;
+      text-align: left;
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.2s, background-color 0.2s;
+    }
+    th.sortable:hover {
+      color: #fff;
+      background-color: rgba(0, 229, 255, 0.1);
+    }
+    td {
+      padding: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     }
   </style>
 </head>
 <body>
+  <div class="container">
+    <h1>🚀 LITTLEFS DATEI- & SPEICHER-MANAGER</h1>
+    
+    <div style="margin-bottom: 15px; text-align: left;">
+      <button class="btn btn-cyan" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="location.href='/'">← Zur Hauptseite</button>
+    </div>
 
-  <div class="hero-header">
-    <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+    <!-- SPEICHERPLATZ-ANZEIGE -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 class="card-title" style="margin:0;">LittleFS Flash-Speicher</h3>
+        <span id="storagePercent" style="font-family:monospace; font-weight:bold; color:var(--neon-green);">-- %</span>
+      </div>
+      <div class="storage-bar-bg">
+        <div id="storageBarFill" class="storage-bar-fill"></div>
+      </div>
+      <div class="storage-labels">
+        <span>Belegt: <strong id="storageUsed" style="color:var(--text-main);">--</strong></span>
+        <span>Frei: <strong id="storageFree" style="color:var(--neon-green);">--</strong></span>
+        <span>Gesamt: <strong id="storageTotal" style="color:var(--neon-cyan);">--</strong></span>
+      </div>
+    </div>
+
+    <!-- UPLOAD CARD -->
+    <div class="card">
+      <h3 class="card-title">Dateien hochladen</h3>
+      <div class="info-box">
+        ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert[cite: 22]. Das originale PC-Änderungsdatum bleibt exakt erhalten[cite: 22].
+      </div>
+
+      <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="autoGzipToggle" checked style="width: 18px; height: 18px; cursor: pointer;">
+        <label for="autoGzipToggle" style="font-size: 14px; color: var(--neon-cyan); cursor: pointer; font-weight: bold;">
+          ⚡ Dateien automatisch vor dem Upload komprimieren (.gz)
+        </label>
+      </div>
+
+      <div class="file-dropzone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFileSelect(this)">
+        <div id="dropLabel" style="color:var(--text-main);">📁 Klicke hier, um Dateien auszuwählen (.html, .js, .css, .json, ...)</div>
+        <small id="fileCountLabel" style="color:var(--text-muted); display:block; margin-top:5px;"></small>
+      </div>
+
+      <button id="uploadBtn" class="btn btn-green" onclick="startBatchUpload()" disabled>Upload starten</button>
+
+      <div class="progress-bar-bg" id="progressBg">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div id="statusText"></div>
+    </div>
+
+    <!-- DATEIEN IM FLASH -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 class="card-title" style="margin:0;">Gespeicherte Dateien im Flash</h3>
+        <button class="btn btn-cyan" style="width:auto; padding:4px 10px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="setSortColumn('name')">Dateiname <span id="sort_icon_name"></span></th>
+              <th class="sortable" style="text-align:right;" onclick="setSortColumn('size')">Größe <span id="sort_icon_size"></span></th>
+              <th class="sortable" style="text-align:center;" onclick="setSortColumn('time')">Geändert am <span id="sort_icon_time">▼</span></th>
+              <th style="text-align:center;">Aktion</th>
+            </tr>
+          </thead>
+          <tbody id="fileListBody">
+            <tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:12px;">Lade Dateiliste...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- REBOOT -->
+    <div class="card">
+      <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
+        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren[cite: 22].
+      </p>
+      <button class="btn btn-red" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
+    </div>
   </div>
 
-  <main class="card">
-    <h2>WEB-UPDATE</h2>
-    <p class="info">Lade eine neue Web-Datei (z. B. <code>index.html</code>) in das LittleFS hoch. Die Runden- und Session-Daten bleiben erhalten.</p>
-
-    <form id="uploadForm">
-      <div class="file-input-wrapper">
-        <input type="file" id="fileInput" name="data" required>
-      </div>
-      <button type="submit" id="subBtn" class="btn">Datei Hochladen</button>
-    </form>
-
-    <div class="progress-container" id="progressContainer">
-      <div class="progress-bar">
-        <div class="progress-fill" id="progressFill"></div>
-      </div>
-      <div id="status">Upload läuft...</div>
-    </div>
-  </main>
-
-  <a href="/" class="nav-back">← Zurück zur Hauptseite</a>
-
   <script>
-    document.getElementById('uploadForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const fileInput = document.getElementById('fileInput');
-      if (!fileInput.files.length) return;
+    let selectedFiles = [];
+    let cachedFiles = [];
+    let sortColumn = 'time'; // Standard: Neueste Dateien oben
+    let sortAsc = false;
 
-      const formData = new FormData();
-      formData.append('data', fileInput.files[0]);
+    function isCompressibleFile(filename) {
+      const lower = filename.toLowerCase();
+      if (lower.endsWith('.gz')) return false; 
+      return lower.endsWith('.html') || lower.endsWith('.js') || lower.endsWith('.css') || lower.endsWith('.svg');
+    }
 
-      const xhr = new XMLHttpRequest();
-      const btn = document.getElementById('subBtn');
-      const progressContainer = document.getElementById('progressContainer');
-      const progressFill = document.getElementById('progressFill');
-      const statusText = document.getElementById('status');
+    async function compressFileToGzip(file) {
+      const useGzip = document.getElementById('autoGzipToggle')?.checked ?? true;
+      if (!useGzip || !isCompressibleFile(file.name) || !('CompressionStream' in window)) {
+        return { blob: file, uploadName: file.name, wasCompressed: false };
+      }
+
+      try {
+        const cs = new CompressionStream('gzip');
+        const stream = file.stream().pipeThrough(cs);
+        const compressedBlob = await new Response(stream).blob();
+        return { 
+          blob: compressedBlob, 
+          uploadName: file.name + '.gz', 
+          wasCompressed: true 
+        };
+      } catch (err) {
+        console.warn("Gzip-Kompression fehlgeschlagen, lade unkomprimiert hoch:", err);
+        return { blob: file, uploadName: file.name, wasCompressed: false };
+      }
+    }
+
+    function handleFileSelect(input) {
+      selectedFiles = Array.from(input.files);
+      let btn = document.getElementById('uploadBtn');
+      let countLbl = document.getElementById('fileCountLabel');
+      
+      if (selectedFiles.length > 0) {
+        btn.disabled = false;
+        let details = selectedFiles.map(f => {
+          return isCompressibleFile(f.name) ? `${f.name} (⚡ Auto-Gzip)` : f.name;
+        }).join(', ');
+        countLbl.innerText = `${selectedFiles.length} Datei(en) ausgewählt: ${details}`;
+      } else {
+        btn.disabled = true;
+        countLbl.innerText = '';
+      }
+    }
+
+    async function startBatchUpload() {
+      if (selectedFiles.length === 0) return;
+
+      let btn = document.getElementById('uploadBtn');
+      let pBg = document.getElementById('progressBg');
+      let pBar = document.getElementById('progressBar');
+      let status = document.getElementById('statusText');
 
       btn.disabled = true;
-      progressContainer.style.display = 'block';
-      statusText.style.color = 'var(--text-main)';
-      statusText.innerText = 'Upload läuft...';
+      pBg.style.display = 'block';
+      pBar.style.width = '0%';
 
-      xhr.upload.addEventListener('progress', function(e) {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          progressFill.style.width = percent + '%';
-          statusText.innerText = 'Upload: ' + percent + '%';
-        }
-      });
+      for (let i = 0; i < selectedFiles.length; i++) {
+        let file = selectedFiles[i];
+        let mtimeSec = Math.floor(file.lastModified / 1000);
 
-      xhr.addEventListener('load', function() {
-        if (xhr.status === 200) {
-          statusText.style.color = 'var(--neon-green)';
-          statusText.innerText = '✓ ERFOLGREICH HOCHGELADEN!';
+        status.style.color = 'var(--neon-cyan)';
+        status.innerText = `[${i + 1}/${selectedFiles.length}] Verarbeite: ${file.name}...`;
+
+        let { blob, uploadName, wasCompressed } = await compressFileToGzip(file);
+
+        if (wasCompressed) {
+          let origKb = (file.size / 1024).toFixed(1);
+          let gzKb = (blob.size / 1024).toFixed(1);
+          status.innerText = `[${i + 1}/${selectedFiles.length}] Komprimiert (${origKb}KB ➔ ${gzKb}KB) & sende: ${uploadName}...`;
         } else {
-          statusText.style.color = 'var(--neon-red)';
-          statusText.innerText = '✕ FEHLER BEIM UPLOAD!';
+          status.innerText = `[${i + 1}/${selectedFiles.length}] Sende: ${uploadName}...`;
         }
-        btn.disabled = false;
+
+        let formData = new FormData();
+        formData.append('data', blob, uploadName);
+
+        try {
+          let res = await fetch(`/api/upload?mtime=${mtimeSec}`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          let pct = Math.round(((i + 1) / selectedFiles.length) * 100);
+          pBar.style.width = pct + '%';
+        } catch (err) {
+          status.style.color = 'var(--neon-red)';
+          status.innerText = `Fehler bei ${file.name}: ${err.message}`;
+          btn.disabled = false;
+          return;
+        }
+      }
+
+      status.style.color = 'var(--neon-green)';
+      status.innerText = 'Alle Dateien erfolgreich im LittleFS gespeichert!';
+      document.getElementById('fileInput').value = '';
+      selectedFiles = [];
+      setTimeout(loadFilesList, 500);
+    }
+
+    function formatFileDate(epochSec) {
+      if (!epochSec || epochSec < 100000000) return '<span style="color:var(--text-muted);">---</span>';
+      let d = new Date(epochSec * 1000);
+      let day = String(d.getDate()).padStart(2, '0');
+      let month = String(d.getMonth() + 1).padStart(2, '0');
+      let year = d.getFullYear();
+      let hours = String(d.getHours()).padStart(2, '0');
+      let mins = String(d.getMinutes()).padStart(2, '0');
+      let secs = String(d.getSeconds()).padStart(2, '0');
+      return `${day}.${month}.${year} ${hours}:${mins}:${secs}`;
+    }
+
+    function setSortColumn(col) {
+      if (sortColumn === col) {
+        sortAsc = !sortAsc;
+      } else {
+        sortColumn = col;
+        sortAsc = (col === 'name'); // Namen standardmäßig A-Z, Zeiten/Größen absteigend
+      }
+      renderFilesTable();
+    }
+
+    function renderFilesTable() {
+      let tbody = document.getElementById('fileListBody');
+      if (cachedFiles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:12px;">Keine Dateien im Flash vorhanden.</td></tr>';
+        return;
+      }
+
+      // Sortier-Icons aktualisieren
+      ['name', 'size', 'time'].forEach(c => {
+        let iconElem = document.getElementById('sort_icon_' + c);
+        if (!iconElem) return;
+        if (sortColumn === c) {
+          iconElem.innerText = sortAsc ? '▲' : '▼';
+        } else {
+          iconElem.innerText = '';
+        }
       });
 
-      xhr.addEventListener('error', function() {
-        statusText.style.color = 'var(--neon-red)';
-        statusText.innerText = '✕ NETZWERKFEHLER!';
-        btn.disabled = false;
+      // Liste sortieren
+      let sorted = [...cachedFiles].sort((a, b) => {
+        let res = 0;
+        if (sortColumn === 'name') {
+          res = a.name.localeCompare(b.name);
+        } else if (sortColumn === 'size') {
+          res = (a.size || 0) - (b.size || 0);
+        } else if (sortColumn === 'time') {
+          res = (a.time || 0) - (b.time || 0);
+        }
+        return sortAsc ? res : -res;
       });
 
-      xhr.open('POST', '/api/upload', true);
-      xhr.send(formData);
+      let html = '';
+      sorted.forEach(f => {
+        let isGz = f.name.endsWith('.gz');
+        let nameColor = isGz ? 'var(--neon-green)' : 'var(--text-main)';
+        let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
+        let dateStr = formatFileDate(f.time);
+
+        html += `<tr>
+          <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">${f.name}</td>
+          <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
+          <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
+          <td style="text-align:center;">
+            <button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
+          </td>
+        </tr>`;
+      });
+      tbody.innerHTML = html;
+    }
+
+    async function loadFilesList() {
+      let tbody = document.getElementById('fileListBody');
+      try {
+        let res = await fetch('/api/files');
+        let data = await res.json();
+
+        let total = data.total || 0;
+        let used = data.used || 0;
+        let free = total - used;
+        let pct = total > 0 ? Math.round((used / total) * 100) : 0;
+
+        document.getElementById('storageBarFill').style.width = pct + '%';
+        document.getElementById('storagePercent').innerText = pct + ' %';
+        document.getElementById('storageUsed').innerText = (used / 1024).toFixed(1) + ' KB';
+        document.getElementById('storageFree').innerText = (free / 1024).toFixed(1) + ' KB';
+        document.getElementById('storageTotal').innerText = (total / (1024 * 1024)).toFixed(2) + ' MB';
+
+        cachedFiles = data.files || [];
+        renderFilesTable();
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--neon-red); text-align:center; padding:12px;">Fehler beim Abrufen der Dateiliste.</td></tr>';
+      }
+    }
+
+    async function deleteFile(name) {
+      if (!confirm(`Datei "${name}" wirklich dauerhaft aus dem Flash löschen?`)) return;
+      try {
+        await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
+        loadFilesList();
+      } catch(e) {
+        alert("Fehler beim Löschen: " + e.message);
+      }
+    }
+
+    async function triggerRestart() {
+      if (!confirm("ESP8266 jetzt neu starten, um den Arbeitsspeicher zu defragmentieren?")) return;
+
+      let status = document.getElementById('statusText');
+      status.style.color = 'var(--neon-orange)';
+      status.innerText = "Neustart-Befehl gesendet. ESP fährt hoch...";
+
+      try {
+        await fetch('/api/restart', { method: 'POST' });
+      } catch(e) {}
+
+      let countdown = 6;
+      let itv = setInterval(() => {
+        status.innerText = `ESP startet neu... Verbindung in ${countdown}s prüfen`;
+        if (--countdown < 0) {
+          clearInterval(itv);
+          location.href = '/';
+        }
+      }, 1000);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      let nowSec = Math.floor(Date.now() / 1000);
+      fetch('/api/synctime?ts=' + nowSec, { method: 'POST' }).finally(() => {
+        loadFilesList();
+      });
     });
   </script>
 </body>
