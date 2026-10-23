@@ -255,7 +255,13 @@
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3 class="card-title" style="margin:0;">Gespeicherte Dateien im Flash</h3>
-        <button class="btn btn-cyan" style="width:auto; padding:4px 10px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="backupZipBtn" class="btn btn-green" style="width:auto; padding:5px 12px; font-size:11px;" onclick="downloadAllFilesZip()">📦 Backup (.zip)</button>
+          <button class="btn btn-cyan" style="width:auto; padding:5px 12px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
+        </div>
+      </div>
+      <div id="backupProgressText" style="font-size:12px; color:var(--neon-green); margin-top:8px; font-family:monospace; display:none;">
+
       </div>
       <div style="overflow-x:auto;">
         <table>
@@ -586,7 +592,7 @@
           <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
           <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
           <td style="text-align:center;">
-            <button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
+            <button class="btn-icon" style="color:var(--neon-cyan); margin-right:6px;" title="Datei herunterladen" onclick="downloadSingleFile('${f.name}')">⬇️</button><button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
           </td>
         </tr>`;
       });
@@ -646,6 +652,194 @@
           location.href = '/';
         }
       }, 1000);
+    }
+
+    function downloadSingleFile(name) {
+      let cleanName = name.startsWith('/') ? name : '/' + name;
+      let a = document.createElement('a');
+      a.href = '/api/download?file=' + encodeURIComponent(cleanName);
+      a.download = cleanName.substring(1);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function createZipArchive(files) {
+      let parts = [];
+      let centralEntries = [];
+      let offset = 0;
+
+      let crcTable = window._crcTable;
+      if (!crcTable) {
+        crcTable = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          crcTable[n] = c;
+        }
+        window._crcTable = crcTable;
+      }
+
+      function getCrc32(bytes) {
+        let crc = -1;
+        for (let i = 0; i < bytes.length; i++) {
+          crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xFF];
+        }
+        return (crc ^ (-1)) >>> 0;
+      }
+
+      let textEncoder = new TextEncoder();
+
+      for (let f of files) {
+        let nameBytes = textEncoder.encode(f.name);
+        let dataBytes = f.data;
+        let crc = getCrc32(dataBytes);
+        let size = dataBytes.length;
+
+        let d = f.date || new Date();
+        let dosTime = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+        let dosDate = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+
+        let localHeader = new Uint8Array(30 + nameBytes.length);
+        let view = new DataView(localHeader.buffer);
+        view.setUint32(0, 0x04034b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(6, 0x0800, true);
+        view.setUint16(8, 0, true);
+        view.setUint16(10, dosTime, true);
+        view.setUint16(12, dosDate, true);
+        view.setUint32(14, crc, true);
+        view.setUint32(18, size, true);
+        view.setUint32(22, size, true);
+        view.setUint16(26, nameBytes.length, true);
+        view.setUint16(28, 0, true);
+        localHeader.set(nameBytes, 30);
+
+        parts.push(localHeader);
+        parts.push(dataBytes);
+
+        let cdHeader = new Uint8Array(46 + nameBytes.length);
+        let cdView = new DataView(cdHeader.buffer);
+        cdView.setUint32(0, 0x02014b50, true);
+        cdView.setUint16(4, 20, true);
+        cdView.setUint16(6, 20, true);
+        cdView.setUint16(8, 0x0800, true);
+        cdView.setUint16(10, 0, true);
+        cdView.setUint16(12, dosTime, true);
+        cdView.setUint16(14, dosDate, true);
+        cdView.setUint32(16, crc, true);
+        cdView.setUint32(20, size, true);
+        cdView.setUint32(24, size, true);
+        cdView.setUint16(28, nameBytes.length, true);
+        cdView.setUint16(30, 0, true);
+        cdView.setUint16(32, 0, true);
+        cdView.setUint16(34, 0, true);
+        cdView.setUint16(36, 0, true);
+        cdView.setUint32(38, 0, true);
+        cdView.setUint32(42, offset, true);
+        cdHeader.set(nameBytes, 46);
+
+        centralEntries.push(cdHeader);
+        offset += localHeader.length + dataBytes.length;
+      }
+
+      let cdOffset = offset;
+      let cdSize = 0;
+      for (let cd of centralEntries) {
+        parts.push(cd);
+        cdSize += cd.length;
+      }
+
+      let eocd = new Uint8Array(22);
+      let eocdView = new DataView(eocd.buffer);
+      eocdView.setUint32(0, 0x06054b50, true);
+      eocdView.setUint16(4, 0, true);
+      eocdView.setUint16(6, 0, true);
+      eocdView.setUint16(8, files.length, true);
+      eocdView.setUint16(10, files.length, true);
+      eocdView.setUint32(12, cdSize, true);
+      eocdView.setUint32(16, cdOffset, true);
+      eocdView.setUint16(20, 0, true);
+
+      parts.push(eocd);
+
+      return new Blob(parts, { type: 'application/zip' });
+    }
+
+    async function downloadAllFilesZip() {
+      if (!cachedFiles || cachedFiles.length === 0) {
+        alert("Keine Dateien im Flash vorhanden!");
+        return;
+      }
+
+      let btn = document.getElementById('backupZipBtn');
+      let orig = btn ? btn.innerText : '';
+      let prog = document.getElementById('backupProgressText');
+
+      if (btn) btn.disabled = true;
+      if (prog) {
+        prog.style.display = 'block';
+        prog.style.color = 'var(--neon-cyan)';
+        prog.innerText = '⏳ Starte Dateisystem-Backup...';
+      }
+
+      try {
+        let filesForZip = [];
+        for (let i = 0; i < cachedFiles.length; i++) {
+          let fileInfo = cachedFiles[i];
+          let cleanName = fileInfo.name.startsWith('/') ? fileInfo.name.substring(1) : fileInfo.name;
+
+          if (prog) {
+            prog.innerText = `⏳ Lade Datei (${i + 1}/${cachedFiles.length}): ${cleanName}...`;
+          }
+
+          let res = await fetch('/api/download?file=' + encodeURIComponent(fileInfo.name));
+          if (!res.ok) throw new Error(`HTTP ${res.status} bei ${cleanName}`);
+
+          let buf = await res.arrayBuffer();
+          let fileDate = (fileInfo.time && fileInfo.time > 100000000) ? new Date(fileInfo.time * 1000) : new Date();
+
+          filesForZip.push({
+            name: cleanName,
+            data: new Uint8Array(buf),
+            date: fileDate
+          });
+
+          await new Promise(r => setTimeout(r, 40));
+        }
+
+        if (prog) prog.innerText = '📦 Erstelle ZIP-Archiv...';
+
+        let zipBlob = createZipArchive(filesForZip);
+        let now = new Date();
+        let pad = (n) => String(n).padStart(2, '0');
+        let dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+        let filename = `laptimer_backup_${dateStr}.zip`;
+
+        let url = URL.createObjectURL(zipBlob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (prog) {
+          prog.style.color = 'var(--neon-green)';
+          prog.innerText = `✅ Backup erfolgreich geladen: ${filename} (${(zipBlob.size / 1024).toFixed(1)} KB)`;
+          setTimeout(() => { if (prog) prog.style.display = 'none'; }, 8000);
+        }
+      } catch (err) {
+        if (prog) {
+          prog.style.color = 'var(--neon-red)';
+          prog.innerText = `❌ Backup fehlgeschlagen: ${err.message}`;
+        } else {
+          alert("Fehler beim Erstellen des Backups: " + err.message);
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     window.onclick = function(event) {

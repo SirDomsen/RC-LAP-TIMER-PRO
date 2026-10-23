@@ -354,6 +354,30 @@ void initNetworkAndServer() {
     request->send(400, "text/plain", "Datei nicht gefunden");
   });
 
+  server.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (isHeapCriticalForFileTransfer()) {
+      AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Server busy");
+      res->addHeader("Retry-After", "2");
+      res->addHeader("Connection", "close");
+      request->send(res);
+      return;
+    }
+
+    if (request->hasParam("file")) {
+      String filename = request->getParam("file")->value();
+      if (!filename.startsWith("/")) filename = "/" + filename;
+      if (LittleFS.exists(filename)) {
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, filename, "application/octet-stream");
+        String downloadName = filename.startsWith("/") ? filename.substring(1) : filename;
+        response->addHeader("Content-Disposition", "attachment; filename=\"" + downloadName + "\"");
+        response->addHeader("Connection", "close");
+        request->send(response);
+        return;
+      }
+    }
+    request->send(404, "text/plain", "Datei nicht gefunden");
+  });
+
   server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "ESP startet neu...");
     scheduleESPReset(600);
