@@ -87,7 +87,7 @@ function updateTTSFilterDisplay() {
       return;
     }
     let names = selectedTTSCars.map(id => carNamesMap[id]?.driver || ("Fahrer " + id));
-    disp.innerText = names.join(", ");
+    disp.innerText = names.join(" & ");
     disp.style.color = "var(--neon-green)";
   }
 }

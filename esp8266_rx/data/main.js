@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.6.4'; 
+window.UI_VERSION = '3.7.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -223,7 +223,7 @@ async function openStatsOverviewModal() {
     let orig = btn ? btn.innerText : '';
     if (btn) btn.innerText = "⏳ Lade...";
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.6.4');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.7.0');
     s.onload = async () => {
       statsLoading = false;
       if (btn) btn.innerText = orig;
@@ -255,6 +255,7 @@ function closeStatsModal() {
   if (m) m.style.display = 'none';
 }
 
+// --- DASHBOARD / OLED-DIMMER ---
 function activateOledDimmer() {
   if (!audioUnmuted) unmuteIOSAudio();
   let overlay = document.getElementById('oledDimOverlay');
@@ -267,38 +268,95 @@ function deactivateOledDimmer() {
   if (overlay) overlay.style.display = 'none';
 }
 
-function updateDimmerUI(row, sessionOverallBestLap) {
-  let dCar = document.getElementById('dimmerCarText');
-  if (dCar) dCar.innerText = `${row.driver} (${row.car})`;
+// --- FAHRER-EINSTELLUNGEN MODAL ---
+function openDriverConfigModal() {
+  let modal = document.getElementById('driverConfigModal');
+  if (modal) modal.style.display = 'block';
 
-  let dPb = document.getElementById('dimmerPbText');
-  if (dPb) dPb.innerText = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '--:--';
+  let szAudioCb = document.getElementById('driver_cfg_sector_audio');
+  if (szAudioCb) szAudioCb.checked = sectorAudioEnabled;
 
-  let dOver = document.getElementById('dimmerOverallText');
-  if (dOver) dOver.innerText = sessionOverallBestLap > 0 ? (sessionOverallBestLap / 1000).toFixed(2) + 's' : '--:--';
+  let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
+  if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
+}
 
-  let dLast = document.getElementById('dimmerLastText');
-  let dDelta = document.getElementById('dimmerDeltaText');
-  
-  if (row.state === 'outlap' || row.state === 'box' || row.state === 'pause') {
+function closeDriverConfigModal() {
+  let modal = document.getElementById('driverConfigModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveDriverAudioConfig() {
+  let szAudioCb = document.getElementById('driver_cfg_sector_audio');
+  if (szAudioCb) {
+    sectorAudioEnabled = szAudioCb.checked;
+    localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
+  }
+
+  let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
+  if (lapTimeCb) {
+    announceLapTimesInRace = lapTimeCb.checked;
+    localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
+  }
+
+  fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
+}
+
+// Aktualisiert eine einzelne Fahrer-Spalte im Dashboard (colIdx = 1 oder 2)
+function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap, minSz1, minSz2, minSz3, minSz4) {
+  let dCar = document.getElementById(`dimmerCar${colIdx}Text`);
+  let dPos = document.getElementById(`dimmerPos${colIdx}Text`);
+  let dPb = document.getElementById(`dimmerPb${colIdx}Text`);
+  let dLast = document.getElementById(`dimmerLast${colIdx}Text`);
+  let dDelta = document.getElementById(`dimmerDelta${colIdx}Text`);
+
+  let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
+  let carName = carNamesMap[carId]?.car || ("Auto " + carId);
+  if (dCar) dCar.innerText = `${driverName} (${carName})`;
+
+  let mask = getVisibleSectorsMask();
+
+  if (!rowData) {
+    if (dPos) dPos.innerText = "P-";
+    if (dPb) dPb.innerText = "--:--";
     if (dLast) {
-      dLast.innerText = row.state.toUpperCase();
+      dLast.innerText = "BOX";
+      dLast.style.color = "var(--neon-orange)";
+    }
+    if (dDelta) dDelta.innerText = "";
+    for (let i = 1; i <= 4; i++) {
+      let box = document.getElementById(`dimmer${colIdx}-box-${i}`);
+      let valElem = document.getElementById(`dimmer${colIdx}-sz${i}-val`);
+      let show = (i === 1 && mask.showSz1) || (i === 2 && mask.showSz2) || (i === 3 && mask.showSz3) || (i === 4 && mask.showSz4);
+      if (box) box.style.display = show ? 'block' : 'none';
+      if (valElem) valElem.innerText = '---';
+    }
+    return;
+  }
+
+  let pos = rowData._defaultPos || "-";
+  if (dPos) dPos.innerText = `P${pos}`;
+
+  if (dPb) dPb.innerText = rowData.bestLap > 0 ? (rowData.bestLap / 1000).toFixed(2) + 's' : '--:--';
+
+  if (rowData.state === 'outlap' || rowData.state === 'box' || rowData.state === 'pause') {
+    if (dLast) {
+      dLast.innerText = rowData.state.toUpperCase();
       dLast.style.color = 'var(--neon-orange)';
     }
     if (dDelta) dDelta.innerText = '';
   } else {
     if (dLast) {
-      dLast.innerText = row.lastLap > 0 ? (row.lastLap / 1000).toFixed(2) + 's' : '--:--';
-      let isOverall = (sessionOverallBestLap > 0 && row.lastLap <= sessionOverallBestLap);
-      let isPb = (row.bestLap > 0 && row.lastLap <= row.bestLap);
+      dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
+      let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
+      let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
       if (isOverall) dLast.style.color = 'var(--neon-purple)';
       else if (isPb) dLast.style.color = 'var(--neon-green)';
       else dLast.style.color = 'var(--text-main)';
     }
-    
-    if (dDelta && row.lastLap > 0 && row.bestLap > 0) {
-      let diff = row.lastLap - row.bestLap;
-      if (row.lastLap <= sessionOverallBestLap && sessionOverallBestLap > 0) {
+
+    if (dDelta && rowData.lastLap > 0 && rowData.bestLap > 0) {
+      let diff = rowData.lastLap - rowData.bestLap;
+      if (rowData.lastLap <= sessionOverallBestLap && sessionOverallBestLap > 0) {
         dDelta.innerText = "ABSOLUTE BESTZEIT!";
         dDelta.style.color = 'var(--neon-purple)';
       } else if (diff <= 0) {
@@ -313,24 +371,31 @@ function updateDimmerUI(row, sessionOverallBestLap) {
     }
   }
 
-  let mask = getVisibleSectorsMask();
   for (let i = 1; i <= 4; i++) {
-    let box = document.getElementById(`dimmer-box-${i}`);
-    let valElem = document.getElementById(`dimmer-sz${i}-val`);
-    let show = false;
-    if (i === 1) show = mask.showSz1;
-    if (i === 2) show = mask.showSz2;
-    if (i === 3) show = mask.showSz3;
-    if (i === 4) show = mask.showSz4;
-    
+    let box = document.getElementById(`dimmer${colIdx}-box-${i}`);
+    let valElem = document.getElementById(`dimmer${colIdx}-sz${i}-val`);
+    let show = (i === 1 && mask.showSz1) || (i === 2 && mask.showSz2) || (i === 3 && mask.showSz3) || (i === 4 && mask.showSz4);
     if (box) box.style.display = show ? 'block' : 'none';
-    
+
     if (show && valElem) {
-      let szVal = row[`sz${i}`] || 0;
-      let splitVal = row[`split${i}`] || 0;
+      let szVal = rowData[`sz${i}`] || 0;
+      let splitVal = rowData[`split${i}`] || 0;
       let isDrag = (currentMode === 4);
-      
+
       if (szVal > 0) {
+        let minSz = (i === 1) ? minSz1 : ((i === 2) ? minSz2 : ((i === 3) ? minSz3 : minSz4));
+        let bestSz = rowData[`bestSz${i}`] || 0;
+        if (minSz > 0 && szVal <= minSz) {
+          valElem.style.color = 'var(--neon-purple)';
+          valElem.style.textShadow = '0 0 8px rgba(181,50,255,0.7)';
+        } else if (bestSz > 0 && szVal <= bestSz) {
+          valElem.style.color = 'var(--neon-green)';
+          valElem.style.textShadow = 'none';
+        } else {
+          valElem.style.color = 'var(--neon-orange)';
+          valElem.style.textShadow = 'none';
+        }
+
         if (isDrag) {
           let splStr = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
           let szStr = (szVal / 1000).toFixed(2) + 's';
@@ -340,6 +405,8 @@ function updateDimmerUI(row, sessionOverallBestLap) {
         }
       } else {
         valElem.innerText = '---';
+        valElem.style.color = 'var(--text-main)';
+        valElem.style.textShadow = 'none';
       }
     }
   }
@@ -383,33 +450,72 @@ function selectUserRole(role) {
 }
 
 function populateDriverQuickSelect() {
-  let sel = document.getElementById('driverQuickSelect');
-  if (!sel) return;
+  let sel1 = document.getElementById('driverQuickSelect1');
+  let sel2 = document.getElementById('driverQuickSelect2');
+  if (sel1) {
+    let val1 = (selectedTTSCars.length >= 1) ? String(selectedTTSCars[0]) : 'none';
+    let val2 = (selectedTTSCars.length >= 2) ? String(selectedTTSCars[1]) : 'none';
 
-  let currentVal = (selectedTTSCars.length === 1) ? String(selectedTTSCars[0]) : 'all';
-  let html = `<option value="all">🔊 Alle Fahrzeuge ansagen</option>`;
-  for (let i = 1; i <= MAX_CARS; i++) {
-    let dName = carNamesMap[i]?.driver || ('Fahrer ' + i);
-    let cName = carNamesMap[i]?.car || ('Auto ' + i);
-    let selectedAttr = (String(i) === currentVal) ? 'selected' : '';
-    html += `<option value="${i}" ${selectedAttr}>🎧 ID ${i}: ${dName} (${cName})</option>`;
+    let getOptionsHtml = (selectedVal, placeholderText) => {
+      let html = `<option value="none" ${selectedVal === 'none' ? 'selected' : ''}>${placeholderText}</option>`;
+      for (let i = 1; i <= MAX_CARS; i++) {
+        let dName = carNamesMap[i]?.driver || ('Fahrer ' + i);
+        let cName = carNamesMap[i]?.car || ('Auto ' + i);
+        let isSel = (String(i) === selectedVal) ? 'selected' : '';
+        html += `<option value="${i}" ${isSel}>ID ${i}: ${dName} (${cName})</option>`;
+      }
+      return html;
+    };
+
+    sel1.innerHTML = getOptionsHtml(val1, '🎧 Fahrer 1 wählen...');
+    if (sel2) sel2.innerHTML = getOptionsHtml(val2, '➕ Fahrer 2 (optional)...');
   }
-  sel.innerHTML = html;
+
+  let selLegacy = document.getElementById('driverQuickSelect');
+  if (selLegacy) {
+    let currentVal = (selectedTTSCars.length === 1) ? String(selectedTTSCars[0]) : 'all';
+    let html = `<option value="all">🔊 Alle Fahrzeuge ansagen</option>`;
+    for (let i = 1; i <= MAX_CARS; i++) {
+      let dName = carNamesMap[i]?.driver || ('Fahrer ' + i);
+      let cName = carNamesMap[i]?.car || ('Auto ' + i);
+      let selectedAttr = (String(i) === currentVal) ? 'selected' : '';
+      html += `<option value="${i}" ${selectedAttr}>🎧 ID ${i}: ${dName} (${cName})</option>`;
+    }
+    selLegacy.innerHTML = html;
+  }
 }
 
 function onDriverQuickSelectChange(val) {
-  if (val === 'all') {
-    selectedTTSCars = [];
-  } else {
-    selectedTTSCars = [Number(val)];
+  let sel1 = document.getElementById('driverQuickSelect1');
+  let sel2 = document.getElementById('driverQuickSelect2');
+
+  if (sel1) {
+    let v1 = sel1.value;
+    let v2 = sel2 ? sel2.value : 'none';
+    let newSelected = [];
+    if (v1 !== 'none') newSelected.push(Number(v1));
+    if (v2 !== 'none' && v2 !== v1) newSelected.push(Number(v2));
+    selectedTTSCars = newSelected;
+  } else if (val !== undefined) {
+    if (val === 'all') {
+      selectedTTSCars = [];
+    } else {
+      selectedTTSCars = [Number(val)];
+    }
   }
+
   localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
   updateTTSFilterDisplay();
   updateData(true);
-  if (val !== 'all') {
-    let dName = carNamesMap[Number(val)]?.driver || ('Fahrer ' + val);
-    let cName = carNamesMap[Number(val)]?.car || ('Auto ' + val);
-    speak("Sprachausgabe aktiv für " + dName + " auf " + cName, true);
+
+  if (selectedTTSCars.length === 2) {
+    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
+    let n2 = carNamesMap[selectedTTSCars[1]]?.driver || ('Fahrer ' + selectedTTSCars[1]);
+    speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+  } else if (selectedTTSCars.length === 1) {
+    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
+    let c1 = carNamesMap[selectedTTSCars[0]]?.car || ('Auto ' + selectedTTSCars[0]);
+    speak(`Sprachausgabe aktiv für ${n1} auf ${c1}`, true);
   } else {
     speak("Sprachausgabe für alle Fahrzeuge aktiv", true);
   }
@@ -625,11 +731,32 @@ async function updateData(fullSync = false) {
     let visibleSectorCols = (mask.showSz1 ? 1 : 0) + (mask.showSz2 ? 1 : 0) + (mask.showSz3 ? 1 : 0) + (mask.showSz4 ? 1 : 0);
     let totalCols = 5 + visibleSectorCols;
 
+    let leaderLaps = 0;
+    let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0;
+    let minBestLap = 0;
+    let activeCarsWithLaps = 0;
+
+    data.forEach(r => {
+      if (r.completedLaps > 0 || r.bestLap > 0) activeCarsWithLaps++;
+      let b1 = r.bestSz1 > 0 ? r.bestSz1 : 0;
+      if (b1 > 0 && (minSz1 === 0 || b1 < minSz1)) minSz1 = b1;
+      let b2 = r.bestSz2 > 0 ? r.bestSz2 : 0;
+      if (b2 > 0 && (minSz2 === 0 || b2 < minSz2)) minSz2 = b2;
+      let b3 = r.bestSz3 > 0 ? r.bestSz3 : 0;
+      if (b3 > 0 && (minSz3 === 0 || b3 < minSz3)) minSz3 = b3;
+      let b4 = r.bestSz4 > 0 ? r.bestSz4 : 0;
+      if (b4 > 0 && (minSz4 === 0 || b4 < minSz4)) minSz4 = b4;
+      if (r.bestLap > 0 && (minBestLap === 0 || r.bestLap < minBestLap)) minBestLap = r.bestLap;
+    });
+
+    if (minBestLap > 0) sessionBestLap = minBestLap;
+    let nowTs = Date.now();
+
+    let displayData = [];
+
     if (data.length === 0) {
       html = `<tr><td colspan="${totalCols}">Keine Autos erfasst</td></tr>`;
       currentLeaderId = null;
-      let dCar = document.getElementById('dimmerCarText');
-      if (dCar) dCar.innerText = "Kein Fahrzeug gewählt";
     } else {
       let leaderSearch = [...data];
       if (currentMode === 1 || currentMode === 4) {
@@ -638,7 +765,7 @@ async function updateData(fullSync = false) {
         leaderSearch.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
       }
 
-      let leaderLaps = leaderSearch[0].completedLaps;
+      leaderLaps = leaderSearch[0].completedLaps;
       let leaderElem = document.getElementById('leaderLapDisplay');
       if (leaderElem) leaderElem.innerText = leaderLaps;
 
@@ -649,34 +776,12 @@ async function updateData(fullSync = false) {
         }
       }
 
-      let displayData = sortLapData(data);
+      displayData = sortLapData(data);
 
       let thLapsLabel = document.getElementById('th-laps-label');
       if (thLapsLabel) thLapsLabel.innerText = isDrag ? "Läufe" : "Runde";
       let thLastLabel = document.getElementById('th-last-label');
       if (thLastLabel) thLastLabel.innerText = isDrag ? "Laufzeit" : "Letzte Zeit";
-
-      let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0;
-      let minBestLap = 0;
-      let activeCarsWithLaps = 0;
-
-      data.forEach(r => {
-        if (r.completedLaps > 0 || r.bestLap > 0) activeCarsWithLaps++;
-        let b1 = r.bestSz1 > 0 ? r.bestSz1 : 0;
-        if (b1 > 0 && (minSz1 === 0 || b1 < minSz1)) minSz1 = b1;
-        let b2 = r.bestSz2 > 0 ? r.bestSz2 : 0;
-        if (b2 > 0 && (minSz2 === 0 || b2 < minSz2)) minSz2 = b2;
-        let b3 = r.bestSz3 > 0 ? r.bestSz3 : 0;
-        if (b3 > 0 && (minSz3 === 0 || b3 < minSz3)) minSz3 = b3;
-        let b4 = r.bestSz4 > 0 ? r.bestSz4 : 0;
-        if (b4 > 0 && (minSz4 === 0 || b4 < minSz4)) minSz4 = b4;
-        if (r.bestLap > 0 && (minBestLap === 0 || r.bestLap < minBestLap)) minBestLap = r.bestLap;
-      });
-
-      if (minBestLap > 0) sessionBestLap = minBestLap;
-      let nowTs = Date.now();
-
-      let dimmerTargetId = (selectedTTSCars.length === 1) ? selectedTTSCars[0] : leaderSearch[0].id;
 
       displayData.forEach((row) => {
         carNamesMap[row.id] = { driver: row.driver, car: row.car };
@@ -766,48 +871,8 @@ async function updateData(fullSync = false) {
         if (currentMode === 4) lapsDisplay = row.completedLaps > 0 ? (row.completedLaps + (row.completedLaps === 1 ? ' Lauf' : ' Läufe')) : '0';
         else if (targetLaps > 0) lapsDisplay += ' / ' + targetLaps;
 
-        let isMySelectedCar = (selectedTTSCars.length === 1 && selectedTTSCars[0] === row.id);
+        let isMySelectedCar = selectedTTSCars.includes(row.id);
         let rowHighlightClass = isMySelectedCar ? ' class="my-selected-car-row"' : '';
-
-        if (row.id === dimmerTargetId) {
-          updateDimmerUI(row, minBestLap);
-          
-          let setDimmerBoxStyle = (boxId, valId, cssClassStr, szVal) => {
-            let box = document.getElementById(boxId);
-            let valElem = document.getElementById(valId);
-            if (box && valElem) {
-              box.className = `dimmer-sector-box ${cssClassStr}`;
-              if (szVal > 0) {
-                if (cssClassStr.includes('purple')) {
-                  valElem.style.color = 'var(--neon-purple)';
-                  valElem.style.textShadow = '0 0 8px rgba(181,50,255,0.7)';
-                } else if (cssClassStr.includes('green')) {
-                  valElem.style.color = 'var(--neon-green)';
-                  valElem.style.textShadow = 'none';
-                } else {
-                  valElem.style.color = 'var(--neon-orange)';
-                  valElem.style.textShadow = 'none';
-                }
-              } else {
-                valElem.style.color = 'var(--text-main)';
-                valElem.style.textShadow = 'none';
-              }
-            }
-          };
-          setDimmerBoxStyle('dimmer-box-1', 'dimmer-sz1-val', sz1Class, row.sz1);
-          setDimmerBoxStyle('dimmer-box-2', 'dimmer-sz2-val', sz2Class, row.sz2);
-          setDimmerBoxStyle('dimmer-box-3', 'dimmer-sz3-val', sz3Class, row.sz3);
-          setDimmerBoxStyle('dimmer-box-4', 'dimmer-sz4-val', sz4Class, row.sz4);
-          
-          let dMode = document.getElementById('dimmerModeText');
-          if (dMode) {
-             if (currentMode === 0) dMode.innerText = "Freies Training";
-             else if (currentMode === 1) dMode.innerText = "Qualifying";
-             else if (currentMode === 2) dMode.innerText = `Rennen (Runde ${row.completedLaps+1} von ${targetLaps})`;
-             else if (currentMode === 3) dMode.innerText = "Rennen (Zeit)";
-             else if (currentMode === 4) dMode.innerText = "Dragrace";
-          }
-        }
 
         html += `<tr${rowHighlightClass}>
           <td><strong>P${defaultPosition}</strong></td>
@@ -822,9 +887,48 @@ async function updateData(fullSync = false) {
         </tr>`;
       });
     }
+
     let lapTable = document.getElementById('lapTable');
     if (lapTable) lapTable.innerHTML = html;
     updateTTSFilterDisplay();
+
+    // --- RENN-DASHBOARD UPDATE (1 ODER 2 FAHRER SPLITSCREEN) ---
+    let dMode = document.getElementById('dimmerModeText');
+    if (dMode) {
+      if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
+      else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? "QUALIFYING (BEENDET)" : "QUALIFYING";
+      else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? `RENNEN (${leaderLaps}/${targetLaps} RND)` : "RENNEN (RUNDEN)";
+      else if (currentMode === 3) dMode.innerText = "RENNEN (ZEIT)";
+      else if (currentMode === 4) dMode.innerText = "DRAGRACE";
+    }
+
+    let dLeaderLap = document.getElementById('dimmerLeaderLapText');
+    if (dLeaderLap) dLeaderLap.innerText = leaderLaps || 0;
+
+    let dOverall = document.getElementById('dimmerOverallText');
+    if (dOverall) dOverall.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
+
+    let isTwoDrivers = (selectedTTSCars.length >= 2);
+    let targetId1 = (selectedTTSCars.length >= 1) ? selectedTTSCars[0] : (displayData[0]?.id || 1);
+    let targetId2 = isTwoDrivers ? selectedTTSCars[1] : null;
+
+    let dContainer = document.getElementById('dimmerDriversContainer');
+    let col2 = document.getElementById('dimmerDriverCol2');
+    let divLine = document.getElementById('dimmerDivider');
+
+    if (dContainer) {
+      dContainer.className = isTwoDrivers ? 'dimmer-drivers-container split-drivers' : 'dimmer-drivers-container single-driver';
+    }
+    if (col2) col2.style.display = isTwoDrivers ? 'flex' : 'none';
+    if (divLine) divLine.style.display = isTwoDrivers ? 'block' : 'none';
+
+    let row1 = displayData.find(r => r.id === targetId1);
+    let row2 = targetId2 ? displayData.find(r => r.id === targetId2) : null;
+
+    updateDashboardDriverCol(1, targetId1, row1, minBestLap, minSz1, minSz2, minSz3, minSz4);
+    if (isTwoDrivers && targetId2) {
+      updateDashboardDriverCol(2, targetId2, row2, minBestLap, minSz1, minSz2, minSz3, minSz4);
+    }
   } catch (err) {
   } finally {
     isUpdatingData = false;
@@ -995,6 +1099,7 @@ async function pollData() {
   isPolling = true;
   try {
     let mConfig = document.getElementById('configModal');
+    let mDriverConfig = document.getElementById('driverConfigModal');
     let mStatsOverview = document.getElementById('statsOverviewModal');
     let mStatsDriver = document.getElementById('statsModal');
     let mOtaAlert = document.getElementById('otaAlertModal');
@@ -1002,6 +1107,7 @@ async function pollData() {
     let mRole = document.getElementById('roleSelectModal');
     
     let isModalOpen = (mConfig && mConfig.style.display === 'block') ||
+                      (mDriverConfig && mDriverConfig.style.display === 'block') ||
                       (mStatsOverview && mStatsOverview.style.display === 'block') ||
                       (mStatsDriver && mStatsDriver.style.display === 'block') ||
                       (mOtaAlert && mOtaAlert.style.display === 'block') ||
@@ -1190,6 +1296,7 @@ window.addEventListener('DOMContentLoaded', () => {
 window.onclick = function(event) {
   if (event.target === document.getElementById('adminConfirmModal')) closeAdminConfirmModal();
   if (event.target === document.getElementById('configModal')) closeConfigModal();
+  if (event.target === document.getElementById('driverConfigModal')) closeDriverConfigModal();
   if (event.target === document.getElementById('statsModal')) closeStatsModal();
   if (event.target === document.getElementById('statsOverviewModal')) closeStatsOverviewModal();
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
@@ -1205,6 +1312,7 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeAdminConfirmModal();
     closeConfigModal();
+    closeDriverConfigModal();
     closeStatsModal();
     closeStatsOverviewModal();
     closeResetModal();

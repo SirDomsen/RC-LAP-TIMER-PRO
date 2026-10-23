@@ -128,7 +128,7 @@ body.role-admin .driver-only {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  min-width: 210px;
+  min-width: 190px;
 }
 
 .role-choice-grid {
@@ -168,6 +168,9 @@ body.role-admin .driver-only {
   box-shadow: 0 0 25px rgba(0, 229, 255, 0.35);
 }
 
+/* ========================================================
+   RENN-DASHBOARD (ECHTES OLED-SCHWARZ MIT LIVE-DATEN)
+   ======================================================== */
 #oledDimOverlay {
   display: none;
   position: fixed;
@@ -175,77 +178,246 @@ body.role-admin .driver-only {
   background: #000000;
   z-index: 10000;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  cursor: pointer;
   user-select: none;
-  padding: 30px 15px;
+  padding: 20px 15px 35px 15px;
   overflow-y: auto;
+}
+
+.dimmer-back-btn {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #bbb;
+  padding: 7px 14px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10001;
+}
+.dimmer-back-btn:hover, .dimmer-back-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateX(-2px);
+}
+.dimmer-back-arrow {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .dimmer-top {
   text-align: center;
-  margin-bottom: 20px;
+  margin-top: 35px;
+  margin-bottom: 15px;
+  width: 100%;
 }
+.dimmer-mode-badge {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--neon-cyan);
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid var(--neon-cyan);
+  padding: 4px 14px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.dimmer-top-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dimmer-top-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 14px;
+  border-radius: 8px;
+  min-width: 100px;
+}
+.dimmer-top-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.dimmer-top-stat-val {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+}
+.dimmer-top-stat-val.timer-val { color: var(--neon-cyan); font-size: 24px; }
+.dimmer-top-stat-val.leader-val { color: var(--neon-orange); }
+.dimmer-top-stat-val.best-val { color: var(--neon-purple); text-shadow: 0 0 10px rgba(181, 50, 255, 0.6); }
+
+.dimmer-drivers-container {
+  display: flex;
+  width: 100%;
+  max-width: 950px;
+  justify-content: center;
+  margin-top: 10px;
+  gap: 15px;
+}
+.dimmer-drivers-container.single-driver {
+  max-width: 440px;
+}
+.dimmer-driver-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+.dimmer-divider {
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15) 20%, rgba(255, 255, 255, 0.15) 80%, transparent);
+  margin: 0 5px;
+}
+
+.dimmer-driver-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+.dimmer-driver-name-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dimmer-driver-name {
+  color: var(--neon-green);
+  font-size: 17px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+.dimmer-pos-badge {
+  background: rgba(0, 255, 102, 0.15);
+  border: 1px solid var(--neon-green);
+  color: var(--neon-green);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
 .dimmer-center {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   align-items: center;
   width: 100%;
 }
 .dimmer-time-box {
   text-align: center;
   background: rgba(255, 255, 255, 0.03);
-  padding: 18px;
+  padding: 14px;
   border-radius: 12px;
   width: 100%;
   max-width: 420px;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+.dimmer-time-box.last-lap-box {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+}
 .dimmer-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .dimmer-val {
-  font-size: 42px;
+  font-size: 36px;
   font-family: var(--font-display);
   font-weight: 900;
   line-height: 1.1;
+  color: var(--text-main);
+}
+.dimmer-delta-val {
+  font-size: 14px;
+  font-weight: bold;
+  margin-top: 5px;
+  font-family: var(--font-display);
 }
 
 .dimmer-sectors {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   max-width: 420px;
   justify-content: center;
-  margin-top: 25px;
+  margin-top: 15px;
 }
 .dimmer-sector-box {
   flex: 1;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  padding: 12px 5px;
+  padding: 8px 4px;
   text-align: center;
   transition: all 0.3s;
 }
 .dimmer-sz-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 .dimmer-sz-val {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: bold;
   font-family: var(--font-display);
   color: var(--text-main);
+}
+
+@media (max-width: 650px) {
+  .dimmer-drivers-container.split-drivers {
+    gap: 8px;
+  }
+  .dimmer-time-box {
+    padding: 10px 6px;
+  }
+  .dimmer-val {
+    font-size: 24px !important;
+  }
+  .dimmer-driver-name {
+    font-size: 14px !important;
+  }
+  .dimmer-delta-val {
+    font-size: 12px !important;
+  }
+  .dimmer-sz-val {
+    font-size: 13px !important;
+  }
 }
 
 .card {
