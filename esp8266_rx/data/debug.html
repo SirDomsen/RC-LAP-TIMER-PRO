@@ -115,7 +115,7 @@
   <div class="container">
     <h1>📡 DEBUG CONSOLE</h1>
     <div style="margin-bottom: 15px; text-align: left;">
-      <button class="btn" onclick="location.href='/'">← Zurück zur Startseite</button>
+      <button class="btn" onclick="location.href='/admin.html'">← Zurück</button>
     </div>
 
     <div id="pollingStatus">⚠️ TAB MINIMIERT - POLLING & AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG</div>
@@ -459,6 +459,10 @@
         fetch('/api/debug/set?active=0', { method: 'POST' });
       }
     });
+
+    function goBackToMain() {
+      location.href = '/admin.html';
+    }
 
     document.addEventListener('DOMContentLoaded', async () => {
       initFilters();

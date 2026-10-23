@@ -355,6 +355,17 @@ void initNetworkAndServer() {
   });
 
   server.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("file")) {
+      String fn = request->getParam("file")->value();
+      fn.replace("%2F", "/");
+      fn.replace("%2f", "/");
+      while (fn.startsWith("/")) fn = fn.substring(1);
+      fn = "/" + fn;
+      if (LittleFS.exists(fn)) {
+        request->send(LittleFS, fn, "application/octet-stream", true);
+        return;
+      }
+    }
     if (isHeapCriticalForFileTransfer()) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Server busy");
       res->addHeader("Retry-After", "2");
@@ -367,11 +378,12 @@ void initNetworkAndServer() {
       String filename = request->getParam("file")->value();
       if (!filename.startsWith("/")) filename = "/" + filename;
       if (LittleFS.exists(filename)) {
-        AsyncWebServerResponse *response = request->beginResponse(LittleFS, filename, "application/octet-stream");
-        String downloadName = filename.startsWith("/") ? filename.substring(1) : filename;
-        response->addHeader("Content-Disposition", "attachment; filename=\"" + downloadName + "\"");
-        response->addHeader("Connection", "close");
-        request->send(response);
+        request->send(LittleFS, filename, "application/octet-stream", true);
+        return;
+
+
+
+
         return;
       }
     }

@@ -204,7 +204,7 @@
     <h1>🚀 LITTLEFS DATEI- & SPEICHER-MANAGER</h1>
     
     <div style="margin-bottom: 15px; text-align: left;">
-      <button class="btn btn-cyan" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="location.href='/'">← Zur Hauptseite</button>
+      <button class="btn btn-cyan" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="location.href='/admin.html'">← Zurück</button>
     </div>
 
     <!-- SPEICHERPLATZ-ANZEIGE -->
@@ -509,7 +509,7 @@
           status.style.color = 'var(--neon-green)';
           status.innerText = '✅ Update erfolgreich! ESP8266 startet neu... Weiterleitung in 10s...';
           setTimeout(() => {
-            location.href = '/';
+            goBackToMain();
           }, 10000);
         } else {
           status.style.color = 'var(--neon-red)';
@@ -649,19 +649,43 @@
         status.innerText = `ESP startet neu... Verbindung in ${countdown}s prüfen`;
         if (--countdown < 0) {
           clearInterval(itv);
-          location.href = '/';
+          goBackToMain();
         }
       }, 1000);
     }
 
-    function downloadSingleFile(name) {
-      let cleanName = name.startsWith('/') ? name : '/' + name;
-      let a = document.createElement('a');
-      a.href = '/api/download?file=' + encodeURIComponent(cleanName);
-      a.download = cleanName.substring(1);
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    function goBackToMain() {
+      location.href = '/admin.html';
+    }
+
+    async function fetchFileFromESP(filename) {
+      let cleanName = filename.startsWith('/') ? filename.substring(1) : filename;
+      try {
+        let res = await fetch('/api/download?file=' + encodeURIComponent(cleanName));
+        if (res.ok) return await res.arrayBuffer();
+      } catch (e) {}
+
+      let res = await fetch('/' + cleanName);
+      if (!res.ok) throw new Error(`HTTP ${res.status} bei ${cleanName}`);
+      return await res.arrayBuffer();
+    }
+
+    async function downloadSingleFile(name) {
+      let cleanName = name.startsWith('/') ? name.substring(1) : name;
+      try {
+        let buf = await fetchFileFromESP(cleanName);
+        let blob = new Blob([buf], { type: 'application/octet-stream' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = cleanName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Fehler beim Herunterladen von " + cleanName + ": " + err.message);
+      }
     }
 
     function createZipArchive(files) {
@@ -793,10 +817,7 @@
             prog.innerText = `⏳ Lade Datei (${i + 1}/${cachedFiles.length}): ${cleanName}...`;
           }
 
-          let res = await fetch('/api/download?file=' + encodeURIComponent(fileInfo.name));
-          if (!res.ok) throw new Error(`HTTP ${res.status} bei ${cleanName}`);
-
-          let buf = await res.arrayBuffer();
+          let buf = await fetchFileFromESP(cleanName);
           let fileDate = (fileInfo.time && fileInfo.time > 100000000) ? new Date(fileInfo.time * 1000) : new Date();
 
           filesForZip.push({

@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.7.5'; 
+window.UI_VERSION = '3.8.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -1421,8 +1421,11 @@ function handleSectorTrackEntryTTS(carId) {
 
   if (previousLaps[carId] === undefined || previousLaps[carId] === 0) {
     awaitingBaseCrossMap[carId] = true;
-    previousLaps[carId] = 0;
-    previousBestLaps[carId] = 0;
+    let existingCar = lastLapsData.find(c => c.id === carId);
+    let knownLaps = existingCar ? existingCar.completedLaps : 0;
+    previousLaps[carId] = knownLaps;
+    previousBestLaps[carId] = existingCar ? (existingCar.bestLap || 0) : 0;
+    lastAnnouncedLapMap[carId] = knownLaps;
     lapHistoryMap[carId] = [];
     statusCarsMap[carId] = 'outlap';
     if (isCarAllowedForTTS(carId)) speak(driverName + " auf Outlap!");
@@ -1447,10 +1450,9 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   if (prevLaps === undefined) {
     previousLaps[carId] = currentLaps;
     previousBestLaps[carId] = car.bestLap || 0;
+    lastAnnouncedLapMap[carId] = currentLaps;
     lapHistoryMap[carId] = [];
     awaitingBaseCrossMap[carId] = false;
-
-    if (currentMode !== 4 && isCarAllowedForTTS(carId)) speak(driverName + " gestartet!");
     return;
   }
 

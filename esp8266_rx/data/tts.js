@@ -3,6 +3,13 @@ let isSpeaking = false;
 let selectedTTSCars = JSON.parse(localStorage.getItem('myTTSCars') || '[]');
 const synth = window.speechSynthesis;
 
+// Beim Laden/Aktualisieren der Seite eventuelle Reste aus dem Browser-Sprachpuffer verwerfen
+if ('speechSynthesis' in window) {
+  try {
+    synth.cancel();
+  } catch (e) {}
+}
+
 function cancelRaceCountdown() {
   countdownTimeouts.forEach(t => clearTimeout(t));
   countdownTimeouts = [];
