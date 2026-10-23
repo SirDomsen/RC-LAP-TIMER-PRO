@@ -107,6 +107,39 @@
     .btn-green:hover { background: #00cc52; }
     .btn-red { background: rgba(255, 51, 102, 0.15); color: var(--neon-red); border-color: var(--neon-red); margin-top: 10px; }
     .btn-red:hover { background: var(--neon-red); color: #fff; }
+    .btn-purple { background: var(--neon-purple); color: #fff; border-color: var(--neon-purple); }
+    .btn-purple:hover { background: #9900ff; box-shadow: 0 0 15px rgba(181, 50, 255, 0.6); }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(5px);
+      overflow-y: auto;
+      padding: 15px;
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background: #161b22;
+      margin: 12vh auto;
+      padding: 24px 20px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+      border: 1px solid var(--neon-purple);
+      box-shadow: 0 0 35px rgba(181, 50, 255, 0.45);
+      box-sizing: border-box;
+      animation: modalFadeIn 0.25s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: translateY(-15px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     .btn-icon {
       background: none;
       border: none;
@@ -194,7 +227,7 @@
     <div class="card">
       <h3 class="card-title">Dateien hochladen</h3>
       <div class="info-box">
-        ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert[cite: 22]. Das originale PC-Änderungsdatum bleibt exakt erhalten[cite: 22].
+        ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert . Das originale PC-Änderungsdatum bleibt exakt erhalten .
       </div>
 
       <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
@@ -245,9 +278,54 @@
     <div class="card">
       <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
       <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
-        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren[cite: 22].
+        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .
       </p>
       <button class="btn btn-red" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
+    </div>
+
+    <!-- FIRMWARE OTA UPDATE CARD -->
+    <div class="card" style="border-color: rgba(181, 50, 255, 0.4);">
+      <h3 class="card-title" style="color: var(--neon-purple);">⚡ Firmware OTA Update (.bin)</h3>
+      <div class="info-box" style="border-left-color: var(--neon-purple);">
+        Hier kann eine kompilierte <strong>firmware.bin</strong> direkt über das WLAN geflasht werden.<br>
+        Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der ESP8266 automatisch neu.
+      </div>
+
+      <div class="file-dropzone" style="border-color: rgba(181, 50, 255, 0.35); background: rgba(181, 50, 255, 0.03);" onclick="document.getElementById('firmwareInput').click()">
+        <input type="file" id="firmwareInput" accept=".bin" style="display:none;" onchange="handleFirmwareSelect(this)">
+        <div id="fwDropLabel" style="color:var(--text-main);">📁 Klicke hier, um eine .bin Firmware-Datei auszuwählen</div>
+        <small id="fwFileLabel" style="color:var(--neon-purple); display:block; margin-top:5px; font-weight:bold;"></small>
+      </div>
+
+      <button id="fwUploadBtn" class="btn" style="background: var(--neon-purple); color: #fff; border-color: var(--neon-purple);" onclick="startFirmwareUpload()" disabled>Firmware jetzt flashen ⚡</button>
+
+      <div class="progress-bar-bg" id="fwProgressBg">
+        <div class="progress-bar" id="fwProgressBar" style="background: var(--neon-purple);"></div>
+      </div>
+      <div id="fwStatusText" style="font-size:13px; margin-top:10px; text-align:center; min-height:18px; font-family:monospace;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: FIRMWARE CONFIRM -->
+  <div id="fwConfirmModal" class="modal">
+    <div class="modal-content">
+      <h3 style="color:var(--neon-purple); font-family:'Orbitron',sans-serif; margin-top:0; font-size:18px; letter-spacing:1px;">⚡ FIRMWARE OTA FLASHEN</h3>
+      
+      <div style="background:rgba(0,0,0,0.5); padding:12px 15px; border-radius:8px; border:1px dashed var(--neon-purple); margin:15px 0; text-align:left;">
+        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Ausgewählte Datei:</div>
+        <div id="fwModalFileName" style="font-family:monospace; font-size:14px; color:#fff; font-weight:bold; word-break:break-all;">firmware.bin</div>
+        <div id="fwModalFileSize" style="font-size:12px; color:var(--neon-cyan); margin-top:4px;">--- KB</div>
+      </div>
+
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:20px; line-height:1.4;">
+        Soll die Firmware jetzt per Funk (OTA) geflasht werden?<br>
+        <span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Verbindung während der Übertragung nicht trennen! Der ESP8266 startet nach dem Flash automatisch neu.</span>
+      </p>
+
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold;" onclick="closeFwConfirmModal()">ABBRECHEN</button>
+        <button class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmFirmwareUpload()">FLASHEN ⚡</button>
+      </div>
     </div>
   </div>
 
@@ -256,6 +334,7 @@
     let cachedFiles = [];
     let sortColumn = 'time'; // Standard: Neueste Dateien oben
     let sortAsc = false;
+    let selectedFirmwareFile = null;
 
     function isCompressibleFile(filename) {
       const lower = filename.toLowerCase();
@@ -355,6 +434,91 @@
       document.getElementById('fileInput').value = '';
       selectedFiles = [];
       setTimeout(loadFilesList, 500);
+    }
+
+    function handleFirmwareSelect(input) {
+      if (input.files && input.files[0]) {
+        selectedFirmwareFile = input.files[0];
+        document.getElementById('fwUploadBtn').disabled = false;
+        let sizeKb = (selectedFirmwareFile.size / 1024).toFixed(1);
+        document.getElementById('fwFileLabel').innerText = `Ausgewählt: ${selectedFirmwareFile.name} (${sizeKb} KB)`;
+      } else {
+        selectedFirmwareFile = null;
+        document.getElementById('fwUploadBtn').disabled = true;
+        document.getElementById('fwFileLabel').innerText = '';
+      }
+    }
+
+    function startFirmwareUpload() {
+      if (!selectedFirmwareFile) return;
+      let nameElem = document.getElementById('fwModalFileName');
+      let sizeElem = document.getElementById('fwModalFileSize');
+      if (nameElem) nameElem.innerText = selectedFirmwareFile.name;
+      if (sizeElem) sizeElem.innerText = (selectedFirmwareFile.size / 1024).toFixed(1) + " KB";
+      let modal = document.getElementById('fwConfirmModal');
+      if (modal) modal.style.display = 'block';
+    }
+
+    function closeFwConfirmModal() {
+      let modal = document.getElementById('fwConfirmModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function confirmFirmwareUpload() {
+      closeFwConfirmModal();
+      executeFirmwareFlash();
+    }
+
+    function executeFirmwareFlash() {
+      if (!selectedFirmwareFile) return;
+
+      let btn = document.getElementById('fwUploadBtn');
+      let pBg = document.getElementById('fwProgressBg');
+      let pBar = document.getElementById('fwProgressBar');
+      let status = document.getElementById('fwStatusText');
+
+      btn.disabled = true;
+      pBg.style.display = 'block';
+      pBar.style.width = '0%';
+      status.style.color = 'var(--neon-purple)';
+      status.innerText = 'Flashe Firmware... Bitte Verbindung nicht trennen!';
+
+      let formData = new FormData();
+      formData.append('firmware', selectedFirmwareFile, selectedFirmwareFile.name);
+
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/update/firmware', true);
+
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          let pct = Math.round((e.loaded / e.total) * 100);
+          pBar.style.width = pct + '%';
+          status.innerText = `Flashe Firmware: ${pct}% (${(e.loaded / 1024).toFixed(0)} KB / ${(e.total / 1024).toFixed(0)} KB)...`;
+        }
+      };
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          pBar.style.width = '100%';
+          status.style.color = 'var(--neon-green)';
+          status.innerText = '✅ Update erfolgreich! ESP8266 startet neu... Weiterleitung in 10s...';
+          setTimeout(() => {
+            location.href = '/';
+          }, 10000);
+        } else {
+          status.style.color = 'var(--neon-red)';
+          status.innerText = `❌ Fehler beim Flashen (HTTP ${xhr.status}): ${xhr.responseText || 'Unbekannter Fehler'}`;
+          btn.disabled = false;
+        }
+      };
+
+      xhr.onerror = function() {
+        status.style.color = 'var(--neon-red)';
+        status.innerText = '❌ Netzwerkfehler während der Übertragung!';
+        btn.disabled = false;
+      };
+
+      xhr.send(formData);
     }
 
     function formatFileDate(epochSec) {
@@ -483,6 +647,15 @@
         }
       }, 1000);
     }
+
+    window.onclick = function(event) {
+      let modal = document.getElementById('fwConfirmModal');
+      if (event.target === modal) closeFwConfirmModal();
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeFwConfirmModal();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
       let nowSec = Math.floor(Date.now() / 1000);

@@ -356,13 +356,20 @@ body.role-admin .driver-only {
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 900;
-  letter-spacing: 1px;
-  padding: 2px 8px;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
   border-radius: 12px;
   text-transform: uppercase;
   background: rgba(255, 153, 0, 0.18);
   border: 1px solid var(--neon-orange);
   color: var(--neon-orange);
+  display: inline-block;
+  white-space: nowrap;
+}
+.dimmer-status-pill.status-box {
+  background: rgba(255, 51, 102, 0.18);
+  border-color: var(--neon-red);
+  color: var(--neon-red);
 }
 .dimmer-status-pill.status-pause {
   background: rgba(0, 229, 255, 0.18);
@@ -370,9 +377,9 @@ body.role-admin .driver-only {
   color: var(--neon-cyan);
 }
 .dimmer-status-pill.status-outlap {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
+  background: rgba(255, 215, 0, 0.18);
+  border-color: var(--neon-gold);
+  color: var(--neon-gold);
 }
 
 .dimmer-center {
@@ -522,10 +529,11 @@ body.role-admin .driver-only {
 }
 
 .dimmer-leaderboard-table td {
-  padding: 13px 10px;
+  padding: 12px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 15px;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .dimmer-leaderboard-table tr:hover {

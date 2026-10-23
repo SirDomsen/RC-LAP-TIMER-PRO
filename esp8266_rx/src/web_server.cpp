@@ -6,6 +6,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <Updater.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
@@ -283,6 +284,34 @@ void initNetworkAndServer() {
     request->send(200, "text/plain", "Upload erfolgreich!");
   }, handleFileUpload);
 
+  server.on("/api/update/firmware", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool hasError = Update.hasError();
+    AsyncWebServerResponse *response = request->beginResponse(hasError ? 500 : 200, "text/plain", hasError ? "Flash-Fehler" : "OK");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    if (!hasError) {
+      scheduleESPReset(1200);
+    }
+  }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+    if (!index) {
+      Update.runAsync(true);
+      size_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+      if (!Update.begin(maxSketchSpace, U_FLASH)) {
+        Update.printError(Serial);
+      }
+    }
+    if (!Update.hasError()) {
+      if (Update.write(data, len) != len) {
+        Update.printError(Serial);
+      }
+    }
+    if (final) {
+      if (!Update.end(true)) {
+        Update.printError(Serial);
+      }
+    }
+  });
+
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     FSInfo fs_info;
     LittleFS.info(fs_info);
@@ -332,7 +361,7 @@ void initNetworkAndServer() {
 
   server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(160);
+    json.reserve(200);
     json = "{\"freeHeap\":";
     json += ESP.getFreeHeap();
     json += ",\"frag\":";
@@ -343,6 +372,8 @@ void initNetworkAndServer() {
     json += perfAvgLoopUs;
     json += ",\"cpuMhz\":";
     json += ESP.getCpuFreqMHz();
+    json += ",\"uptimeSec\":";
+    json += (millis() / 1000UL);
     json += "}";
     request->send(200, "application/json", json);
   });

@@ -131,6 +131,10 @@
       </div>
       <div class="metrics-grid">
         <div class="metric-box">
+          <div class="metric-label">Laufzeit</div>
+          <div class="metric-val" id="valUptime" style="color:var(--text-muted);">--:--:--</div>
+        </div>
+        <div class="metric-box">
           <div class="metric-label">CPU Takt</div>
           <div class="metric-val" id="valCpu" style="color:var(--text-muted);">-- MHz</div>
         </div>
@@ -215,11 +219,23 @@
     let isMetricsEnabled = false;
     let isRecordingEnabled = false;
     let isPageVisible = true;
+    let currentUptimeSec = null;
     
     let sortCol = 'time';
     let sortDesc = true;
 
     // --- FORMATTIERUNG ---
+    function formatUptime(totalSeconds) {
+      let sec = Math.floor(totalSeconds);
+      let hrs = Math.floor(sec / 3600);
+      let mins = Math.floor((sec % 3600) / 60);
+      let secs = sec % 60;
+      let hh = String(hrs).padStart(2, '0');
+      let mm = String(mins).padStart(2, '0');
+      let ss = String(secs).padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
     function formatTime(ms) {
       let totalSec = Math.floor(ms / 1000);
       let remMs = ms % 1000;
@@ -311,6 +327,8 @@
     function toggleMetrics() {
       isMetricsEnabled = document.getElementById('metricsToggle').checked;
       if (!isMetricsEnabled) {
+        document.getElementById('valUptime').innerText = '--:--:--';
+        currentUptimeSec = null;
         document.getElementById('valCpu').innerText = '-- MHz';
         document.getElementById('valHeap').innerText = '-- KB';
         document.getElementById('valFrag').innerText = '-- %';
@@ -353,6 +371,26 @@
           let loopMs = (data.maxLoopUs / 1000).toFixed(1);
           loopElem.innerText = loopMs + ' ms';
           loopElem.style.color = data.maxLoopUs > 15000 ? 'var(--neon-red)' : (data.maxLoopUs > 5000 ? 'var(--neon-orange)' : 'var(--neon-green)');
+
+          let uptimeSec = data.uptimeSec;
+          if (uptimeSec === undefined) {
+            try {
+              let tlRes = await fetch('/api/timeleft');
+              if (tlRes.ok) {
+                let tlData = await tlRes.json();
+                if (tlData.serverMillis) uptimeSec = Math.floor(tlData.serverMillis / 1000);
+              }
+            } catch(e) {}
+          }
+
+          if (uptimeSec !== undefined) {
+            currentUptimeSec = uptimeSec;
+            let uptimeElem = document.getElementById('valUptime');
+            if (uptimeElem) {
+              uptimeElem.innerText = formatUptime(currentUptimeSec);
+              uptimeElem.style.color = 'var(--neon-cyan)';
+            }
+          }
         }
       } catch(e) {}
     }
@@ -394,6 +432,13 @@
 
     // --- INTERVALLE (ENTKOPPELT) ---
     setInterval(fetchSystemMetrics, 3000); // Entspannte 3 Sekunden für Metriken
+    setInterval(() => {
+      if (currentUptimeSec !== null && isMetricsEnabled && isPageVisible) {
+        currentUptimeSec++;
+        let uptimeElem = document.getElementById('valUptime');
+        if (uptimeElem) uptimeElem.innerText = formatUptime(currentUptimeSec);
+      }
+    }, 1000);
     setInterval(fetchDebugPackets, 1000);  // Flotte 1 Sekunde für Funkpakete
 
     // --- VISIBILITY / STANDBY LOGIK ---

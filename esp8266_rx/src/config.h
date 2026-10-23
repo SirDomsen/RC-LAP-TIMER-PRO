@@ -32,10 +32,10 @@
   #define LED_SIGNAL  2           // GPIO2 für die blaue Onboard-LED (Active LOW)
   #define LED_ONBOARD 2           // GPIO2
 #else
-  #define IR_PIN      D2          // GPIO4  - TSOP4838 Data Pin[cite: 5]
-  #define LED_READY   D5          // GPIO14 - Grüne Ready-LED[cite: 5]
-  #define LED_SIGNAL  D6          // GPIO12 - Gelbe Signal-LED[cite: 5]
-  #define LED_ONBOARD LED_BUILTIN // GPIO2  - Interne ESP Status LED (Active LOW)[cite: 5]
+  #define IR_PIN      D2          // GPIO4  - TSOP4838 Data Pin 
+  #define LED_READY   D5          // GPIO14 - Grüne Ready-LED 
+  #define LED_SIGNAL  D6          // GPIO12 - Gelbe Signal-LED 
+  #define LED_ONBOARD LED_BUILTIN // GPIO2  - Interne ESP Status LED (Active LOW) 
 #endif
 // --- Renn- & EEPROM Parameter ---
 #define MAX_CARS            15

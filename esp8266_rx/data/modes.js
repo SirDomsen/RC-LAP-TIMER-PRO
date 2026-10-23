@@ -121,7 +121,7 @@ function stopSession() {
   fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' })
     .then(() => {
       speak("Durchgang gestoppt. Freies Training.", true);
-      updateData();
+      updateData(true);
     }).catch(err => console.error(err));
 }
 
@@ -166,7 +166,7 @@ function resetLapsDataSilent() {
     currentLeaderId = null;
     sessionBestLap = 0;
     timeExpiredAnnounced = false;
-    updateData();
+    updateData(true);
   }).catch(err => console.error(err));
 }
 
@@ -188,6 +188,6 @@ function resetLapsData(hardReset = true) {
     window.sessionStartTs = Math.floor(Date.now() / 1000);
     let leaderDisp = document.getElementById('leaderLapDisplay');
     if (leaderDisp) leaderDisp.innerText = "0";
-    updateData();
+    updateData(true);
   }).catch(err => console.error(err));
 }

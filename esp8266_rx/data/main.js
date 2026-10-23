@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.7.2'; 
+window.UI_VERSION = '3.7.4'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -941,7 +941,7 @@ function startLocalTimerTicker() {
   if (localTimerInterval) clearInterval(localTimerInterval);
 
   localTimerInterval = setInterval(() => {
-    if (localSecondsLeft > 0 && isSessionActive && !isSessionFinished) {
+    if (localSecondsLeft > 0 && !isSessionFinished) {
       localSecondsLeft--;
       updateTimerDisplayString(localSecondsLeft);
 
@@ -1223,6 +1223,10 @@ async function updateData(fullSync = false) {
       if (qualiFinishedHold) {
         updateTimerDisplayString(0);
       } else if (serverSecondsLeft >= 0) {
+        if (serverSecondsLeft > 0) {
+          isSessionActive = true;
+          isSessionFinished = false;
+        }
         if (localSecondsLeft === -1 || Math.abs(localSecondsLeft - serverSecondsLeft) > 1) {
           localSecondsLeft = serverSecondsLeft;
           updateTimerDisplayString(localSecondsLeft);

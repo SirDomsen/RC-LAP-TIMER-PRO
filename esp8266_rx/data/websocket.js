@@ -89,7 +89,7 @@ function handleLiveEvent(msg) {
       if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
       if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
       if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
-      updateData();
+      updateData(true);
     }
   }
 }
