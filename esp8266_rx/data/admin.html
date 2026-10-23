@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3.7.0">
+  <link rel="stylesheet" href="style.css?v=3.7.2">
 </head>
 <body class="role-admin">
 
@@ -19,7 +19,14 @@
     </button>
 
     <div class="dimmer-top">
-      <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+      <div id="dimmerTrackRecordBanner" class="dimmer-track-record-banner">
+        <span class="track-record-icon">🏆</span>
+        <span class="track-record-label">Tagesbestzeit:</span>
+        <span id="dimmerTrackRecordVal" class="track-record-val">--:--</span>
+      </div>
+      <div>
+        <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+      </div>
       
       <div class="dimmer-top-stats">
         <div class="dimmer-top-stat-item">
@@ -31,98 +38,36 @@
           <span id="dimmerLeaderLapText" class="dimmer-top-stat-val leader-val">0</span>
         </div>
         <div class="dimmer-top-stat-item dimmer-best-item">
-          <span class="dimmer-top-stat-label">🏆 Tagesbestzeit</span>
-          <span id="dimmerOverallText" class="dimmer-top-stat-val best-val">--:--</span>
+          <span class="dimmer-top-stat-label">🏎️ Schnellste Runde</span>
+          <span id="dimmerSessionBestText" class="dimmer-top-stat-val best-val">--:--</span>
         </div>
       </div>
     </div>
 
-    <div id="dimmerDriversContainer" class="dimmer-drivers-container single-driver">
-      <!-- FAHRER 1 SPALTE -->
-      <div id="dimmerDriverCol1" class="dimmer-driver-col">
-        <div class="dimmer-driver-header">
-          <div class="dimmer-driver-name-box">
-            <span class="dimmer-car-icon">🏎️</span>
-            <span id="dimmerCar1Text" class="dimmer-driver-name">Fahrer 1</span>
-          </div>
-          <span id="dimmerPos1Text" class="dimmer-pos-badge">P-</span>
-        </div>
-
-        <div class="dimmer-center">
-          <div class="dimmer-time-box">
-            <div class="dimmer-label">Persönliche Bestzeit</div>
-            <div id="dimmerPb1Text" class="dimmer-val" style="color:var(--neon-green);">--:--</div>
-          </div>
-          <div class="dimmer-time-box last-lap-box">
-            <div class="dimmer-label">Letzte Runde</div>
-            <div id="dimmerLast1Text" class="dimmer-val" style="color:var(--text-main);">--:--</div>
-            <div id="dimmerDelta1Text" class="dimmer-delta-val"></div>
-          </div>
-        </div>
-
-        <div class="dimmer-sectors" id="dimmerSectorsContainer1">
-          <div class="dimmer-sector-box" id="dimmer1-box-1" style="display:none;">
-            <div class="dimmer-sz-label">SZ 1</div>
-            <div id="dimmer1-sz1-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer1-box-2" style="display:none;">
-            <div class="dimmer-sz-label">SZ 2</div>
-            <div id="dimmer1-sz2-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer1-box-3" style="display:none;">
-            <div class="dimmer-sz-label">SZ 3</div>
-            <div id="dimmer1-sz3-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer1-box-4" style="display:none;">
-            <div class="dimmer-sz-label">SZ 4</div>
-            <div id="dimmer1-sz4-val" class="dimmer-sz-val">---</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- VERTIKALE TRENNLINIE (NUR BEI 2 FAHRERN) -->
-      <div id="dimmerDivider" class="dimmer-divider" style="display:none;"></div>
-
-      <!-- FAHRER 2 SPALTE (NUR BEI 2 FAHRERN) -->
-      <div id="dimmerDriverCol2" class="dimmer-driver-col" style="display:none;">
-        <div class="dimmer-driver-header">
-          <div class="dimmer-driver-name-box">
-            <span class="dimmer-car-icon">🏎️</span>
-            <span id="dimmerCar2Text" class="dimmer-driver-name">Fahrer 2</span>
-          </div>
-          <span id="dimmerPos2Text" class="dimmer-pos-badge">P-</span>
-        </div>
-
-        <div class="dimmer-center">
-          <div class="dimmer-time-box">
-            <div class="dimmer-label">Persönliche Bestzeit</div>
-            <div id="dimmerPb2Text" class="dimmer-val" style="color:var(--neon-green);">--:--</div>
-          </div>
-          <div class="dimmer-time-box last-lap-box">
-            <div class="dimmer-label">Letzte Runde</div>
-            <div id="dimmerLast2Text" class="dimmer-val" style="color:var(--text-main);">--:--</div>
-            <div id="dimmerDelta2Text" class="dimmer-delta-val"></div>
-          </div>
-        </div>
-
-        <div class="dimmer-sectors" id="dimmerSectorsContainer2">
-          <div class="dimmer-sector-box" id="dimmer2-box-1" style="display:none;">
-            <div class="dimmer-sz-label">SZ 1</div>
-            <div id="dimmer2-sz1-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer2-box-2" style="display:none;">
-            <div class="dimmer-sz-label">SZ 2</div>
-            <div id="dimmer2-sz2-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer2-box-3" style="display:none;">
-            <div class="dimmer-sz-label">SZ 3</div>
-            <div id="dimmer2-sz3-val" class="dimmer-sz-val">---</div>
-          </div>
-          <div class="dimmer-sector-box" id="dimmer2-box-4" style="display:none;">
-            <div class="dimmer-sz-label">SZ 4</div>
-            <div id="dimmer2-sz4-val" class="dimmer-sz-val">---</div>
-          </div>
-        </div>
+    <div id="dimmerLeaderboardContainer" class="dimmer-leaderboard-container">
+      <div class="dimmer-table-responsive">
+        <table class="dimmer-leaderboard-table">
+          <thead>
+            <tr>
+              <th style="width: 60px;">Pos</th>
+              <th style="text-align: left; padding-left: 14px;">Fahrer / Auto</th>
+              <th style="width: 90px;">Status</th>
+              <th style="width: 85px;" id="dimmer-th-laps">Runde</th>
+              <th id="dimmer-th-sz1" style="width: 80px;">SZ1</th>
+              <th id="dimmer-th-sz2" style="width: 80px;">SZ2</th>
+              <th id="dimmer-th-sz3" style="width: 80px;">SZ3</th>
+              <th id="dimmer-th-sz4" style="width: 80px;">SZ4</th>
+              <th style="width: 110px;" id="dimmer-th-last">Letzte Zeit</th>
+              <th style="width: 105px;">Beste Zeit</th>
+              <th style="width: 95px;">Abstand</th>
+            </tr>
+          </thead>
+          <tbody id="dimmerLeaderboardBody">
+            <tr>
+              <td colspan="11" class="dimmer-table-empty">🏁 Keine aktiven Fahrzeuge auf der Strecke</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -176,9 +121,9 @@
       </div>
 
       <div class="driver-quick-panel driver-only">
-        <div style="text-align:left;">
+        <div style="text-align:center;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:</strong>
-          <div style="font-size:12px; color:var(--text-muted);">Wähle dein Auto – Rundenzeiten & Sektoren werden live vorgelesen</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Wähle dein Auto – Rundenzeiten & Sektoren werden live vorgelesen</div>
         </div>
         <select id="driverQuickSelect" class="driver-quick-select" onchange="onDriverQuickSelectChange(this.value)">
           <option value="all">🔊 Alle Fahrzeuge ansagen</option>
@@ -538,16 +483,16 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.7.0</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.7.1</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=3.7.0"></script>
-  <script src="websocket.js?v=3.7.0"></script>
-  <script src="modes.js?v=3.7.0"></script>
-  <script src="stats.js?v=3.7.0"></script>
-  <script src="config.js?v=3.7.0"></script>
-  <script src="main.js?v=3.7.0"></script>
+  <script src="tts.js?v=3.7.1"></script>
+  <script src="websocket.js?v=3.7.1"></script>
+  <script src="modes.js?v=3.7.1"></script>
+  <script src="stats.js?v=3.7.1"></script>
+  <script src="config.js?v=3.7.1"></script>
+  <script src="main.js?v=3.7.1"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.7.0'; 
+window.UI_VERSION = '3.7.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -15,6 +15,8 @@ let isSessionFinished = false;
 let qualiFinishedHold = false;
 let previousLaps = {};
 let previousBestLaps = {};
+let lastLapDeltaMap = {};
+let previousBestSzMap = {};
 let lastAnnouncedLapMap = {}; 
 let carNamesMap = {};
 let audioUnmuted = false;
@@ -305,6 +307,7 @@ function saveDriverAudioConfig() {
 function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap, minSz1, minSz2, minSz3, minSz4) {
   let dCar = document.getElementById(`dimmerCar${colIdx}Text`);
   let dPos = document.getElementById(`dimmerPos${colIdx}Text`);
+  let dStatus = document.getElementById(`dimmerStatus${colIdx}Badge`);
   let dPb = document.getElementById(`dimmerPb${colIdx}Text`);
   let dLast = document.getElementById(`dimmerLast${colIdx}Text`);
   let dDelta = document.getElementById(`dimmerDelta${colIdx}Text`);
@@ -317,18 +320,21 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
 
   if (!rowData) {
     if (dPos) dPos.innerText = "P-";
+    if (dStatus) dStatus.style.display = 'none';
     if (dPb) dPb.innerText = "--:--";
     if (dLast) {
-      dLast.innerText = "BOX";
-      dLast.style.color = "var(--neon-orange)";
+      dLast.innerText = "--:--";
+      dLast.style.color = "var(--text-main)";
     }
     if (dDelta) dDelta.innerText = "";
     for (let i = 1; i <= 4; i++) {
       let box = document.getElementById(`dimmer${colIdx}-box-${i}`);
       let valElem = document.getElementById(`dimmer${colIdx}-sz${i}-val`);
+      let deltaElem = document.getElementById(`dimmer${colIdx}-sz${i}-delta`);
       let show = (i === 1 && mask.showSz1) || (i === 2 && mask.showSz2) || (i === 3 && mask.showSz3) || (i === 4 && mask.showSz4);
       if (box) box.style.display = show ? 'block' : 'none';
       if (valElem) valElem.innerText = '---';
+      if (deltaElem) deltaElem.innerText = '';
     }
     return;
   }
@@ -336,37 +342,61 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   let pos = rowData._defaultPos || "-";
   if (dPos) dPos.innerText = `P${pos}`;
 
+  let carState = rowData.state || statusCarsMap[carId] || null;
+  if (awaitingBaseCrossMap[carId]) carState = 'outlap';
+
+  if (dStatus) {
+    if (carState === 'box' || carState === 'pause' || carState === 'outlap') {
+      dStatus.innerText = carState.toUpperCase();
+      dStatus.className = `dimmer-status-pill status-${carState}`;
+      dStatus.style.display = 'inline-block';
+    } else {
+      dStatus.style.display = 'none';
+    }
+  }
+
   if (dPb) dPb.innerText = rowData.bestLap > 0 ? (rowData.bestLap / 1000).toFixed(2) + 's' : '--:--';
 
-  if (rowData.state === 'outlap' || rowData.state === 'box' || rowData.state === 'pause') {
-    if (dLast) {
-      dLast.innerText = rowData.state.toUpperCase();
-      dLast.style.color = 'var(--neon-orange)';
-    }
-    if (dDelta) dDelta.innerText = '';
-  } else {
-    if (dLast) {
-      dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
-      let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
-      let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
-      if (isOverall) dLast.style.color = 'var(--neon-purple)';
-      else if (isPb) dLast.style.color = 'var(--neon-green)';
-      else dLast.style.color = 'var(--text-main)';
-    }
+  if (dLast) {
+    dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
+    let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
+    let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
+    if (isOverall) dLast.style.color = 'var(--neon-purple)';
+    else if (isPb) dLast.style.color = 'var(--neon-green)';
+    else dLast.style.color = 'var(--text-main)';
+  }
 
-    if (dDelta && rowData.lastLap > 0 && rowData.bestLap > 0) {
-      let diff = rowData.lastLap - rowData.bestLap;
-      if (rowData.lastLap <= sessionOverallBestLap && sessionOverallBestLap > 0) {
-        dDelta.innerText = "ABSOLUTE BESTZEIT!";
-        dDelta.style.color = 'var(--neon-purple)';
-      } else if (diff <= 0) {
-        dDelta.innerText = "NEUE PERSÖNLICHE BESTZEIT!";
-        dDelta.style.color = 'var(--neon-green)';
-      } else {
-        dDelta.innerText = "+" + (diff / 1000).toFixed(2) + "s";
+  if (dDelta) {
+    let deltaInfo = lastLapDeltaMap[carId];
+    if (deltaInfo && deltaInfo.diffMs !== null && rowData.lastLap > 0) {
+      let diffSec = (Math.abs(deltaInfo.diffMs) / 1000).toFixed(2).replace('.', ',');
+      if (deltaInfo.diffMs < 0) {
+        let tag = deltaInfo.isAbsolute ? " (SCHNELLSTE RUNDE)" : " (PERSÖNLICHE BESTZEIT)";
+        dDelta.innerText = `-${diffSec}s${tag}`;
+        dDelta.style.color = deltaInfo.isAbsolute ? 'var(--neon-purple)' : 'var(--neon-green)';
+      } else if (deltaInfo.diffMs > 0) {
+        dDelta.innerText = `+${diffSec}s`;
         dDelta.style.color = 'var(--neon-red)';
+      } else {
+        dDelta.innerText = `±0,00s`;
+        dDelta.style.color = 'var(--text-muted)';
       }
-    } else if (dDelta) {
+    } else if (deltaInfo && deltaInfo.diffMs === null && rowData.lastLap > 0) {
+      dDelta.innerText = deltaInfo.isAbsolute ? "SCHNELLSTE RUNDE" : "PERSÖNLICHE BESTZEIT";
+      dDelta.style.color = deltaInfo.isAbsolute ? 'var(--neon-purple)' : 'var(--neon-green)';
+    } else if (rowData.lastLap > 0 && rowData.bestLap > 0) {
+      let diff = rowData.lastLap - rowData.bestLap;
+      if (diff > 0) {
+        dDelta.innerText = `+${(diff / 1000).toFixed(2).replace('.', ',')}s`;
+        dDelta.style.color = 'var(--neon-red)';
+      } else if (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap) {
+        dDelta.innerText = "SCHNELLSTE RUNDE";
+        dDelta.style.color = 'var(--neon-purple)';
+      } else {
+        dDelta.innerText = "PERSÖNLICHE BESTZEIT";
+        dDelta.style.color = 'var(--neon-green)';
+      }
+    } else {
       dDelta.innerText = '';
     }
   }
@@ -374,6 +404,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   for (let i = 1; i <= 4; i++) {
     let box = document.getElementById(`dimmer${colIdx}-box-${i}`);
     let valElem = document.getElementById(`dimmer${colIdx}-sz${i}-val`);
+    let deltaElem = document.getElementById(`dimmer${colIdx}-sz${i}-delta`);
     let show = (i === 1 && mask.showSz1) || (i === 2 && mask.showSz2) || (i === 3 && mask.showSz3) || (i === 4 && mask.showSz4);
     if (box) box.style.display = show ? 'block' : 'none';
 
@@ -385,10 +416,13 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
       if (szVal > 0) {
         let minSz = (i === 1) ? minSz1 : ((i === 2) ? minSz2 : ((i === 3) ? minSz3 : minSz4));
         let bestSz = rowData[`bestSz${i}`] || 0;
-        if (minSz > 0 && szVal <= minSz) {
+        let isOverallMin = (minSz > 0 && szVal <= minSz);
+        let isPbSz = (bestSz > 0 && szVal <= bestSz);
+
+        if (isOverallMin) {
           valElem.style.color = 'var(--neon-purple)';
           valElem.style.textShadow = '0 0 8px rgba(181,50,255,0.7)';
-        } else if (bestSz > 0 && szVal <= bestSz) {
+        } else if (isPbSz) {
           valElem.style.color = 'var(--neon-green)';
           valElem.style.textShadow = 'none';
         } else {
@@ -403,10 +437,36 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
         } else {
           valElem.innerText = (szVal / 1000).toFixed(2) + 's';
         }
+
+        if (deltaElem && !isDrag) {
+          let szKey = `${carId}_${i}`;
+          let prevSzBest = previousBestSzMap[szKey];
+          if (prevSzBest && szVal < prevSzBest) {
+            let szDiff = szVal - prevSzBest;
+            let szDiffSec = (Math.abs(szDiff) / 1000).toFixed(2).replace('.', ',');
+            deltaElem.innerText = `-${szDiffSec}s`;
+            deltaElem.className = isOverallMin ? 'dimmer-sz-delta delta-purple' : 'dimmer-sz-delta delta-green';
+            previousBestSzMap[szKey] = szVal;
+          } else if (isPbSz) {
+            deltaElem.innerText = isOverallMin ? 'BEST' : 'PB';
+            deltaElem.className = isOverallMin ? 'dimmer-sz-delta delta-purple' : 'dimmer-sz-delta delta-green';
+            previousBestSzMap[szKey] = szVal;
+          } else if (bestSz > 0) {
+            let szDiff = szVal - bestSz;
+            let szDiffSec = (szDiff / 1000).toFixed(2).replace('.', ',');
+            deltaElem.innerText = `+${szDiffSec}s`;
+            deltaElem.className = 'dimmer-sz-delta delta-orange';
+          } else {
+            deltaElem.innerText = '';
+          }
+        } else if (deltaElem) {
+          deltaElem.innerText = '';
+        }
       } else {
         valElem.innerText = '---';
         valElem.style.color = 'var(--text-main)';
         valElem.style.textShadow = 'none';
+        if (deltaElem) deltaElem.innerText = '';
       }
     }
   }
@@ -639,6 +699,24 @@ async function loadWifiStatus() {
 function updateTrackRecordBar(info) {
   let bar = document.getElementById('trackRecordBar');
   let disp = document.getElementById('trackRecordDisplay');
+  let dimBanner = document.getElementById('dimmerTrackRecordBanner');
+  let dimVal = document.getElementById('dimmerTrackRecordVal');
+
+  let hasDailyBest = (info && info.dailyBestLap && info.dailyBestLap > 0);
+
+  if (dimBanner) {
+    dimBanner.style.display = (currentMode === 4) ? 'none' : 'inline-flex';
+  }
+  if (dimVal) {
+    if (hasDailyBest) {
+      let timeStr = (info.dailyBestLap / 1000).toFixed(2) + 's';
+      let driver = info.dailyBestDriver || (carNamesMap[info.dailyBestCarId]?.driver) || ('Fahrer ' + info.dailyBestCarId);
+      dimVal.innerHTML = `${driver} — <span style="color:var(--neon-gold); font-size:13px;">${timeStr}</span>`;
+    } else {
+      dimVal.innerText = '--:--';
+    }
+  }
+
   if (!bar || !disp) return;
 
   if (currentMode === 4) {
@@ -647,7 +725,7 @@ function updateTrackRecordBar(info) {
   }
   bar.style.display = 'flex';
 
-  if (info && info.dailyBestLap && info.dailyBestLap > 0) {
+  if (hasDailyBest) {
     let timeStr = (info.dailyBestLap / 1000).toFixed(2) + 's';
     let driver = info.dailyBestDriver || (carNamesMap[info.dailyBestCarId]?.driver) || ('Fahrer ' + info.dailyBestCarId);
     let car = info.dailyBestCar || (carNamesMap[info.dailyBestCarId]?.car) || ('Auto ' + info.dailyBestCarId);
@@ -905,8 +983,8 @@ async function updateData(fullSync = false) {
     let dLeaderLap = document.getElementById('dimmerLeaderLapText');
     if (dLeaderLap) dLeaderLap.innerText = leaderLaps || 0;
 
-    let dOverall = document.getElementById('dimmerOverallText');
-    if (dOverall) dOverall.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
+    let dSessionBest = document.getElementById('dimmerSessionBestText') || document.getElementById('dimmerOverallText');
+    if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
 
     let isTwoDrivers = (selectedTTSCars.length >= 2);
     let targetId1 = (selectedTTSCars.length >= 1) ? selectedTTSCars[0] : (displayData[0]?.id || 1);
@@ -1230,11 +1308,20 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
 
     if (minBestLap > 0 && (sessionBestLap === 0 || minBestLap < sessionBestLap)) sessionBestLap = minBestLap;
 
+    let deltaMs = null;
     if (completedLapNum >= 1 && lastLapMs > 0) {
       if (car.bestLap > 0 && lastLapMs <= car.bestLap && (prevBest === 0 || lastLapMs < prevBest)) {
         isPersonalBest = true;
+        if (prevBest > 0) {
+          deltaMs = lastLapMs - prevBest;
+        }
         previousBestLaps[carId] = lastLapMs;
+      } else if (prevBest > 0) {
+        deltaMs = lastLapMs - prevBest;
+      } else if (car.bestLap > 0) {
+        deltaMs = lastLapMs - car.bestLap;
       }
+
       if (isPersonalBest && sessionBestLap > 0 && lastLapMs <= sessionBestLap) {
         sessionBestLap = lastLapMs;
         isAbsoluteBest = true;
@@ -1242,6 +1329,12 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
         sessionBestLap = lastLapMs;
         isAbsoluteBest = true;
       }
+
+      lastLapDeltaMap[carId] = {
+        diffMs: deltaMs,
+        isPb: isPersonalBest,
+        isAbsolute: isAbsoluteBest
+      };
     }
 
     if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {

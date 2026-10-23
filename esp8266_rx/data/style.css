@@ -113,9 +113,10 @@ body.role-admin .driver-only {
   margin-bottom: 12px;
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  text-align: center;
+  gap: 12px;
 }
 
 .driver-quick-select {
@@ -221,6 +222,31 @@ body.role-admin .driver-only {
   margin-bottom: 15px;
   width: 100%;
 }
+.dimmer-track-record-banner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  background: rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(255, 215, 0, 0.45);
+  color: var(--neon-gold);
+  margin-bottom: 10px;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.15);
+}
+.dimmer-track-record-banner .track-record-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.dimmer-track-record-banner .track-record-val {
+  color: #fff;
+  font-weight: 900;
+}
+
 .dimmer-mode-badge {
   display: inline-block;
   font-family: var(--font-display);
@@ -326,6 +352,28 @@ body.role-admin .driver-only {
   padding: 2px 8px;
   border-radius: 6px;
 }
+.dimmer-status-pill {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  background: rgba(255, 153, 0, 0.18);
+  border: 1px solid var(--neon-orange);
+  color: var(--neon-orange);
+}
+.dimmer-status-pill.status-pause {
+  background: rgba(0, 229, 255, 0.18);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+.dimmer-status-pill.status-outlap {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
 
 .dimmer-center {
   display: flex;
@@ -398,6 +446,23 @@ body.role-admin .driver-only {
   font-family: var(--font-display);
   color: var(--text-main);
 }
+.dimmer-sz-delta {
+  font-size: 11px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  margin-top: 2px;
+  min-height: 14px;
+}
+.dimmer-sz-delta.delta-purple {
+  color: var(--neon-purple);
+  text-shadow: 0 0 6px rgba(181, 50, 255, 0.6);
+}
+.dimmer-sz-delta.delta-green {
+  color: var(--neon-green);
+}
+.dimmer-sz-delta.delta-orange {
+  color: var(--neon-orange);
+}
 
 @media (max-width: 650px) {
   .dimmer-drivers-container.split-drivers {
@@ -418,6 +483,92 @@ body.role-admin .driver-only {
   .dimmer-sz-val {
     font-size: 13px !important;
   }
+}
+
+/* ========================================================
+   RENNLEITER DASHBOARD (GROSSBILD-LEADERBOARD TABELLE)
+   ======================================================== */
+.dimmer-leaderboard-container {
+  width: 100%;
+  max-width: 1250px;
+  margin: 15px auto 0 auto;
+}
+
+.dimmer-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(13, 17, 23, 0.95);
+  box-shadow: 0 0 35px rgba(0, 0, 0, 0.85);
+}
+
+.dimmer-leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-family: var(--font-display);
+}
+
+.dimmer-leaderboard-table th {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--neon-cyan);
+  padding: 13px 10px;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-bottom: 2px solid rgba(0, 229, 255, 0.35);
+  white-space: nowrap;
+}
+
+.dimmer-leaderboard-table td {
+  padding: 13px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 15px;
+  vertical-align: middle;
+}
+
+.dimmer-leaderboard-table tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dimmer-pos-cell {
+  font-weight: 900;
+  font-size: 16px;
+  font-family: var(--font-display);
+}
+.dimmer-pos-p1 {
+  color: var(--neon-gold) !important;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+}
+.dimmer-pos-p2 {
+  color: #e2e8f0 !important;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+.dimmer-pos-p3 {
+  color: #cd7f32 !important;
+  text-shadow: 0 0 8px rgba(205, 127, 50, 0.6);
+}
+
+.dimmer-table-driver-box {
+  text-align: left;
+  line-height: 1.2;
+}
+.dimmer-table-driver-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.dimmer-table-driver-car {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dimmer-table-empty {
+  padding: 40px 15px;
+  color: var(--text-muted);
+  font-size: 16px;
+  letter-spacing: 1px;
 }
 
 .card {
@@ -478,10 +629,11 @@ body.role-admin .driver-only {
 
 .track-record-bar {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  text-align: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   background: linear-gradient(90deg, rgba(181, 50, 255, 0.14), rgba(0, 229, 255, 0.08), rgba(255, 215, 0, 0.14));
   border: 1px solid rgba(255, 215, 0, 0.35);
   box-shadow: 0 0 15px rgba(255, 215, 0, 0.12);

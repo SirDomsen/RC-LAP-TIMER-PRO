@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3.7.0">
+  <link rel="stylesheet" href="style.css?v=3.7.1">
 </head>
 <body class="role-driver">
 
@@ -19,7 +19,14 @@
     </button>
 
     <div class="dimmer-top">
-      <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+      <div id="dimmerTrackRecordBanner" class="dimmer-track-record-banner">
+        <span class="track-record-icon">🏆</span>
+        <span class="track-record-label">Tagesbestzeit:</span>
+        <span id="dimmerTrackRecordVal" class="track-record-val">--:--</span>
+      </div>
+      <div>
+        <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+      </div>
       
       <div class="dimmer-top-stats">
         <div class="dimmer-top-stat-item">
@@ -31,8 +38,8 @@
           <span id="dimmerLeaderLapText" class="dimmer-top-stat-val leader-val">0</span>
         </div>
         <div class="dimmer-top-stat-item dimmer-best-item">
-          <span class="dimmer-top-stat-label">🏆 Tagesbestzeit</span>
-          <span id="dimmerOverallText" class="dimmer-top-stat-val best-val">--:--</span>
+          <span class="dimmer-top-stat-label">🏎️ Schnellste Runde</span>
+          <span id="dimmerSessionBestText" class="dimmer-top-stat-val best-val">--:--</span>
         </div>
       </div>
     </div>
@@ -45,7 +52,10 @@
             <span class="dimmer-car-icon">🏎️</span>
             <span id="dimmerCar1Text" class="dimmer-driver-name">Fahrer 1</span>
           </div>
-          <span id="dimmerPos1Text" class="dimmer-pos-badge">P-</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span id="dimmerStatus1Badge" class="dimmer-status-pill" style="display:none;">BOX</span>
+            <span id="dimmerPos1Text" class="dimmer-pos-badge">P-</span>
+          </div>
         </div>
 
         <div class="dimmer-center">
@@ -64,18 +74,22 @@
           <div class="dimmer-sector-box" id="dimmer1-box-1" style="display:none;">
             <div class="dimmer-sz-label">SZ 1</div>
             <div id="dimmer1-sz1-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer1-sz1-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer1-box-2" style="display:none;">
             <div class="dimmer-sz-label">SZ 2</div>
             <div id="dimmer1-sz2-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer1-sz2-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer1-box-3" style="display:none;">
             <div class="dimmer-sz-label">SZ 3</div>
             <div id="dimmer1-sz3-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer1-sz3-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer1-box-4" style="display:none;">
             <div class="dimmer-sz-label">SZ 4</div>
             <div id="dimmer1-sz4-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer1-sz4-delta" class="dimmer-sz-delta"></div>
           </div>
         </div>
       </div>
@@ -90,7 +104,10 @@
             <span class="dimmer-car-icon">🏎️</span>
             <span id="dimmerCar2Text" class="dimmer-driver-name">Fahrer 2</span>
           </div>
-          <span id="dimmerPos2Text" class="dimmer-pos-badge">P-</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span id="dimmerStatus2Badge" class="dimmer-status-pill" style="display:none;">BOX</span>
+            <span id="dimmerPos2Text" class="dimmer-pos-badge">P-</span>
+          </div>
         </div>
 
         <div class="dimmer-center">
@@ -109,18 +126,22 @@
           <div class="dimmer-sector-box" id="dimmer2-box-1" style="display:none;">
             <div class="dimmer-sz-label">SZ 1</div>
             <div id="dimmer2-sz1-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer2-sz1-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer2-box-2" style="display:none;">
             <div class="dimmer-sz-label">SZ 2</div>
             <div id="dimmer2-sz2-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer2-sz2-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer2-box-3" style="display:none;">
             <div class="dimmer-sz-label">SZ 3</div>
             <div id="dimmer2-sz3-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer2-sz3-delta" class="dimmer-sz-delta"></div>
           </div>
           <div class="dimmer-sector-box" id="dimmer2-box-4" style="display:none;">
             <div class="dimmer-sz-label">SZ 4</div>
             <div id="dimmer2-sz4-val" class="dimmer-sz-val">---</div>
+            <div id="dimmer2-sz4-delta" class="dimmer-sz-delta"></div>
           </div>
         </div>
       </div>
@@ -176,9 +197,9 @@
       </div>
 
       <div class="driver-quick-panel">
-        <div style="text-align:left;">
+        <div style="text-align:center;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 FAHRZEUGE FÜR SPRACHANSAGE & DASHBOARD:</strong>
-          <div style="font-size:12px; color:var(--text-muted);">Wähle bis zu 2 Fahrer für parallele Sprachausgabe & Splitscreen-Dashboard</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Wähle bis zu 2 Fahrer für parallele Sprachausgabe & Splitscreen-Dashboard</div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
           <select id="driverQuickSelect1" class="driver-quick-select" onchange="onDriverQuickSelectChange()">
@@ -341,13 +362,13 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.7.0</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.7.1</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=3.7.0"></script>
-  <script src="websocket.js?v=3.7.0"></script>
-  <script src="main.js?v=3.7.0"></script>
+  <script src="tts.js?v=3.7.1"></script>
+  <script src="websocket.js?v=3.7.1"></script>
+  <script src="main.js?v=3.7.1"></script>
 </body>
 </html>

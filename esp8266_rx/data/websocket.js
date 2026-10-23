@@ -85,6 +85,10 @@ function handleLiveEvent(msg) {
       lastResetTimestamp = now;
       if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
       if (typeof sectorFlashUntilMap !== 'undefined') sectorFlashUntilMap = {};
+      if (typeof previousLaps !== 'undefined') previousLaps = {};
+      if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
+      if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
+      if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
       updateData();
     }
   }
