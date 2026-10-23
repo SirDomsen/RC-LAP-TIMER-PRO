@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.7.1'; 
+window.UI_VERSION = '3.7.2'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -470,6 +470,187 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
       }
     }
   }
+}
+
+// Aktualisiert die Rennleiter Großbild-Rennübersicht (Leaderboard für alle erfassten Fahrer)
+function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3, minSz4, leaderLaps, targetLaps) {
+  let tbody = document.getElementById('dimmerLeaderboardBody');
+  if (!tbody) return;
+
+  let mask = getVisibleSectorsMask();
+  let thSz1 = document.getElementById('dimmer-th-sz1');
+  let thSz2 = document.getElementById('dimmer-th-sz2');
+  let thSz3 = document.getElementById('dimmer-th-sz3');
+  let thSz4 = document.getElementById('dimmer-th-sz4');
+  let thLaps = document.getElementById('dimmer-th-laps');
+  let thLast = document.getElementById('dimmer-th-last');
+
+  let isDrag = (currentMode === 4);
+  if (thLaps) thLaps.innerText = isDrag ? "Läufe" : "Runde";
+  if (thLast) thLast.innerText = isDrag ? "Laufzeit" : "Letzte Zeit";
+
+  if (thSz1) thSz1.style.display = mask.showSz1 ? '' : 'none';
+  if (thSz2) thSz2.style.display = mask.showSz2 ? '' : 'none';
+  if (thSz3) thSz3.style.display = mask.showSz3 ? '' : 'none';
+  if (thSz4) thSz4.style.display = mask.showSz4 ? '' : 'none';
+
+  let visibleSectorCols = (mask.showSz1 ? 1 : 0) + (mask.showSz2 ? 1 : 0) + (mask.showSz3 ? 1 : 0) + (mask.showSz4 ? 1 : 0);
+  let totalCols = 7 + visibleSectorCols;
+
+  // Nur tatsächlich erfasste Fahrzeuge anzeigen
+  let activeCars = (displayData || []).filter(r => 
+    r.completedLaps > 0 || r.lastLap > 0 || r.bestLap > 0 || 
+    r.sz1 > 0 || r.sz2 > 0 || r.sz3 > 0 || r.sz4 > 0 || 
+    r.state === 'drag_running' || r.state === 'outlap' || r.state === 'box' || r.state === 'pause'
+  );
+
+  if (activeCars.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${totalCols}" class="dimmer-table-empty">🏁 Keine aktiven Fahrzeuge auf der Strecke</td></tr>`;
+    return;
+  }
+
+  let html = '';
+  activeCars.forEach((row, idx) => {
+    let pos = row._defaultPos || (idx + 1);
+    let posClass = 'dimmer-pos-cell';
+    if (pos === 1) posClass += ' dimmer-pos-p1';
+    else if (pos === 2) posClass += ' dimmer-pos-p2';
+    else if (pos === 3) posClass += ' dimmer-pos-p3';
+
+    // Status Badge
+    let carState = row.state || statusCarsMap[row.id] || null;
+    if (awaitingBaseCrossMap[row.id]) carState = 'outlap';
+
+    let statusHtml = '';
+    if (carState === 'box') {
+      statusHtml = '<span class="dimmer-status-pill status-box">BOX</span>';
+    } else if (carState === 'pause') {
+      statusHtml = '<span class="dimmer-status-pill status-pause">PAUSE</span>';
+    } else if (carState === 'outlap') {
+      statusHtml = '<span class="dimmer-status-pill status-outlap">OUTLAP</span>';
+    } else if (carState === 'drag_running') {
+      statusHtml = '<span class="dimmer-status-pill" style="color:var(--neon-green); border-color:var(--neon-green); background:rgba(0,255,102,0.15);">START</span>';
+    } else if (row.completedLaps > 0 || row.lastLap > 0) {
+      statusHtml = '<span class="dimmer-status-pill" style="color:var(--neon-green); border-color:var(--neon-green); background:rgba(0,255,102,0.1);">STRECKE</span>';
+    } else {
+      statusHtml = '<span class="dimmer-status-pill" style="color:var(--text-muted); border-color:var(--card-border);">BEREIT</span>';
+    }
+
+    // Runden Display
+    let lapsDisp = row.completedLaps;
+    if (isDrag) {
+      lapsDisp = row.completedLaps > 0 ? (row.completedLaps + (row.completedLaps === 1 ? ' Lauf' : ' Läufe')) : '0';
+    } else if (targetLaps > 0) {
+      lapsDisp = `${row.completedLaps} / ${targetLaps}`;
+    }
+
+    // Sektor Zellen
+    let renderSzCell = (secNum, val, bestVal, minVal, isVisible) => {
+      if (!isVisible) return `<td style="display:none;"></td>`;
+      if (val <= 0) return `<td><span style="color:var(--text-muted);">---</span></td>`;
+
+      let isOverall = (minVal > 0 && val <= minVal);
+      let isPb = (bestVal > 0 && val <= bestVal);
+      let colorStyle = 'color:var(--neon-orange);';
+      let shadowStyle = '';
+      if (isOverall) {
+        colorStyle = 'color:var(--neon-purple);';
+        shadowStyle = 'text-shadow:0 0 6px rgba(181,50,255,0.7);';
+      } else if (isPb) {
+        colorStyle = 'color:var(--neon-green);';
+      }
+
+      let secStr = (val / 1000).toFixed(2) + 's';
+      return `<td><span style="font-weight:700; ${colorStyle} ${shadowStyle}">${secStr}</span></td>`;
+    };
+
+    let sz1Cell = renderSzCell(1, row.sz1, row.bestSz1, minSz1, mask.showSz1);
+    let sz2Cell = renderSzCell(2, row.sz2, row.bestSz2, minSz2, mask.showSz2);
+    let sz3Cell = renderSzCell(3, row.sz3, row.bestSz3, minSz3, mask.showSz3);
+    let sz4Cell = renderSzCell(4, row.sz4, row.bestSz4, minSz4, mask.showSz4);
+
+    // Letzte Runde & Delta
+    let lastDisp = '---';
+    let lastColor = 'color:var(--text-main);';
+    if (row.lastLap > 0) {
+      lastDisp = (row.lastLap / 1000).toFixed(2) + 's';
+      let isOverallLast = (minBestLap > 0 && row.lastLap <= minBestLap);
+      let isPbLast = (row.bestLap > 0 && row.lastLap <= row.bestLap);
+      if (isOverallLast) lastColor = 'color:var(--neon-purple);';
+      else if (isPbLast) lastColor = 'color:var(--neon-green);';
+    }
+
+    let deltaHtml = '';
+    let deltaInfo = lastLapDeltaMap[row.id];
+    if (deltaInfo && deltaInfo.diffMs !== null && row.lastLap > 0) {
+      let diffSec = (Math.abs(deltaInfo.diffMs) / 1000).toFixed(2).replace('.', ',');
+      if (deltaInfo.diffMs < 0) {
+        let dCol = deltaInfo.isAbsolute ? 'var(--neon-purple)' : 'var(--neon-green)';
+        deltaHtml = `<div style="font-size:11px; font-weight:700; color:${dCol};">-${diffSec}s</div>`;
+      } else if (deltaInfo.diffMs > 0) {
+        deltaHtml = `<div style="font-size:11px; font-weight:700; color:var(--neon-red);">+${diffSec}s</div>`;
+      } else {
+        deltaHtml = `<div style="font-size:11px; font-weight:700; color:var(--text-muted);">±0,00s</div>`;
+      }
+    } else if (row.lastLap > 0 && row.bestLap > 0 && row.lastLap > row.bestLap) {
+      let diff = row.lastLap - row.bestLap;
+      deltaHtml = `<div style="font-size:11px; font-weight:700; color:var(--neon-red);">+${(diff / 1000).toFixed(2).replace('.', ',')}s</div>`;
+    }
+
+    // Beste Runde
+    let bestDisp = '---';
+    let bestColor = 'color:var(--text-muted);';
+    if (row.bestLap > 0) {
+      bestDisp = (row.bestLap / 1000).toFixed(2) + 's';
+      if (minBestLap > 0 && row.bestLap <= minBestLap) {
+        bestColor = 'color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-weight:900;';
+      } else {
+        bestColor = 'color:var(--neon-green); font-weight:700;';
+      }
+    }
+
+    // Abstand (Gap)
+    let gapHtml = '---';
+    if (pos === 1) {
+      gapHtml = (currentMode >= 2) ? '<span style="color:var(--neon-cyan); font-weight:700;">LEADER</span>' : '<span style="color:var(--neon-purple); font-weight:700;">BEST</span>';
+    } else if (currentMode >= 2 && currentMode !== 4) {
+      let leaderLapCount = activeCars[0]?.completedLaps || 0;
+      let diffLaps = leaderLapCount - row.completedLaps;
+      if (diffLaps > 0) {
+        gapHtml = `<span style="color:var(--neon-orange); font-weight:700;">+${diffLaps} ${diffLaps === 1 ? 'Rnd' : 'Rnd'}</span>`;
+      } else if (minBestLap > 0 && row.bestLap > 0) {
+        let diffMs = row.bestLap - minBestLap;
+        gapHtml = `<span style="color:var(--text-muted);">+${(diffMs / 1000).toFixed(2).replace('.', ',')}s</span>`;
+      }
+    } else if (minBestLap > 0 && row.bestLap > 0) {
+      let diffMs = row.bestLap - minBestLap;
+      gapHtml = `<span style="color:var(--text-muted);">+${(diffMs / 1000).toFixed(2).replace('.', ',')}s</span>`;
+    }
+
+    html += `<tr>
+      <td class="${posClass}">P${pos}</td>
+      <td style="text-align:left; padding-left:14px;">
+        <div class="dimmer-table-driver-box">
+          <span class="dimmer-table-driver-name">${row.driver}</span>
+          <div class="dimmer-table-driver-car">${row.car} <span style="opacity:0.6;">(ID ${row.id})</span></div>
+        </div>
+      </td>
+      <td>${statusHtml}</td>
+      <td style="font-weight:700;">${lapsDisp}</td>
+      ${sz1Cell}
+      ${sz2Cell}
+      ${sz3Cell}
+      ${sz4Cell}
+      <td>
+        <div style="font-weight:700; ${lastColor}">${lastDisp}</div>
+        ${deltaHtml}
+      </td>
+      <td><span style="${bestColor}">${bestDisp}</span></td>
+      <td>${gapHtml}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
 }
 
 function applyUserRoleUI(role) {
@@ -986,26 +1167,33 @@ async function updateData(fullSync = false) {
     let dSessionBest = document.getElementById('dimmerSessionBestText') || document.getElementById('dimmerOverallText');
     if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
 
-    let isTwoDrivers = (selectedTTSCars.length >= 2);
-    let targetId1 = (selectedTTSCars.length >= 1) ? selectedTTSCars[0] : (displayData[0]?.id || 1);
-    let targetId2 = isTwoDrivers ? selectedTTSCars[1] : null;
-
-    let dContainer = document.getElementById('dimmerDriversContainer');
-    let col2 = document.getElementById('dimmerDriverCol2');
-    let divLine = document.getElementById('dimmerDivider');
-
-    if (dContainer) {
-      dContainer.className = isTwoDrivers ? 'dimmer-drivers-container split-drivers' : 'dimmer-drivers-container single-driver';
+    // 1) Rennleiter Dashboard (Leaderboard-Tabelle für alle tatsächlich erfassten Fahrzeuge)
+    let dLeaderboardBody = document.getElementById('dimmerLeaderboardBody');
+    if (dLeaderboardBody) {
+      updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3, minSz4, leaderLaps, targetLaps);
     }
-    if (col2) col2.style.display = isTwoDrivers ? 'flex' : 'none';
-    if (divLine) divLine.style.display = isTwoDrivers ? 'block' : 'none';
 
-    let row1 = displayData.find(r => r.id === targetId1);
-    let row2 = targetId2 ? displayData.find(r => r.id === targetId2) : null;
+    // 2) Fahrer Dashboard (1 oder 2 Fahrer Splitscreen)
+    let dContainer = document.getElementById('dimmerDriversContainer');
+    if (dContainer) {
+      let isTwoDrivers = (selectedTTSCars.length >= 2);
+      let targetId1 = (selectedTTSCars.length >= 1) ? selectedTTSCars[0] : (displayData[0]?.id || 1);
+      let targetId2 = isTwoDrivers ? selectedTTSCars[1] : null;
 
-    updateDashboardDriverCol(1, targetId1, row1, minBestLap, minSz1, minSz2, minSz3, minSz4);
-    if (isTwoDrivers && targetId2) {
-      updateDashboardDriverCol(2, targetId2, row2, minBestLap, minSz1, minSz2, minSz3, minSz4);
+      let col2 = document.getElementById('dimmerDriverCol2');
+      let divLine = document.getElementById('dimmerDivider');
+
+      dContainer.className = isTwoDrivers ? 'dimmer-drivers-container split-drivers' : 'dimmer-drivers-container single-driver';
+      if (col2) col2.style.display = isTwoDrivers ? 'flex' : 'none';
+      if (divLine) divLine.style.display = isTwoDrivers ? 'block' : 'none';
+
+      let row1 = displayData.find(r => r.id === targetId1);
+      let row2 = targetId2 ? displayData.find(r => r.id === targetId2) : null;
+
+      updateDashboardDriverCol(1, targetId1, row1, minBestLap, minSz1, minSz2, minSz3, minSz4);
+      if (isTwoDrivers && targetId2) {
+        updateDashboardDriverCol(2, targetId2, row2, minBestLap, minSz1, minSz2, minSz3, minSz4);
+      }
     }
   } catch (err) {
   } finally {
