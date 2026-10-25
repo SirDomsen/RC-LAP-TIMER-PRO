@@ -88,6 +88,7 @@ function handleLiveEvent(msg) {
       if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
       if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
       if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
+      if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
       if (typeof loadTracks === 'function') loadTracks();
       updateData(true);
     }

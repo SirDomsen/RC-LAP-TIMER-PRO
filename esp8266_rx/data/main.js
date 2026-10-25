@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.9.2'; 
+window.UI_VERSION = '4.0.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -12,6 +12,8 @@ let activeTrackName = 'Standard-Strecke';
 let allTracksList = [{ id: 'standard', name: 'Standard-Strecke', bestLap: 0, recordLap: 0, allTimeRecords: [], dailyRecords: [] }];
 let pendingRecordFlagsMap = {};
 let lastKnownInfoCache = null;
+let isInitialDataLoaded = false;
+let lastStartAnnouncedTs = {};
 let currentFsPct = 0;
 let currentFsUsed = 0;
 let currentFsTotal = 0;
@@ -1662,6 +1664,7 @@ async function updateData(fullSync = false) {
   } catch (err) {
   } finally {
     isUpdatingData = false;
+    isInitialDataLoaded = true;
   }
 
   if (!fullSync) return;
@@ -1867,11 +1870,19 @@ async function pollData() {
 function handleBaseCrossEvent(msg) {
   let carId = msg.carId;
   let driverName = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  let now = Date.now();
   
   if (statusCarsMap[carId] === 'box') {
     if (isCarAllowedForTTS(carId)) speak(driverName + " verlässt die Box");
   } else if (statusCarsMap[carId] === 'pause') {
     if (isCarAllowedForTTS(carId)) speak(driverName + " wieder gestartet");
+  } else {
+    if (currentMode !== 4 && isCarAllowedForTTS(carId)) {
+      if (!lastStartAnnouncedTs[carId] || (now - lastStartAnnouncedTs[carId] > 8000)) {
+        lastStartAnnouncedTs[carId] = now;
+        speak(driverName + " gestartet!");
+      }
+    }
   }
 
   awaitingBaseCrossMap[carId] = false;
@@ -1919,6 +1930,13 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
     lastAnnouncedLapMap[carId] = currentLaps;
     lapHistoryMap[carId] = [];
     awaitingBaseCrossMap[carId] = false;
+    if (isInitialDataLoaded && currentMode !== 4 && isCarAllowedForTTS(carId)) {
+      let now = Date.now();
+      if (!lastStartAnnouncedTs[carId] || (now - lastStartAnnouncedTs[carId] > 8000)) {
+        lastStartAnnouncedTs[carId] = now;
+        speak(driverName + " gestartet!");
+      }
+    }
     return;
   }
 

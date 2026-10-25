@@ -156,6 +156,7 @@ function resetLapsDataSilent() {
     statusCarsMap = {};
     awaitingBaseCrossMap = {};
     sectorFlashUntilMap = {};
+    if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
     currentLeaderId = null;
     sessionBestLap = 0;
     timeExpiredAnnounced = false;
@@ -172,6 +173,7 @@ function resetLapsData(hardReset = true) {
     statusCarsMap = {};
     awaitingBaseCrossMap = {};
     sectorFlashUntilMap = {};
+    if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
     isSessionFinished = false;
     qualiFinishedHold = false;
     maxLapInRace = 0;
