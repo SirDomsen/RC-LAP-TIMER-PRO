@@ -197,6 +197,60 @@
       padding: 6px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     }
+    .breadcrumb-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 12px;
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .breadcrumb-item {
+      color: var(--neon-cyan);
+      cursor: pointer;
+      font-weight: bold;
+      transition: color 0.15s;
+    }
+    .breadcrumb-item:hover {
+      color: #fff;
+      text-decoration: underline;
+    }
+    .breadcrumb-separator {
+      color: var(--text-muted);
+      user-select: none;
+    }
+    .folder-row {
+      cursor: pointer;
+      background: rgba(0, 229, 255, 0.02);
+      transition: background 0.15s;
+    }
+    .folder-row:hover {
+      background: rgba(0, 229, 255, 0.08);
+    }
+    .folder-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      background: rgba(0, 229, 255, 0.15);
+      color: var(--neon-cyan);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .folder-up-row {
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--neon-cyan);
+      font-weight: bold;
+    }
+    .folder-up-row:hover {
+      background: rgba(0, 229, 255, 0.06);
+    }
   </style>
 </head>
 <body>
@@ -226,7 +280,12 @@
 
     <!-- UPLOAD CARD -->
     <div class="card">
-      <h3 class="card-title">Dateien hochladen</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <h3 class="card-title" style="margin:0;">Dateien hochladen</h3>
+        <div id="uploadTargetBadge" style="font-size:12px; color:var(--neon-cyan); background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.25); padding:3px 10px; border-radius:6px; font-family:monospace;">
+          Ziel: 📁 / (Hauptverzeichnis)
+        </div>
+      </div>
       <div class="info-box">
         ⚡ <strong>Auto-Gzip aktiv:</strong> Webdateien (<code>.html</code>, <code>.js</code>, <code>.css</code>) werden direkt im Browser vor dem Senden komprimiert . Das originale PC-Änderungsdatum bleibt exakt erhalten .
       </div>
@@ -254,16 +313,16 @@
 
     <!-- DATEIEN IM FLASH -->
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <h3 class="card-title" style="margin:0;">Gespeicherte Dateien im Flash</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button id="viewToggleBtn" class="btn btn-purple" style="width:auto; padding:5px 12px; font-size:11px;" onclick="toggleViewMode()">📁 Ordner-Ansicht</button>
           <button id="backupZipBtn" class="btn btn-green" style="width:auto; padding:5px 12px; font-size:11px;" onclick="downloadAllFilesZip()">📦 Backup (.zip)</button>
           <button class="btn btn-cyan" style="width:auto; padding:5px 12px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
         </div>
       </div>
-      <div id="backupProgressText" style="font-size:12px; color:var(--neon-green); margin-top:8px; font-family:monospace; display:none;">
-
-      </div>
+      <div id="backupProgressText" style="font-size:12px; color:var(--neon-green); margin-top:8px; font-family:monospace; display:none;"></div>
+      <div id="breadcrumbBar" class="breadcrumb-bar" style="margin-top:12px; display:none;"></div>
       <div style="overflow-x:auto;">
         <table>
           <thead>
@@ -339,9 +398,49 @@
   <script>
     let selectedFiles = [];
     let cachedFiles = [];
-    let sortColumn = 'time'; // Standard: Neueste Dateien oben
-    let sortAsc = false;
+    let sortColumn = 'name';
+    let sortAsc = true;
     let selectedFirmwareFile = null;
+    let currentFolder = ''; // '' = Root
+    let viewMode = 'folder'; // 'folder' oder 'flat'
+
+    function toggleViewMode() {
+      viewMode = (viewMode === 'folder') ? 'flat' : 'folder';
+      let btn = document.getElementById('viewToggleBtn');
+      if (btn) {
+        btn.innerText = (viewMode === 'folder') ? '📁 Ordner-Ansicht' : '📄 Flache Liste';
+      }
+      updateUploadTargetUI();
+      renderFilesTable();
+    }
+
+    function updateUploadTargetUI() {
+      let badge = document.getElementById('uploadTargetBadge');
+      if (!badge) return;
+      if (!currentFolder || viewMode === 'flat') {
+        badge.innerHTML = `Ziel: 📁 / <small style="color:var(--text-muted);">(Hauptverzeichnis)</small>`;
+      } else {
+        badge.innerHTML = `Ziel: 📁 /${currentFolder} <button class="btn-icon" style="color:var(--neon-orange); font-size:12px; margin-left:4px; vertical-align:middle;" title="Auf Hauptverzeichnis zurücksetzen" onclick="navigateToFolder('')">✕</button>`;
+      }
+    }
+
+    function navigateToFolder(folderPath) {
+      let clean = folderPath || '';
+      if (clean && !clean.endsWith('/')) clean += '/';
+      while (clean.startsWith('/')) clean = clean.substring(1);
+      currentFolder = clean;
+      updateUploadTargetUI();
+      renderFilesTable();
+    }
+
+    function navigateUpFolder() {
+      if (!currentFolder) return;
+      let parts = currentFolder.replace(/\/$/, '').split('/');
+      parts.pop();
+      currentFolder = parts.length > 0 ? (parts.join('/') + '/') : '';
+      updateUploadTargetUI();
+      renderFilesTable();
+    }
 
     function isCompressibleFile(filename) {
       const lower = filename.toLowerCase();
@@ -408,16 +507,18 @@
 
         let { blob, uploadName, wasCompressed } = await compressFileToGzip(file);
 
+        let uploadTargetName = (currentFolder && viewMode === 'folder') ? (currentFolder + uploadName) : uploadName;
+
         if (wasCompressed) {
           let origKb = (file.size / 1024).toFixed(1);
           let gzKb = (blob.size / 1024).toFixed(1);
-          status.innerText = `[${i + 1}/${selectedFiles.length}] Komprimiert (${origKb}KB ➔ ${gzKb}KB) & sende: ${uploadName}...`;
+          status.innerText = `[${i + 1}/${selectedFiles.length}] Komprimiert (${origKb}KB ➔ ${gzKb}KB) & sende: ${uploadTargetName}...`;
         } else {
-          status.innerText = `[${i + 1}/${selectedFiles.length}] Sende: ${uploadName}...`;
+          status.innerText = `[${i + 1}/${selectedFiles.length}] Sende: ${uploadTargetName}...`;
         }
 
         let formData = new FormData();
-        formData.append('data', blob, uploadName);
+        formData.append('data', blob, uploadTargetName);
 
         try {
           let res = await fetch(`/api/upload?mtime=${mtimeSec}`, {
@@ -550,8 +651,175 @@
       renderFilesTable();
     }
 
+    function formatSize(bytes) {
+      if (!bytes || bytes === 0) return '0 KB';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function renderBreadcrumbs() {
+      let container = document.getElementById('breadcrumbBar');
+      if (!container) return;
+
+      if (viewMode === 'flat') {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'flex';
+      let html = `<span class="breadcrumb-item" onclick="navigateToFolder('')">🏠 Root</span>`;
+
+      if (currentFolder) {
+        let parts = currentFolder.replace(/\/$/, '').split('/');
+        let cumulative = '';
+        parts.forEach((p, idx) => {
+          cumulative += p + '/';
+          let isLast = (idx === parts.length - 1);
+          html += `<span class="breadcrumb-separator">/</span>`;
+          if (isLast) {
+            html += `<span style="color:#fff; font-weight:bold;">${p}</span>`;
+          } else {
+            let pathCopy = cumulative;
+            html += `<span class="breadcrumb-item" onclick="navigateToFolder('${pathCopy}')">${p}</span>`;
+          }
+        });
+
+        html += `<div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+          <button class="btn btn-green" style="width:auto; padding:2px 8px; font-size:11px; margin:0;" onclick="downloadFolderZip('${currentFolder}')" title="Diesen Ordner als ZIP herunterladen">📦 ZIP</button>
+          <button class="btn btn-red" style="width:auto; padding:2px 8px; font-size:11px; margin:0;" onclick="deleteFolder('${currentFolder}')" title="Diesen Ordner samt Inhalt löschen">🗑 Löschen</button>
+        </div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    async function deleteFolder(folderPath) {
+      let cleanFolder = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+      while (cleanFolder.startsWith('/')) cleanFolder = cleanFolder.substring(1);
+
+      let filesToDelete = cachedFiles.filter(f => {
+        let name = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+        return name.startsWith(cleanFolder);
+      });
+
+      if (filesToDelete.length === 0) {
+        alert("Keine Dateien im Ordner gefunden.");
+        return;
+      }
+
+      if (!confirm(`Möchtest du den Ordner "${cleanFolder}" und alle darin enthaltenen ${filesToDelete.length} Dateien wirklich unwiderruflich löschen?`)) {
+        return;
+      }
+
+      let prog = document.getElementById('backupProgressText');
+      if (prog) {
+        prog.style.display = 'block';
+        prog.style.color = 'var(--neon-orange)';
+      }
+
+      for (let i = 0; i < filesToDelete.length; i++) {
+        let f = filesToDelete[i];
+        if (prog) prog.innerText = `Lösche (${i + 1}/${filesToDelete.length}): ${f.name}...`;
+        try {
+          await fetch('/api/deletefile?file=' + encodeURIComponent(f.name), { method: 'POST' });
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 25));
+      }
+
+      if (prog) {
+        prog.style.color = 'var(--neon-green)';
+        prog.innerText = `✅ Ordner "${cleanFolder}" wurde gelöscht.`;
+        setTimeout(() => { if (prog) prog.style.display = 'none'; }, 4000);
+      }
+
+      if (currentFolder.startsWith(cleanFolder) || currentFolder === cleanFolder) {
+        navigateUpFolder();
+      }
+      await loadFilesList();
+    }
+
+    async function downloadFolderZip(folderPath) {
+      let cleanFolder = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+      while (cleanFolder.startsWith('/')) cleanFolder = cleanFolder.substring(1);
+
+      let filesForFolder = cachedFiles.filter(f => {
+        let name = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+        return name.startsWith(cleanFolder);
+      });
+
+      if (filesForFolder.length === 0) {
+        alert("Keine Dateien im Ordner gefunden.");
+        return;
+      }
+
+      let prog = document.getElementById('backupProgressText');
+      if (prog) {
+        prog.style.display = 'block';
+        prog.style.color = 'var(--neon-cyan)';
+        prog.innerText = `⏳ Starte Download von Ordner "${cleanFolder}" (${filesForFolder.length} Dateien)...`;
+      }
+
+      try {
+        let filesForZip = [];
+        for (let i = 0; i < filesForFolder.length; i++) {
+          let fileInfo = filesForFolder[i];
+          let cleanName = fileInfo.name.startsWith('/') ? fileInfo.name.substring(1) : fileInfo.name;
+          let relInZip = cleanName.startsWith(cleanFolder) ? cleanName.substring(cleanFolder.length) : cleanName;
+
+          if (prog) {
+            prog.innerText = `⏳ Lade Datei (${i + 1}/${filesForFolder.length}): ${cleanName}...`;
+          }
+
+          let buf = await fetchFileFromESP(cleanName);
+          let fileDate = (fileInfo.time && fileInfo.time > 100000000) ? new Date(fileInfo.time * 1000) : new Date();
+
+          filesForZip.push({
+            name: relInZip,
+            data: new Uint8Array(buf),
+            date: fileDate
+          });
+
+          await new Promise(r => setTimeout(r, 30));
+        }
+
+        if (prog) prog.innerText = '📦 Erstelle ZIP-Archiv...';
+
+        let zipBlob = createZipArchive(filesForZip);
+        let folderSafeName = cleanFolder.replace(/[\/\\]/g, '_').replace(/^_|_$/g, '') || 'folder';
+        let now = new Date();
+        let pad = (n) => String(n).padStart(2, '0');
+        let dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        let filename = `${folderSafeName}_${dateStr}.zip`;
+
+        let url = URL.createObjectURL(zipBlob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (prog) {
+          prog.style.color = 'var(--neon-green)';
+          prog.innerText = `✅ Ordner-ZIP geladen: ${filename} (${(zipBlob.size / 1024).toFixed(1)} KB)`;
+          setTimeout(() => { if (prog) prog.style.display = 'none'; }, 6000);
+        }
+      } catch (err) {
+        if (prog) {
+          prog.style.color = 'var(--neon-red)';
+          prog.innerText = `❌ Fehler beim Download: ${err.message}`;
+        } else {
+          alert("Fehler: " + err.message);
+        }
+      }
+    }
+
     function renderFilesTable() {
       let tbody = document.getElementById('fileListBody');
+      renderBreadcrumbs();
+      updateUploadTargetUI();
+
       if (cachedFiles.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:12px;">Keine Dateien im Flash vorhanden.</td></tr>';
         return;
@@ -568,29 +836,143 @@
         }
       });
 
-      // Liste sortieren
-      let sorted = [...cachedFiles].sort((a, b) => {
-        let res = 0;
-        if (sortColumn === 'name') {
-          res = a.name.localeCompare(b.name);
-        } else if (sortColumn === 'size') {
-          res = (a.size || 0) - (b.size || 0);
-        } else if (sortColumn === 'time') {
-          res = (a.time || 0) - (b.time || 0);
+      // 1. FLAT VIEW (Alle Dateien flach anzeigen)
+      if (viewMode === 'flat') {
+        let sorted = [...cachedFiles].sort((a, b) => {
+          let res = 0;
+          if (sortColumn === 'name') {
+            res = a.name.localeCompare(b.name);
+          } else if (sortColumn === 'size') {
+            res = (a.size || 0) - (b.size || 0);
+          } else if (sortColumn === 'time') {
+            res = (a.time || 0) - (b.time || 0);
+          }
+          return sortAsc ? res : -res;
+        });
+
+        let html = '';
+        sorted.forEach(f => {
+          let isGz = f.name.endsWith('.gz');
+          let isSubfolder = f.name.includes('/');
+          let nameColor = isGz ? 'var(--neon-green)' : (isSubfolder ? 'var(--neon-cyan)' : 'var(--text-main)');
+          let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
+          let dateStr = formatFileDate(f.time);
+
+          html += `<tr>
+            <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">📄 ${f.name}</td>
+            <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
+            <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
+            <td style="text-align:center;">
+              <button class="btn-icon" style="color:var(--neon-cyan); margin-right:6px;" title="Datei herunterladen" onclick="downloadSingleFile('${f.name}')">⬇️</button><button class="btn-icon" title="Datei löschen" onclick="deleteFile('${f.name}')">🗑</button>
+            </td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+        return;
+      }
+
+      // 2. FOLDER VIEW (Durch Ordner navigieren)
+      let cleanCurrent = currentFolder;
+      let foldersMap = {};
+      let directFiles = [];
+
+      cachedFiles.forEach(f => {
+        let name = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+        if (!cleanCurrent) {
+          // Root level
+          if (name.includes('/')) {
+            let topFolder = name.split('/')[0] + '/';
+            if (!foldersMap[topFolder]) {
+              foldersMap[topFolder] = { name: topFolder, fullPath: topFolder, fileCount: 0, totalSize: 0, newestTime: 0 };
+            }
+            foldersMap[topFolder].fileCount++;
+            foldersMap[topFolder].totalSize += (f.size || 0);
+            if ((f.time || 0) > foldersMap[topFolder].newestTime) foldersMap[topFolder].newestTime = f.time;
+          } else {
+            directFiles.push(f);
+          }
+        } else {
+          // In subfolder
+          if (name.startsWith(cleanCurrent)) {
+            let rem = name.substring(cleanCurrent.length);
+            if (rem.includes('/')) {
+              let nextFolder = rem.split('/')[0] + '/';
+              let fullFolderPath = cleanCurrent + nextFolder;
+              if (!foldersMap[fullFolderPath]) {
+                foldersMap[fullFolderPath] = { name: nextFolder, fullPath: fullFolderPath, fileCount: 0, totalSize: 0, newestTime: 0 };
+              }
+              foldersMap[fullFolderPath].fileCount++;
+              foldersMap[fullFolderPath].totalSize += (f.size || 0);
+              if ((f.time || 0) > foldersMap[fullFolderPath].newestTime) foldersMap[fullFolderPath].newestTime = f.time;
+            } else {
+              directFiles.push(f);
+            }
+          }
         }
+      });
+
+      let subfoldersList = Object.values(foldersMap);
+
+      // Sortieren
+      subfoldersList.sort((a, b) => {
+        let res = 0;
+        if (sortColumn === 'name') res = a.name.localeCompare(b.name);
+        else if (sortColumn === 'size') res = a.totalSize - b.totalSize;
+        else if (sortColumn === 'time') res = a.newestTime - b.newestTime;
+        return sortAsc ? res : -res;
+      });
+
+      directFiles.sort((a, b) => {
+        let res = 0;
+        let aName = a.name.split('/').pop();
+        let bName = b.name.split('/').pop();
+        if (sortColumn === 'name') res = aName.localeCompare(bName);
+        else if (sortColumn === 'size') res = (a.size || 0) - (b.size || 0);
+        else if (sortColumn === 'time') res = (a.time || 0) - (b.time || 0);
         return sortAsc ? res : -res;
       });
 
       let html = '';
-      sorted.forEach(f => {
-        let isGz = f.name.endsWith('.gz');
-        let isSubfolder = f.name.includes('/');
-        let nameColor = isGz ? 'var(--neon-green)' : (isSubfolder ? 'var(--neon-cyan)' : 'var(--text-main)');
+
+      // Eintrag für ".." (Eine Ebene nach oben)
+      if (cleanCurrent) {
+        html += `<tr class="folder-up-row" onclick="navigateUpFolder()" style="cursor:pointer;">
+          <td colspan="4" style="padding:8px 6px;">
+            📁 <strong>..</strong> <span style="font-size:11px; font-weight:normal; color:var(--text-muted);">(Übergeordneter Ordner)</span>
+          </td>
+        </tr>`;
+      }
+
+      // Ordner auflisten
+      subfoldersList.forEach(folder => {
+        let folderDisplay = folder.name.replace(/\/$/, '');
+        let countText = `${folder.fileCount} ${folder.fileCount === 1 ? 'Datei' : 'Dateien'}`;
+        let sizeText = formatSize(folder.totalSize);
+        let dateText = formatFileDate(folder.newestTime);
+
+        html += `<tr class="folder-row" onclick="navigateToFolder('${folder.fullPath}')">
+          <td>
+            <strong style="color:var(--neon-cyan); font-size:13px;">📁 ${folderDisplay}/</strong>
+            <span class="folder-badge">${countText}</span>
+          </td>
+          <td style="text-align:right; color:var(--text-muted);">${sizeText}</td>
+          <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateText}</td>
+          <td style="text-align:center;">
+            <button class="btn-icon" style="color:var(--neon-green); margin-right:6px;" title="Diesen Ordner als ZIP herunterladen" onclick="event.stopPropagation(); downloadFolderZip('${folder.fullPath}')">📦</button><button class="btn-icon" title="Diesen Ordner samt Inhalt löschen" onclick="event.stopPropagation(); deleteFolder('${folder.fullPath}')">🗑</button>
+          </td>
+        </tr>`;
+      });
+
+      // Dateien auflisten
+      directFiles.forEach(f => {
+        let fileNameOnly = f.name.split('/').pop();
+        let isGz = fileNameOnly.endsWith('.gz');
+        let nameColor = isGz ? 'var(--neon-green)' : 'var(--text-main)';
         let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
         let dateStr = formatFileDate(f.time);
 
         html += `<tr>
-          <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">${f.name}</td>
+          <td style="color:${nameColor}; font-weight:${isGz ? 'bold' : 'normal'};">📄 ${fileNameOnly}</td>
           <td style="text-align:right; color:var(--text-muted);">${sizeKb}</td>
           <td style="text-align:center; font-size:11px; color:var(--text-muted);">${dateStr}</td>
           <td style="text-align:center;">
@@ -598,6 +980,11 @@
           </td>
         </tr>`;
       });
+
+      if (subfoldersList.length === 0 && directFiles.length === 0) {
+        html += `<tr><td colspan="4" style="color:var(--text-muted); text-align:center; padding:15px;">📁 Dieser Ordner ist leer.</td></tr>`;
+      }
+
       tbody.innerHTML = html;
     }
 
