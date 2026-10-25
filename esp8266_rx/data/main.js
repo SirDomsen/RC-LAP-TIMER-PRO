@@ -1,11 +1,19 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.8.0'; 
+window.UI_VERSION = '3.9.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
+
+let activeTrackId = 'standard';
+let activeTrackName = 'Standard-Strecke';
+let allTracksList = [{ id: 'standard', name: 'Standard-Strecke', bestLap: 0 }];
+let currentFsPct = 0;
+let currentFsUsed = 0;
+let currentFsTotal = 0;
+let isStorageFull = false; 
 
 let currentMode = 0;
 let targetLaps = 0;
@@ -764,9 +772,210 @@ function onDriverQuickSelectChange(val) {
 
 function syncTimeWithServerOnce() {
   let nowSec = Math.floor(Date.now() / 1000);
-  fetch('/api/synctime?ts=' + nowSec, { 
+  let tzOffsetSec = -(new Date().getTimezoneOffset() * 60);
+  fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { 
     method: 'POST'
   }).catch(e => console.error("Einmaliger Zeit-Sync fehlgeschlagen:", e));
+}
+
+// --- STRECKEN-VERWALTUNG & SPEICHERPLATZ-SCHUTZ ---
+async function loadTracks() {
+  try {
+    let res = await fetch('/api/tracks');
+    if (res.ok) {
+      let data = await res.json();
+      if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+        allTracksList = data.tracks;
+        activeTrackId = data.active || data.tracks[0].id;
+        let found = allTracksList.find(t => t.id === activeTrackId) || allTracksList[0];
+        activeTrackName = found.name;
+      }
+      populateTrackSelectDropdowns();
+    }
+  } catch (e) {
+    console.warn("Streckenliste konnte nicht geladen werden:", e);
+  }
+}
+
+function populateTrackSelectDropdowns() {
+  let adminSel = document.getElementById('activeTrackSelect');
+  if (adminSel) {
+    let html = '';
+    allTracksList.forEach(t => {
+      let sel = (t.id === activeTrackId) ? 'selected' : '';
+      html += `<option value="${t.id}" ${sel}>🏁 ${t.name}</option>`;
+    });
+    adminSel.innerHTML = html;
+  }
+
+  let statsSel = document.getElementById('statsTrackFilterSelect');
+  if (statsSel) {
+    let prevVal = statsSel.value || 'all';
+    let html = `<option value="all" ${prevVal === 'all' ? 'selected' : ''}>🌍 Alle Strecken</option>`;
+    allTracksList.forEach(t => {
+      let sel = (t.id === prevVal) ? 'selected' : '';
+      html += `<option value="${t.id}" ${sel}>📍 ${t.name}</option>`;
+    });
+    statsSel.innerHTML = html;
+  }
+
+  let badge = document.getElementById('activeTrackNameBadge');
+  if (badge) badge.innerText = activeTrackName;
+  let dimBadge = document.getElementById('dimmerTrackNameVal');
+  if (dimBadge) dimBadge.innerText = activeTrackName;
+}
+
+async function onTrackSelectChange(trackId) {
+  if (!trackId) return;
+  try {
+    let res = await fetch('/api/tracks/select?id=' + encodeURIComponent(trackId), { method: 'POST' });
+    if (res.ok) {
+      await loadTracks();
+      previousLaps = {};
+      previousBestLaps = {};
+      lastAnnouncedLapMap = {};
+      updateData(true);
+    }
+  } catch (e) {
+    console.error("Fehler beim Streckenwechsel:", e);
+  }
+}
+
+function openNewTrackModal() {
+  let modal = document.getElementById('newTrackModal');
+  let inp = document.getElementById('newTrackNameInput');
+  if (inp) inp.value = '';
+  if (modal) {
+    modal.style.display = 'block';
+    setTimeout(() => { if (inp) inp.focus(); }, 100);
+  }
+}
+
+function closeNewTrackModal() {
+  let modal = document.getElementById('newTrackModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitNewTrack() {
+  let inp = document.getElementById('newTrackNameInput');
+  if (!inp) return;
+  let name = inp.value.trim();
+  if (!name) {
+    alert("Bitte einen Streckennamen eingeben.");
+    return;
+  }
+  try {
+    let res = await fetch('/api/tracks/add?name=' + encodeURIComponent(name), { method: 'POST' });
+    if (res.ok) {
+      closeNewTrackModal();
+      await loadTracks();
+      previousLaps = {};
+      previousBestLaps = {};
+      lastAnnouncedLapMap = {};
+      updateData(true);
+    } else {
+      alert("Strecke konnte nicht angelegt werden (max. 20 Strecken).");
+    }
+  } catch (e) {
+    alert("Netzwerkfehler beim Anlegen der Strecke.");
+  }
+}
+
+async function confirmDeleteActiveTrack() {
+  if (allTracksList.length <= 1 && activeTrackId === 'standard') {
+    if (!confirm(`Möchtest du alle Sessions und den Rekord der Strecke "${activeTrackName}" löschen?`)) return;
+  } else {
+    if (!confirm(`Möchtest du die Strecke "${activeTrackName}" inklusive aller auf ihr gefahrenen Sessions wirklich unwiderruflich löschen?`)) return;
+  }
+  try {
+    let res = await fetch('/api/tracks/delete?id=' + encodeURIComponent(activeTrackId), { method: 'POST' });
+    if (res.ok) {
+      await loadTracks();
+      previousLaps = {};
+      previousBestLaps = {};
+      lastAnnouncedLapMap = {};
+      updateData(true);
+    }
+  } catch (e) {
+    console.error("Fehler beim Löschen der Strecke:", e);
+  }
+}
+
+function openStorageFullModal() {
+  let modal = document.getElementById('storageFullModal');
+  let pctElem = document.getElementById('storageFullModalPct');
+  if (pctElem) pctElem.innerText = currentFsPct + '%';
+  if (modal) modal.style.display = 'block';
+}
+
+function closeStorageFullModal() {
+  let modal = document.getElementById('storageFullModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateStorageStatusUI(pct, full, usedBytes, totalBytes) {
+  if (pct === undefined) return;
+  currentFsPct = pct;
+  currentFsUsed = usedBytes || 0;
+  currentFsTotal = totalBytes || 0;
+  isStorageFull = !!full || (pct >= 95);
+
+  let usedKb = (currentFsUsed / 1024).toFixed(0);
+  let totalKb = (currentFsTotal / 1024).toFixed(0);
+  let detailStr = currentFsTotal > 0 ? `${pct}% (${usedKb} / ${totalKb} KB)` : `${pct}%`;
+
+  // 1. Footer Status
+  let ft = document.getElementById('footer-storage-status');
+  if (ft) {
+    if (pct >= 95) {
+      ft.innerHTML = `Speicher: <strong style="color:var(--neon-red);">🛑 ${detailStr} – VOLL! Keine Aufzeichnung!</strong>`;
+    } else if (pct >= 90) {
+      ft.innerHTML = `Speicher: <strong style="color:var(--neon-orange);">⚠️ ${detailStr} – Fast voll!</strong>`;
+    } else {
+      ft.innerHTML = `Speicher: <strong style="color:var(--neon-cyan);">💾 ${detailStr}</strong>`;
+    }
+  }
+
+  // 2. Statistik-Modal Anzeige & Warn-Banner
+  let statsTxt = document.getElementById('statsFsUsageText');
+  if (statsTxt) {
+    statsTxt.innerText = detailStr;
+    statsTxt.style.color = (pct >= 95) ? 'var(--neon-red)' : ((pct >= 90) ? 'var(--neon-orange)' : 'var(--neon-cyan)');
+  }
+
+  let warnMsg95 = `🛑 Speicher voll (${pct}%)! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.`;
+  let warnMsg90 = `⚠️ Speicher zu ${pct}% gefüllt! Bitte bald bestehende Sessions löschen.`;
+
+  let statsBanner = document.getElementById('statsStorageWarningBanner');
+  if (statsBanner) {
+    if (pct >= 95) {
+      statsBanner.className = 'storage-warning-banner storage-warning-red';
+      statsBanner.innerText = warnMsg95;
+      statsBanner.style.display = 'block';
+    } else if (pct >= 90) {
+      statsBanner.className = 'storage-warning-banner storage-warning-yellow';
+      statsBanner.innerText = warnMsg90;
+      statsBanner.style.display = 'block';
+    } else {
+      statsBanner.style.display = 'none';
+    }
+  }
+
+  // 3. Hauptseiten-Banner
+  let mainBanner = document.getElementById('mainStorageWarningBanner');
+  if (mainBanner) {
+    if (pct >= 95) {
+      mainBanner.className = 'storage-warning-banner storage-warning-red';
+      mainBanner.innerText = warnMsg95;
+      mainBanner.style.display = 'block';
+    } else if (pct >= 90) {
+      mainBanner.className = 'storage-warning-banner storage-warning-yellow';
+      mainBanner.innerText = warnMsg90;
+      mainBanner.style.display = 'block';
+    } else {
+      mainBanner.style.display = 'none';
+    }
+  }
 }
 
 async function loadVersion() {
@@ -878,6 +1087,26 @@ async function loadWifiStatus() {
 }
 
 function updateTrackRecordBar(info) {
+  if (info) {
+    if (info.activeTrackId && info.activeTrackName) {
+      let trackChanged = (activeTrackId !== info.activeTrackId || activeTrackName !== info.activeTrackName);
+      activeTrackId = info.activeTrackId;
+      activeTrackName = info.activeTrackName;
+      let badge = document.getElementById('activeTrackNameBadge');
+      if (badge) badge.innerText = activeTrackName;
+      let dimTrack = document.getElementById('dimmerTrackNameVal');
+      if (dimTrack) dimTrack.innerText = activeTrackName;
+      let sel = document.getElementById('activeTrackSelect');
+      if (sel && sel.value !== activeTrackId) {
+        if (trackChanged) loadTracks();
+        else sel.value = activeTrackId;
+      }
+    }
+    if (info.fsPct !== undefined) {
+      updateStorageStatusUI(info.fsPct, info.fsFull, info.fsUsed, info.fsTotal);
+    }
+  }
+
   let bar = document.getElementById('trackRecordBar');
   let disp = document.getElementById('trackRecordDisplay');
   let dimBanner = document.getElementById('dimmerTrackRecordBanner');
@@ -1343,10 +1572,6 @@ function finishSessionNow() {
     } else {
       speak("Das Qualifying ist beendet!", true);
     }
-
-    if (userRole === 'admin' && typeof window.autoSaveSessionResult === 'function') {
-      window.autoSaveSessionResult(1, "Qualifying");
-    }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     if (timerElem) timerElem.innerText = "ZIEL";
     announceRaceResults();
@@ -1375,6 +1600,8 @@ async function pollData() {
     let mOtaAlert = document.getElementById('otaAlertModal');
     let mReset = document.getElementById('resetConfirmModal');
     let mRole = document.getElementById('roleSelectModal');
+    let mNewTrack = document.getElementById('newTrackModal');
+    let mStorageFull = document.getElementById('storageFullModal');
     
     let isModalOpen = (mConfig && mConfig.style.display === 'block') ||
                       (mDriverConfig && mDriverConfig.style.display === 'block') ||
@@ -1382,7 +1609,9 @@ async function pollData() {
                       (mStatsDriver && mStatsDriver.style.display === 'block') ||
                       (mOtaAlert && mOtaAlert.style.display === 'block') ||
                       (mReset && mReset.style.display === 'block') ||
-                      (mRole && mRole.style.display === 'block');
+                      (mRole && mRole.style.display === 'block') ||
+                      (mNewTrack && mNewTrack.style.display === 'block') ||
+                      (mStorageFull && mStorageFull.style.display === 'block');
                       
     if (!isModalOpen) {
       await updateData(true);
@@ -1564,6 +1793,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   loadVersion();
   syncTimeWithServerOnce();
+  loadTracks();
 
   // Zufälliger Jitter (0 - 800ms) beim Start, um WebSocket-Stürme auf die ESP-CPU zu brechen
   setTimeout(() => {
@@ -1587,6 +1817,8 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('statsModal')) closeStatsModal();
   if (event.target === document.getElementById('statsOverviewModal')) closeStatsOverviewModal();
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
+  if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
+  if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {
     document.getElementById('roleSelectModal').style.display = 'none';
   }
@@ -1603,6 +1835,8 @@ document.addEventListener('keydown', function(e) {
     closeStatsModal();
     closeStatsOverviewModal();
     closeResetModal();
+    closeNewTrackModal();
+    closeStorageFullModal();
     if (userRole && document.getElementById('roleSelectModal')) {
       document.getElementById('roleSelectModal').style.display = 'none';
     }

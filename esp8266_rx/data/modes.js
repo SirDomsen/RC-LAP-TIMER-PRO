@@ -70,10 +70,9 @@ function startDragrace() {
 }
 
 function sendSession(mode, duration, laps, speakText) {
-  // Falls vorher im Dragrace oder Training gefahren wurde, vor dem Wechsel noch sichern
-  if ((currentMode === 4 || currentMode === 0) && typeof window.autoSaveSessionResult === 'function') {
-    if (lastLapsData && lastLapsData.some(c => c.completedLaps > 0)) {
-      window.autoSaveSessionResult(currentMode, currentMode === 4 ? "Dragrace" : "Freies Training");
+  if (typeof isStorageFull !== 'undefined' && (isStorageFull || currentFsPct >= 95)) {
+    if (typeof openStorageFullModal === 'function') {
+      openStorageFullModal();
     }
   }
 
@@ -104,12 +103,6 @@ function sendSession(mode, duration, laps, speakText) {
 function stopSession() {
   cancelRaceCountdown();
   hidePoleBanner();
-
-  if (currentMode === 4 && typeof window.autoSaveSessionResult === 'function') {
-    if (lastLapsData && lastLapsData.some(c => c.completedLaps > 0)) {
-      window.autoSaveSessionResult(4, "Dragrace");
-    }
-  }
 
   currentMode = 0;
   isSessionActive = false;

@@ -75,10 +75,9 @@ function handleLiveEvent(msg) {
     if (typeof finishSessionNow === 'function') {
       finishSessionNow();
     }
-  } else if (msg.type === 'request_session_save') {
-    if (typeof window.autoSaveSessionResult === 'function') {
-      window.autoSaveSessionResult(currentMode, currentMode === 4 ? "Dragrace" : "Freies Training");
-    }  
+  } else if (msg.type === 'track_record') {
+    if (typeof loadTracks === 'function') loadTracks();
+    if (typeof updateData === 'function') updateData(true);
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
@@ -89,6 +88,7 @@ function handleLiveEvent(msg) {
       if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
       if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
       if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
+      if (typeof loadTracks === 'function') loadTracks();
       updateData(true);
     }
   }
@@ -131,11 +131,7 @@ function onDragFinishEvent(msg) {
     }
     speak(text);
   }
-  updateData().then(() => {
-    if (typeof window.autoSaveSessionResult === 'function') {
-      window.autoSaveSessionResult(4, "Dragrace");
-    }
-  });
+  updateData();
 }
 
 function onSectorLiveEvent(msg) {

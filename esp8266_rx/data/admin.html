@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3.8.0">
+  <link rel="stylesheet" href="style.css?v=3.9.1">
 </head>
 <body class="role-admin">
 
@@ -21,7 +21,7 @@
     <div class="dimmer-top">
       <div id="dimmerTrackRecordBanner" class="dimmer-track-record-banner">
         <span class="track-record-icon">🏆</span>
-        <span class="track-record-label">Tagesbestzeit:</span>
+        <span class="track-record-label">Streckenrekord (<span id="dimmerTrackNameVal" style="color:var(--neon-cyan);">Standard-Strecke</span>):</span>
         <span id="dimmerTrackRecordVal" class="track-record-val">--:--</span>
       </div>
       <div>
@@ -108,10 +108,25 @@
 
       <div id="trackRecordBar" class="track-record-bar">
         <div class="track-record-title">
-          <span>🏆 TAGESBESTZEIT (TRACK RECORD)</span>
+          <span>🏆 STRECKENREKORD (<span id="activeTrackNameBadge" style="color:var(--neon-cyan);">Standard-Strecke</span>)</span>
         </div>
         <div class="trackRecordDisplay" id="trackRecordDisplay">
           <span style="color:var(--text-muted); font-size:13px;">Noch keine Bestzeit gesetzt</span>
+        </div>
+      </div>
+
+      <div id="mainStorageWarningBanner" class="storage-warning-banner" style="display:none;"></div>
+
+      <div class="track-selector-bar admin-only">
+        <div class="track-selector-left">
+          <span class="track-selector-label">📍 AKTUELLE STRECKE:</span>
+          <select id="activeTrackSelect" class="track-select-dropdown" onchange="onTrackSelectChange(this.value)">
+            <option value="standard">Standard-Strecke</option>
+          </select>
+        </div>
+        <div class="track-selector-actions">
+          <button class="btn btn-success" style="padding: 6px 12px; font-size: 12px; margin: 0;" onclick="openNewTrackModal()">➕ Neue Strecke</button>
+          <button class="btn btn-danger" style="padding: 6px 10px; font-size: 12px; margin: 0;" onclick="confirmDeleteActiveTrack()" title="Aktuelle Strecke samt zugehöriger Sessions löschen">🗑</button>
         </div>
       </div>
 
@@ -224,27 +239,34 @@
         <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsOverviewModal()">✕</button>
       </div>
 
-      <div class="backup-bar admin-only">
-        <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">DATENSICHERUNG:</span>
-        <div>
-          <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="downloadStatsBackup()">💾 Backup herunterladen</button>
-          <button class="btn btn-warning" style="padding:4px 8px; font-size:11px; margin:0 2px;" onclick="triggerRestoreBackup()">📂 Wiederherstellen</button>
-          <input type="file" id="backupFileInput" accept=".json" style="display:none;" onclick="event.stopPropagation()" onchange="handleRestoreBackup(event)">
+      <div id="statsStorageWarningBanner" class="storage-warning-banner" style="display:none;"></div>
+
+      <div class="backup-bar">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:12px; color:var(--neon-cyan); font-weight:bold; font-family:var(--font-display);">📍 STRECKE:</span>
+          <select id="statsTrackFilterSelect" class="track-select-dropdown" style="padding:4px 10px; font-size:12px;" onchange="onStatsTrackFilterChange(this.value)">
+            <option value="all">🌍 Alle Strecken</option>
+          </select>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted);">
+          💾 Flash: <strong id="statsFsUsageText" style="color:var(--neon-cyan);">--%</strong>
         </div>
       </div>
 
       <div class="tab-container">
         <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
-        <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freie Trainings</button>
-        <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifyings</button>
-        <button class="tab-btn" id="tabRaceBtn" onclick="switchStatsTab('race')">🏎️ Rennen</button>
+        <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freies Training</button>
+        <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifying</button>
+        <button class="tab-btn" id="tabRace_lapsBtn" onclick="switchStatsTab('race_laps')">🏎️ Rennen (Runden)</button>
+        <button class="tab-btn" id="tabRace_timeBtn" onclick="switchStatsTab('race_time')">⏳ Rennen (Zeit)</button>
         <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
       </div>
       
       <div class="modal-body" id="statsTabDrivers"></div>
       <div class="modal-body" id="statsTabTraining" style="display:none;"></div>
       <div class="modal-body" id="statsTabQuali" style="display:none;"></div>
-      <div class="modal-body" id="statsTabRace" style="display:none;"></div>
+      <div class="modal-body" id="statsTabRace_laps" style="display:none;"></div>
+      <div class="modal-body" id="statsTabRace_time" style="display:none;"></div>
       <div class="modal-body" id="statsTabDrag" style="display:none;"></div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
@@ -258,28 +280,12 @@
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px solid #222; padding-bottom: 8px;">
         <button class="btn" style="padding:4px 8px;" onclick="backToStatsOverview()">← Zurück</button>
-        <h3 id="statsModalTitle" style="color:var(--neon-green); margin:0; font-family:var(--font-display);">Statistik</h3>
+        <h3 id="statsModalTitle" style="color:var(--neon-green); margin:0; font-family:var(--font-display);">Fahrer-Profil</h3>
         <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeStatsModal()">✕</button>
       </div>
       
-      <div class="modal-body">
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th class="sortable" onclick="sortStatsTable('lap')">Runde <span id="sort-stats-icon-lap" class="sort-icon"></span></th>
-                <th class="sortable" onclick="sortStatsTable('time')">Zeit <span id="sort-stats-icon-time" class="sort-icon"></span></th>
-                <th>Sektoren (SZ1-SZ4)</th>
-                <th class="sortable" onclick="sortStatsTable('ts')">Datum / Uhrzeit <span id="sort-stats-icon-ts" class="sort-icon"></span></th>
-                <th class="sortable" onclick="sortStatsTable('mode')">Modus / Platz <span id="sort-stats-icon-mode" class="sort-icon"></span></th>
-                <th class="admin-only">Aktion</th>
-              </tr>
-            </thead>
-            <tbody id="statsTableBody">
-              <tr><td colspan="6">Lade Statistik...</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="modal-body" id="driverProfileContent">
+        <p style="color:var(--text-muted);">Lade Fahrer-Statistik...</p>
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
@@ -481,18 +487,53 @@
     </div>
   </div>
 
+  <!-- MODAL: NEUE STRECKE ANLEGEN -->
+  <div id="newTrackModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 440px; text-align: center; border: 1px solid var(--neon-cyan); box-shadow: 0 0 25px rgba(0, 229, 255, 0.35);">
+      <h3 style="color:var(--neon-cyan); font-family:var(--font-display); margin-top:0;">📍 NEUE STRECKE ANLEGEN</h3>
+      <p style="font-size:14px; color:var(--text-muted); margin-bottom:15px;">
+        Gib den Namen der Rennstrecke ein. Für jede Strecke wird ein eigenes Verzeichnis mit 5 Statistik-Kategorien und eigenem Streckenrekord geführt.
+      </p>
+      <div style="margin-bottom: 20px;">
+        <input type="text" id="newTrackNameInput" placeholder="z.B. Indoor Teppich, Gartenkurs..." maxlength="30" style="width: 100%; font-size: 16px; padding: 10px;" onkeydown="if(event.key==='Enter') submitNewTrack()">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeNewTrackModal()">ABBRECHEN</button>
+        <button class="btn btn-success" style="flex:1; padding:12px; font-weight:bold;" onclick="submitNewTrack()">ANLEGEN & WÄHLEN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SPEICHER VOLL WARNUNG (95% HARTER SCHNITT) -->
+  <div id="storageFullModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 460px; text-align: center; border: 2px solid var(--neon-red); box-shadow: 0 0 30px rgba(255, 51, 102, 0.55);">
+      <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">🛑 SPEICHER VOLL!</h3>
+      <p style="font-size:15px; color:var(--text-main); font-weight:bold; margin-bottom:15px;">
+        Speicher voll! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.
+      </p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">
+        Der Flash-Speicher hat die Obergrenze von 95% erreicht (<span id="storageFullModalPct" style="color:var(--neon-red); font-weight:bold;">95%</span>). Die Live-Zeitmessung funktioniert weiterhin, wird aber nicht mehr im Dateisystem aufgezeichnet.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold;" onclick="closeStorageFullModal(); openStatsOverviewModal();">📊 SESSIONS VERWALTEN</button>
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeStorageFullModal()">VERSTANDEN</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.8.0</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">3.9.1</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
+    <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=3.8.0"></script>
-  <script src="websocket.js?v=3.8.0"></script>
-  <script src="modes.js?v=3.8.0"></script>
-  <script src="stats.js?v=3.8.0"></script>
-  <script src="config.js?v=3.8.0"></script>
-  <script src="main.js?v=3.8.0"></script>
+  <script src="tts.js?v=3.9.1"></script>
+  <script src="websocket.js?v=3.9.1"></script>
+  <script src="modes.js?v=3.9.1"></script>
+  <script src="stats.js?v=3.9.1"></script>
+  <script src="config.js?v=3.9.1"></script>
+  <script src="main.js?v=3.9.1"></script>
 </body>
 </html>

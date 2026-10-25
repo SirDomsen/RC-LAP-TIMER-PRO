@@ -18,13 +18,19 @@ void handlePostRename(AsyncWebServerRequest *request);
 void handlePostReset(AsyncWebServerRequest *request);
 
 void handlePostSyncTime(AsyncWebServerRequest *request);
-void handleGetStats(AsyncWebServerRequest *request);
+void handleGetSessions(AsyncWebServerRequest *request);
+void handleGetSessionFile(AsyncWebServerRequest *request);
 void handlePostDeleteLap(AsyncWebServerRequest *request);
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request);
 void handlePostDeleteAllStats(AsyncWebServerRequest *request);
-void handleGetSessions(AsyncWebServerRequest *request);
-void handlePostSaveSessionResult(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);
+
+// Strecken-Verwaltung
+void handleGetTracks(AsyncWebServerRequest *request);
+void handlePostSelectTrack(AsyncWebServerRequest *request);
+void handlePostAddTrack(AsyncWebServerRequest *request);
+void handlePostDeleteTrack(AsyncWebServerRequest *request);
+
 void handleGetSectorConfig(AsyncWebServerRequest *request);
 void handlePostSetSectorConfig(AsyncWebServerRequest *request);
 
@@ -37,7 +43,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 void handleGetCacheConfig(AsyncWebServerRequest *request);
 void handlePostSetCacheConfig(AsyncWebServerRequest *request);
 
-// Neue Handlers für voll konfigurierbares WLAN & SZ-OTA
+// Handlers für voll konfigurierbares WLAN & SZ-OTA
 void handleGetWifiConfig(AsyncWebServerRequest *request);
 void handlePostSetWifiConfig(AsyncWebServerRequest *request);
 void handlePostSwitchWifi(AsyncWebServerRequest *request);

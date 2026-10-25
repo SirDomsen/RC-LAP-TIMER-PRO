@@ -221,6 +221,7 @@
         <span>Frei: <strong id="storageFree" style="color:var(--neon-green);">--</strong></span>
         <span>Gesamt: <strong id="storageTotal" style="color:var(--neon-cyan);">--</strong></span>
       </div>
+      <div id="storageWarningBox" style="display:none; margin-top:10px; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:bold;"></div>
     </div>
 
     <!-- UPLOAD CARD -->
@@ -583,7 +584,8 @@
       let html = '';
       sorted.forEach(f => {
         let isGz = f.name.endsWith('.gz');
-        let nameColor = isGz ? 'var(--neon-green)' : 'var(--text-main)';
+        let isSubfolder = f.name.includes('/');
+        let nameColor = isGz ? 'var(--neon-green)' : (isSubfolder ? 'var(--neon-cyan)' : 'var(--text-main)');
         let sizeKb = (f.size / 1024).toFixed(1) + ' KB';
         let dateStr = formatFileDate(f.time);
 
@@ -610,8 +612,39 @@
         let free = total - used;
         let pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
-        document.getElementById('storageBarFill').style.width = pct + '%';
-        document.getElementById('storagePercent').innerText = pct + ' %';
+        let barFill = document.getElementById('storageBarFill');
+        let pctTxt = document.getElementById('storagePercent');
+        let warnBox = document.getElementById('storageWarningBox');
+
+        barFill.style.width = pct + '%';
+        pctTxt.innerText = pct + ' %';
+
+        if (pct >= 95) {
+          barFill.style.background = 'var(--neon-red)';
+          pctTxt.style.color = 'var(--neon-red)';
+          if (warnBox) {
+            warnBox.style.display = 'block';
+            warnBox.style.background = 'rgba(255, 51, 102, 0.15)';
+            warnBox.style.border = '1px solid var(--neon-red)';
+            warnBox.style.color = 'var(--neon-red)';
+            warnBox.innerText = '🛑 Speicher voll! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.';
+          }
+        } else if (pct >= 90) {
+          barFill.style.background = 'var(--neon-orange)';
+          pctTxt.style.color = 'var(--neon-orange)';
+          if (warnBox) {
+            warnBox.style.display = 'block';
+            warnBox.style.background = 'rgba(255, 153, 0, 0.15)';
+            warnBox.style.border = '1px solid var(--neon-orange)';
+            warnBox.style.color = 'var(--neon-orange)';
+            warnBox.innerText = `⚠️ Speicher zu ${pct}% gefüllt! Ab 95% werden keine neuen Sessions mehr aufgezeichnet.`;
+          }
+        } else {
+          barFill.style.background = 'linear-gradient(90deg, var(--neon-cyan), var(--neon-green))';
+          pctTxt.style.color = 'var(--neon-green)';
+          if (warnBox) warnBox.style.display = 'none';
+        }
+
         document.getElementById('storageUsed').innerText = (used / 1024).toFixed(1) + ' KB';
         document.getElementById('storageFree').innerText = (free / 1024).toFixed(1) + ' KB';
         document.getElementById('storageTotal').innerText = (total / (1024 * 1024)).toFixed(2) + ' MB';
@@ -672,13 +705,14 @@
 
     async function downloadSingleFile(name) {
       let cleanName = name.startsWith('/') ? name.substring(1) : name;
+      let dlFileName = cleanName.replace(/\//g, '_');
       try {
         let buf = await fetchFileFromESP(cleanName);
         let blob = new Blob([buf], { type: 'application/octet-stream' });
         let url = URL.createObjectURL(blob);
         let a = document.createElement('a');
         a.href = url;
-        a.download = cleanName;
+        a.download = dlFileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -874,7 +908,8 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       let nowSec = Math.floor(Date.now() / 1000);
-      fetch('/api/synctime?ts=' + nowSec, { method: 'POST' }).finally(() => {
+      let tzOffsetSec = -(new Date().getTimezoneOffset() * 60);
+      fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { method: 'POST' }).finally(() => {
         loadFilesList();
       });
     });

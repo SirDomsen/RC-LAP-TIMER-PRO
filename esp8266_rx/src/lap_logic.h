@@ -81,6 +81,7 @@ extern uint32_t dailyBestLapMs;
 extern uint8_t dailyBestCarId;
 extern String dailyBestDriver;
 extern String dailyBestCar;
+extern String dailyBestDate;
 
 void initLapLogic();
 void loadDailyBest();

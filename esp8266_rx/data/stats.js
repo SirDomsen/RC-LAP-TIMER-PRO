@@ -1,7 +1,41 @@
-let currentStatsModeFilter = 0;
-let modeLapsCache = [];
-let modeSortColumn = 'default';
-let modeSortDir = 'desc';
+let allSessionsCache = [];
+let sessionFileCache = {};
+let currentStatsTrackFilter = 'all';
+
+let driversSortCol = 'laps';
+let driversSortDir = 'desc';
+
+let sessionResultsSortMap = {};
+let embeddedLapsState = {};
+let driverProfileSessionSort = { col: 'ts', dir: 'desc' };
+let driverProfileAllLapsState = null;
+
+function sanitizeDomId(str) {
+  return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function modeToTabName(mode) {
+  if (mode === 0) return 'training';
+  if (mode === 1) return 'quali';
+  if (mode === 2) return 'race_laps';
+  if (mode === 3) return 'race_time';
+  if (mode === 4) return 'drag';
+  return 'training';
+}
+
+function tabNameToMode(tab) {
+  if (tab === 'training') return 0;
+  if (tab === 'quali') return 1;
+  if (tab === 'race_laps') return 2;
+  if (tab === 'race_time') return 3;
+  if (tab === 'drag') return 4;
+  return 0;
+}
+
+function getSortIconHtml(state, col) {
+  if (!state || state.col !== col) return '';
+  return `<span class="sort-icon" style="color:var(--neon-cyan); font-weight:bold; margin-left:3px;">${state.dir === 'asc' ? '▲' : '▼'}</span>`;
+}
 
 function announceRaceResults() {
   if (!lastLapsData || lastLapsData.length === 0) return;
@@ -43,459 +77,403 @@ function announceRaceResults() {
     }
     speak(restText, false);
   }
-
-  autoSaveSessionResult(currentMode, (currentMode === 4 ? "Dragrace" : "Rennen"));
 }
 
-window.autoSaveSessionResult = function(mode, modeName) {
-  if (!lastLapsData || lastLapsData.length === 0) return;
-  let activeCars = lastLapsData.filter(car => car.completedLaps > 0 || car.bestLap > 0);
-  if (activeCars.length === 0) return;
-
-  let sorted = [...activeCars];
-  if (mode === 1 || mode === 4) {
-    sorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
-  } else {
-    sorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
-  }
-
-  let results = sorted.map((car, idx) => ({
-    pos: idx + 1,
-    id: car.id,
-    driver: car.driver || (carNamesMap[car.id]?.driver || ("Fahrer " + car.id)),
-    car: car.car || (carNamesMap[car.id]?.car || ("Auto " + car.id)),
-    laps: car.completedLaps || 0,
-    bestLap: car.bestLap || 0
-  }));
-
-  let nowSec = Math.floor(Date.now() / 1000);
-  let startSec = window.sessionStartTs ? window.sessionStartTs : (nowSec - 300);
-
-  let sessionData = {
-    ts: startSec, // Eindeutiger Ankerpunkt der Session für saubere Updates während eines Durchgangs
-    startTs: startSec,
-    endTs: nowSec,
-    mode: mode,
-    modeName: modeName,
-    results: results
-  };
-
-  fetch('/api/savesessionresult', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(JSON.stringify(sessionData))
-  }).catch(err => console.error("Fehler beim Speichern der Session:", err));
-};
-
-function sortTable(column) {
-  if (currentSortColumn === column) {
-    currentSortDir = (currentSortDir === 'asc') ? 'desc' : 'asc';
-  } else {
-    currentSortColumn = column;
-    currentSortDir = 'asc';
-  }
-  updateSortIcons();
-  updateData();
-}
-
-function updateSortIcons() {
-  const columns = ['default', 'driver', 'laps', 'sz1', 'sz2', 'sz3', 'sz4', 'lastLap', 'bestLap'];
-  columns.forEach(col => {
-    let iconElem = document.getElementById('sort-icon-' + col);
-    if (!iconElem) return;
-    if (currentSortColumn === col) {
-      iconElem.innerText = currentSortDir === 'asc' ? '▲' : '▼';
-    } else {
-      iconElem.innerText = '';
+async function fetchSessionsAndStorageInfo() {
+  try {
+    let [sRes, tRes] = await Promise.all([
+      fetch('/api/sessions'),
+      fetch('/api/timeleft')
+    ]);
+    if (sRes.ok) {
+      let sData = await sRes.json();
+      allSessionsCache = sData.sessions || [];
     }
-  });
-}
-
-function sortLapData(data) {
-  let defaultSorted = [...data];
-  if (currentMode === 1 || currentMode === 4) {
-    defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
-  } else {
-    defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
-  }
-
-  defaultSorted.forEach((item, index) => {
-    item._defaultPos = index + 1;
-  });
-
-  if (currentSortColumn === 'default') {
-    if (currentSortDir === 'desc') {
-      defaultSorted.reverse();
+    if (tRes.ok) {
+      let info = await tRes.json();
+      if (typeof updateStorageStatusUI === 'function' && info.fsPct !== undefined) {
+        updateStorageStatusUI(info.fsPct, info.fsFull, info.fsUsed, info.fsTotal);
+      }
     }
-    return defaultSorted;
-  }
-
-  let sorted = [...defaultSorted];
-  sorted.sort((a, b) => {
-    let valA, valB;
-    if (currentSortColumn === 'driver') {
-      valA = (a.driver || '').toLowerCase();
-      valB = (b.driver || '').toLowerCase();
-      return currentSortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    } else if (currentSortColumn === 'laps') {
-      valA = a.completedLaps || 0;
-      valB = b.completedLaps || 0;
-    } else if (currentSortColumn === 'sz1') {
-      valA = a.sz1 > 0 ? a.sz1 : 99999999;
-      valB = b.sz1 > 0 ? b.sz1 : 99999999;
-    } else if (currentSortColumn === 'sz2') {
-      valA = a.sz2 > 0 ? a.sz2 : 99999999;
-      valB = b.sz2 > 0 ? b.sz2 : 99999999;
-    } else if (currentSortColumn === 'sz3') {
-      valA = a.sz3 > 0 ? a.sz3 : 99999999;
-      valB = b.sz3 > 0 ? b.sz3 : 99999999;
-    } else if (currentSortColumn === 'sz4') {
-      valA = a.sz4 > 0 ? a.sz4 : 99999999;
-      valB = b.sz4 > 0 ? b.sz4 : 99999999;
-    } else if (currentSortColumn === 'lastLap') {
-      valA = a.lastLap > 0 ? a.lastLap : 99999999;
-      valB = b.lastLap > 0 ? b.lastLap : 99999999;
-    } else if (currentSortColumn === 'bestLap') {
-      valA = a.bestLap > 0 ? a.bestLap : 99999999;
-      valB = b.bestLap > 0 ? b.bestLap : 99999999;
-    }
-
-    if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  return sorted;
-}
-
-function switchStatsTab(tab) {
-  currentTab = tab;
-  document.getElementById('tabDriversBtn').classList.toggle('active', tab === 'drivers');
-  document.getElementById('tabTrainingBtn').classList.toggle('active', tab === 'training');
-  document.getElementById('tabQualiBtn').classList.toggle('active', tab === 'quali');
-  document.getElementById('tabRaceBtn').classList.toggle('active', tab === 'race');
-  document.getElementById('tabDragBtn').classList.toggle('active', tab === 'drag');
-
-  document.getElementById('statsTabDrivers').style.display = (tab === 'drivers') ? 'block' : 'none';
-  document.getElementById('statsTabTraining').style.display = (tab === 'training') ? 'block' : 'none';
-  document.getElementById('statsTabQuali').style.display = (tab === 'quali') ? 'block' : 'none';
-  document.getElementById('statsTabRace').style.display = (tab === 'race') ? 'block' : 'none';
-  document.getElementById('statsTabDrag').style.display = (tab === 'drag') ? 'block' : 'none';
-
-  if (tab === 'drivers') {
-    renderDriversOverview();
-  } else {
-    let modeFilter = 0;
-    if (tab === 'training') modeFilter = 0;
-    else if (tab === 'quali') modeFilter = 1;
-    else if (tab === 'race') modeFilter = [2, 3];
-    else if (tab === 'drag') modeFilter = 4;
-
-    currentStatsModeFilter = modeFilter;
-    loadSessionsOverviewByMode(modeFilter, 'statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+  } catch (e) {
+    console.error("Fehler beim Laden der Sessions:", e);
   }
 }
 
 async function openStatsOverviewModal() {
-  document.getElementById('statsOverviewModal').style.display = 'block';
-  await loadCarNames();
+  let modal = document.getElementById('statsOverviewModal');
+  if (modal) modal.style.display = 'block';
+
+  sessionFileCache = {};
+  await Promise.all([
+    loadCarNames(),
+    typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
+    fetchSessionsAndStorageInfo()
+  ]);
+
+  let filterSel = document.getElementById('statsTrackFilterSelect');
+  if (filterSel) {
+    filterSel.value = currentStatsTrackFilter;
+  }
+
+  if (!currentTab || currentTab === 'race') currentTab = 'training';
   switchStatsTab(currentTab);
 }
 
-async function renderDriversOverview() {
+function onStatsTrackFilterChange() {
+  let sel = document.getElementById('statsTrackFilterSelect');
+  if (sel) {
+    currentStatsTrackFilter = sel.value || 'all';
+  }
+  switchStatsTab(currentTab);
+}
+
+function switchStatsTab(tab) {
+  if (tab === 'race') tab = 'race_laps';
+  currentTab = tab;
+
+  const tabs = [
+    { key: 'drivers', btn: 'tabDriversBtn', div: 'statsTabDrivers' },
+    { key: 'training', btn: 'tabTrainingBtn', div: 'statsTabTraining' },
+    { key: 'quali', btn: 'tabQualiBtn', div: 'statsTabQuali' },
+    { key: 'race_laps', btn: 'tabRaceLapsBtn', div: 'statsTabRace_laps' },
+    { key: 'race_time', btn: 'tabRaceTimeBtn', div: 'statsTabRace_time' },
+    { key: 'drag', btn: 'tabDragBtn', div: 'statsTabDrag' }
+  ];
+
+  tabs.forEach(t => {
+    let b = document.getElementById(t.btn);
+    if (b) b.classList.toggle('active', t.key === tab);
+    let d = document.getElementById(t.div);
+    if (d) d.style.display = (t.key === tab) ? 'block' : 'none';
+  });
+
+  if (tab === 'drivers') {
+    renderDriversOverview();
+  } else {
+    let mode = tabNameToMode(tab);
+    let targetDiv = 'statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    renderSessionsByMode(mode, targetDiv);
+  }
+}
+
+function getTrackNameById(trackId, fallbackName) {
+  if (fallbackName) return fallbackName;
+  if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {
+    let found = allTracksList.find(t => t.id === trackId);
+    if (found) return found.name;
+  }
+  return trackId || 'Standard-Strecke';
+}
+
+function toggleDriversSort(col) {
+  if (driversSortCol === col) {
+    driversSortDir = (driversSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    driversSortCol = col;
+    driversSortDir = (col === 'driver') ? 'asc' : 'desc';
+  }
+  renderDriversOverview();
+}
+
+function renderDriversOverview() {
   let list = document.getElementById('statsTabDrivers');
-  list.innerHTML = '<p style="color:var(--text-muted);">Lade Fahrertabelle...</p>';
+  if (!list) return;
+
+  let filteredSessions = allSessionsCache.filter(s => {
+    if (currentStatsTrackFilter !== 'all' && s.trackId !== currentStatsTrackFilter) return false;
+    return true;
+  });
+
+  let driverStatsMap = {};
+  for (let i = 1; i <= MAX_CARS; i++) {
+    driverStatsMap[i] = {
+      id: i,
+      driver: carNamesMap[i]?.driver || ("Fahrer " + i),
+      car: carNamesMap[i]?.car || ("Auto " + i),
+      totalLaps: 0,
+      sessionsCount: 0,
+      bestLap: 0,
+      bestSessionId: null,
+      bestMode: 0,
+      bestTrackId: null,
+      bestTrackName: null,
+      trackBests: {}
+    };
+  }
+
+  filteredSessions.forEach(s => {
+    let tId = s.trackId || 'standard';
+    let tName = getTrackNameById(tId, s.trackName);
+    (s.results || []).forEach(r => {
+      let cid = r.id;
+      if (!driverStatsMap[cid]) {
+        driverStatsMap[cid] = {
+          id: cid,
+          driver: r.driver || ("Fahrer " + cid),
+          car: r.car || ("Auto " + cid),
+          totalLaps: 0,
+          sessionsCount: 0,
+          bestLap: 0,
+          bestSessionId: null,
+          bestMode: 0,
+          bestTrackId: null,
+          bestTrackName: null,
+          trackBests: {}
+        };
+      }
+      let ds = driverStatsMap[cid];
+      if (r.laps > 0 || r.bestLap > 0) {
+        ds.totalLaps += (r.laps || 0);
+        ds.sessionsCount += 1;
+      }
+      if (r.bestLap > 0) {
+        if (ds.bestLap === 0 || r.bestLap < ds.bestLap) {
+          ds.bestLap = r.bestLap;
+          ds.bestSessionId = s.id;
+          ds.bestMode = s.mode;
+          ds.bestTrackId = tId;
+          ds.bestTrackName = tName;
+        }
+        if (!ds.trackBests[tId] || r.bestLap < ds.trackBests[tId].bestLap) {
+          ds.trackBests[tId] = {
+            trackId: tId,
+            trackName: tName,
+            bestLap: r.bestLap,
+            sessionId: s.id,
+            mode: s.mode
+          };
+        }
+      }
+    });
+  });
+
+  let driversList = Object.values(driverStatsMap);
+  driversList.sort((a, b) => {
+    let res = 0;
+    if (driversSortCol === 'driver') {
+      res = a.driver.localeCompare(b.driver);
+    } else if (driversSortCol === 'laps') {
+      res = a.totalLaps - b.totalLaps;
+    } else if (driversSortCol === 'sessions') {
+      res = a.sessionsCount - b.sessionsCount;
+    } else if (driversSortCol === 'bestLap') {
+      let vA = a.bestLap > 0 ? a.bestLap : 99999999;
+      let vB = b.bestLap > 0 ? b.bestLap : 99999999;
+      res = vA - vB;
+    }
+    if (res === 0) res = a.id - b.id;
+    return (driversSortDir === 'asc') ? res : -res;
+  });
+
+  let getPillClass = (col) => (driversSortCol === col ? 'btn btn-purple' : 'btn');
+  let getArrow = (col) => (driversSortCol === col ? (driversSortDir === 'asc' ? ' ▲' : ' ▼') : '');
+
+  let sortBarHtml = `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+      <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="${getPillClass('laps')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('laps')">🔄 Runden${getArrow('laps')}</button>
+        <button class="${getPillClass('bestLap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('bestLap')">⚡ Bestzeit${getArrow('bestLap')}</button>
+        <button class="${getPillClass('sessions')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('sessions')">📅 Sessions${getArrow('sessions')}</button>
+        <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('driver')">👤 Name${getArrow('driver')}</button>
+      </div>
+    </div>`;
+
+  let cardsHtml = '';
+  driversList.forEach(ds => {
+    let bestDisp = ds.bestLap > 0 ? (ds.bestLap / 1000).toFixed(2) + 's' : '---';
+    let trackPillsHtml = '';
+    let tbValues = Object.values(ds.trackBests);
+    if (tbValues.length > 0) {
+      trackPillsHtml = '<div style="margin-top:6px;">';
+      tbValues.forEach(tb => {
+        let tSec = (tb.bestLap / 1000).toFixed(2) + 's';
+        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${ds.id})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${tb.trackName}: <strong>${tSec}</strong> 🔗</span>`;
+      });
+      trackPillsHtml += '</div>';
+    }
+
+    cardsHtml += `<div class="driver-select-card" onclick="openDriverStats(${ds.id})">
+      <div style="flex:1; min-width:0;">
+        <strong style="color:var(--neon-cyan); font-size:16px;">${ds.driver}</strong>
+        <small style="color:var(--text-muted);">(${ds.car} - ID ${ds.id})</small><br>
+        <span style="font-size:12px; color:var(--text-muted);">Gefahrene Runden: <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
+        ${trackPillsHtml}
+      </div>
+      <div style="text-align:right; margin-left:12px; flex-shrink:0;">
+        <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestDisp}</span><br>
+        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + ds.bestTrackName) : 'Bestzeit'}</span><br>
+        <span style="font-size:11px; color:var(--neon-cyan);">Profil öffnen ▶</span>
+      </div>
+    </div>`;
+  });
+
+  list.innerHTML = sortBarHtml + (cardsHtml || '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Fahrerdaten vorhanden.</p>');
+}
+
+function sortSessionResults(safeId, col) {
+  let curState = sessionResultsSortMap[safeId] || { col: 'pos', dir: 'asc' };
+  if (curState.col === col) {
+    curState.dir = (curState.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    curState.col = col;
+    curState.dir = (col === 'driver' || col === 'car' || col === 'pos') ? 'asc' : 'desc';
+  }
+  sessionResultsSortMap[safeId] = curState;
+  switchStatsTab(currentTab);
+}
+
+function renderSessionsByMode(mode, containerId) {
+  let container = document.getElementById(containerId);
+  if (!container) return;
+
+  let isDrag = (mode === 4);
+  let sessions = allSessionsCache.filter(s => {
+    if (s.mode !== mode) return false;
+    if (currentStatsTrackFilter !== 'all' && s.trackId !== currentStatsTrackFilter) return false;
+    return true;
+  });
+
+  sessions.sort((a, b) => (b.endTs || b.startTs || 0) - (a.endTs || a.startTs || 0));
+
+  if (sessions.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:25px;">Keine gespeicherten Durchgänge für diese Auswahl vorhanden.</p>';
+    return;
+  }
+
+  let roundWord = isDrag ? "Läufe" : "Runden";
+  let roundTimeWord = isDrag ? "Laufzeiten" : "Rundenzeiten";
+  let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
 
   let html = '';
-  for (let i = 1; i <= MAX_CARS; i++) {
-    let driver = carNamesMap[i]?.driver || ("Fahrer " + i);
-    let car = carNamesMap[i]?.car || ("Auto " + i);
-    
-    try {
-      let res = await fetch('/api/stats?id=' + i);
-      let data = await res.json();
-      let lapCount = data.laps ? data.laps.length : 0;
-      let best = '---';
-      if (lapCount > 0) {
-        let minTime = Math.min(...data.laps.map(l => l.time));
-        best = (minTime / 1000).toFixed(2) + 's';
+  sessions.forEach(s => {
+    let safeId = sanitizeDomId(s.id);
+    let badgeClass = 'session-card';
+    let headerColor = 'var(--neon-green)';
+    if (s.mode === 1) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
+    else if (s.mode === 2 || s.mode === 3) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
+    else if (s.mode === 4) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
+
+    let dateStr = formatTimestamp(s.endTs || s.startTs);
+    let trackName = getTrackNameById(s.trackId, s.trackName);
+
+    let sessionOverallBest = 0;
+    (s.results || []).forEach(r => {
+      if (r.bestLap > 0 && (sessionOverallBest === 0 || r.bestLap < sessionOverallBest)) {
+        sessionOverallBest = r.bestLap;
       }
-
-      html += `<div class="driver-select-card" onclick="openDriverStats(${i})">
-        <div>
-          <strong style="color:var(--neon-cyan); font-size:16px;">${driver}</strong>
-          <small style="color:var(--text-muted);">(${car} - ID ${i})</small><br>
-          <span style="font-size:12px; color:var(--text-muted);">Gespeicherte Runden: ${lapCount}</span>
-        </div>
-        <div style="text-align:right;">
-          <span style="color:var(--neon-green); font-weight:bold; font-size:15px;">${best}</span><br>
-          <span style="font-size:11px; color:var(--text-muted);">Bestzeit</span>
-        </div>
-      </div>`;
-    } catch (e) { console.error(e); }
-  }
-  list.innerHTML = html;
-}
-
-async function loadSessionsOverviewByMode(modeFilter, containerId) {
-  let container = document.getElementById(containerId);
-  container.innerHTML = '<p style="color:var(--text-muted);">Lade Historie...</p>';
-
-  let isDrag = (modeFilter === 4);
-
-  try {
-    let res = await fetch('/api/sessions');
-    let data = await res.json();
-    
-    let savedSessions = (data.sessions || []).filter(s => {
-      if (Array.isArray(modeFilter)) return modeFilter.includes(s.mode);
-      return s.mode === modeFilter;
     });
 
-    let allFlashLaps = [];
-    for (let i = 1; i <= MAX_CARS; i++) {
-      try {
-        let rLaps = await fetch('/api/stats?id=' + i);
-        let dLaps = await rLaps.json();
-        if (dLaps && dLaps.laps) {
-          dLaps.laps.forEach(l => {
-            let match = Array.isArray(modeFilter) ? modeFilter.includes(l.mode) : (l.mode === modeFilter);
-            if (match) {
-              allFlashLaps.push({
-                carId: i,
-                driver: carNamesMap[i]?.driver || ("Fahrer " + i),
-                car: carNamesMap[i]?.car || ("Auto " + i),
-                lap: l.lap,
-                time: l.time,
-                sz1: l.sz1 || 0,
-                sz2: l.sz2 || 0,
-                sz3: l.sz3 || 0,
-                sz4: l.sz4 || 0,
-                pos: l.pos || 1,
-                mode: l.mode,
-                ts: l.ts || 0
-              });
-            }
-          });
-        }
-      } catch (e) {}
-    }
+    let deleteBtnHtml = isAdmin
+      ? `<button class="btn-icon" onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Durchgang löschen">🗑</button>`
+      : '';
 
-    let orphanLaps = allFlashLaps.filter(l => {
-      let lapSec = l.ts < 10000000000 ? l.ts : Math.floor(l.ts / 1000);
-      for (let s of savedSessions) {
-        let sStart = s.startTs ? (s.startTs < 10000000000 ? s.startTs : Math.floor(s.startTs / 1000)) : (s.ts - 1800);
-        let sEnd = s.endTs ? (s.endTs < 10000000000 ? s.endTs : Math.floor(s.endTs / 1000)) : s.ts;
-        if (lapSec >= (sStart - 10) && lapSec <= (sEnd + 15)) {
-          return false;
-        }
+    let resSort = sessionResultsSortMap[safeId] || { col: 'pos', dir: 'asc' };
+    let sortedResults = [...(s.results || [])];
+    sortedResults.sort((a, b) => {
+      let res = 0;
+      if (resSort.col === 'pos') res = (a.pos || 99) - (b.pos || 99);
+      else if (resSort.col === 'driver') res = (a.driver || '').localeCompare(b.driver || '');
+      else if (resSort.col === 'car') res = (a.car || '').localeCompare(b.car || '');
+      else if (resSort.col === 'laps') res = (a.laps || 0) - (b.laps || 0);
+      else if (resSort.col === 'bestLap') {
+        let vA = a.bestLap > 0 ? a.bestLap : 99999999;
+        let vB = b.bestLap > 0 ? b.bestLap : 99999999;
+        res = vA - vB;
       }
-      return true;
+      return (resSort.dir === 'asc') ? res : -res;
     });
 
-    let orphanSessions = [];
-    if (orphanLaps.length > 0) {
-      orphanSessions = clusterLapsIntoSessions(orphanLaps, modeFilter);
-    }
-
-    let allSessions = [...savedSessions, ...orphanSessions];
-    allSessions.sort((a, b) => (a.endTs || a.ts) - (b.endTs || b.ts));
-
-    if (allSessions.length === 0) {
-      container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:25px;">Keine gespeicherten Durchgänge vorhanden.</p>';
-      return;
-    }
-
-    let roundWord = isDrag ? "Läufe" : "Runden";
-    let roundTimeWord = isDrag ? "Laufzeiten" : "Rundenzeiten";
-
-    let html = '';
-    allSessions.slice().reverse().forEach(s => {
-      let badgeClass = 'session-card';
-      let headerColor = 'var(--neon-green)';
-      if (s.mode === 1) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
-      else if (s.mode === 2 || s.mode === 3) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
-      else if (s.mode === 4) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
-
-      let dateStr = formatTimestamp(s.endTs || s.ts);
-
-      let sessionOverallBest = 0;
-      (s.results || []).forEach(r => {
-        if (r.bestLap > 0 && (sessionOverallBest === 0 || r.bestLap < sessionOverallBest)) {
-          sessionOverallBest = r.bestLap;
-        }
-      });
-
-      let startTs = s.startTs || (s.ts - 1800);
-      let endTs = s.endTs || s.ts;
-
-      html += `<div class="${badgeClass}">
-        <div style="display:flex; justify-content:space-between; align-items:center;" onclick="toggleSessionDetails(${s.ts})">
-          <div>
-            <strong style="color:${headerColor}; font-size:16px;">${s.modeName || "Durchgang"}</strong>
-            <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">📅 ${dateStr}</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span id="session_arrow_${s.ts}" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">Details 🔽</span>
-            <button class="btn-icon" onclick="event.stopPropagation(); deleteSession(${s.ts})" title="Durchgang löschen">🗑</button>
-          </div>
+    html += `<div id="session_card_${safeId}" class="${badgeClass}">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;" onclick="toggleSessionDetails('${safeId}')">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+          <strong style="color:${headerColor}; font-size:15px;">${s.modeName || "Durchgang"}</strong>
+          <span class="session-track-pill">📍 ${trackName}</span>
+          <span style="font-size:12px; color:var(--text-muted);">📅 ${dateStr}</span>
+          <small style="color:var(--text-muted); font-size:10px; opacity:0.7;">(${s.id})</small>
         </div>
-        
-        <div id="session_detail_${s.ts}" class="session-details" style="display:none; margin-top:10px;">
-          <div class="table-responsive">
-            <table>
-              <thead>
-                <tr>
-                  <th>Pos</th>
-                  <th>Fahrer</th>
-                  <th>Fahrzeug</th>
-                  <th>${roundWord}</th>
-                  <th>Beste Zeit</th>
-                  <th>${roundTimeWord}</th>
-                </tr>
-              </thead>
-              <tbody>`;
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="session_arrow_${safeId}" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">Details 🔽</span>
+          ${deleteBtnHtml}
+        </div>
+      </div>
 
-      (s.results || []).forEach(r => {
-        let isOverallWinner = (sessionOverallBest > 0 && r.bestLap > 0 && r.bestLap <= sessionOverallBest);
-        let bestColor = isOverallWinner ? 'var(--neon-purple)' : 'var(--neon-green)';
-        let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
-        let driverDetailId = `s_${s.ts}_driver_${r.id}`;
+      <div id="session_detail_${safeId}" class="session-details" style="display:none; margin-top:10px;">
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'pos')">Pos ${getSortIconHtml(resSort, 'pos')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'driver')">Fahrer ${getSortIconHtml(resSort, 'driver')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'car')">Fahrzeug ${getSortIconHtml(resSort, 'car')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'laps')">${roundWord} ${getSortIconHtml(resSort, 'laps')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'bestLap')">Beste Zeit ${getSortIconHtml(resSort, 'bestLap')}</th>
+                <th>${roundTimeWord}</th>
+              </tr>
+            </thead>
+            <tbody>`;
 
-        html += `<tr>
-          <td><strong>P${r.pos}</strong></td>
-          <td style="color:var(--neon-cyan); font-weight:bold;">${r.driver}</td>
-          <td style="color:var(--text-muted);">${r.car}</td>
-          <td>${r.laps}</td>
-          <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
-          <td>
-            <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', ${r.id}, ${startTs}, ${endTs}, ${r.laps}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'}, ${JSON.stringify(modeFilter)})">Details 🔽</button>
-          </td>
-        </tr>
-        <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.35);">
-          <td colspan="6">
-            <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
-          </td>
-        </tr>`;
-      });
+    sortedResults.forEach(r => {
+      let isOverallWinner = (sessionOverallBest > 0 && r.bestLap > 0 && r.bestLap <= sessionOverallBest);
+      let bestColor = isOverallWinner ? 'var(--neon-purple)' : 'var(--neon-green)';
+      let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
+      let driverDetailId = `s_${safeId}_driver_${r.id}`;
+      let dName = carNamesMap[r.id]?.driver || r.driver || ("Fahrer " + r.id);
+      let cName = carNamesMap[r.id]?.car || r.car || ("Auto " + r.id);
 
-      html += `</tbody></table></div></div></div>`;
+      html += `<tr>
+        <td><strong>P${r.pos}</strong></td>
+        <td><span class="driver-name" onclick="openDriverStats(${r.id})" style="color:var(--neon-cyan); font-weight:bold; cursor:pointer;">${dName}</span></td>
+        <td style="color:var(--text-muted);">${cName}</td>
+        <td>${r.laps}</td>
+        <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
+        <td>
+          <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', '${s.id}', '${s.file}', ${r.id}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'})">Details 🔽</button>
+        </td>
+      </tr>
+      <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.35);">
+        <td colspan="6">
+          <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
+        </td>
+      </tr>`;
     });
 
-    container.innerHTML = html;
-  } catch(e) {
-    console.error(e);
-    container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Historie.</p>';
-  }
-}
-
-function clusterLapsIntoSessions(lapsArray, modeFilter) {
-  lapsArray.sort((a, b) => a.ts - b.ts);
-
-  let sessions = [];
-  let currentCluster = [];
-  let clusterTimeoutMs = 10 * 60 * 1000;
-  let lastLapByCar = {};
-
-  lapsArray.forEach(l => {
-    let lapTsMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
-    if (currentCluster.length === 0) {
-      currentCluster.push(l);
-      lastLapByCar[l.carId] = l.lap;
-    } else {
-      let prevLap = currentCluster[currentCluster.length - 1];
-      let prevTsMs = prevLap.ts < 10000000000 ? prevLap.ts * 1000 : prevLap.ts;
-      
-      // Ein neues Rennevent liegt vor, wenn >10 Min Pause war ODER die Rundenzahl eines Autos wieder bei 1 beginnt
-      let lapResetDetected = (lastLapByCar[l.carId] !== undefined && l.lap <= lastLapByCar[l.carId] && l.lap === 1);
-
-      if ((lapTsMs - prevTsMs > clusterTimeoutMs) || lapResetDetected) {
-        sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
-        currentCluster = [l];
-        lastLapByCar = {};
-        lastLapByCar[l.carId] = l.lap;
-      } else {
-        currentCluster.push(l);
-        lastLapByCar[l.carId] = l.lap;
-      }
-    }
+    html += `</tbody></table></div></div></div>`;
   });
 
-  if (currentCluster.length > 0) {
-    sessions.push(buildSessionFromCluster(currentCluster, modeFilter));
-  }
-
-  return sessions;
+  container.innerHTML = html;
 }
 
-function buildSessionFromCluster(clusterLaps, modeFilter) {
-  let carsMap = {};
-  clusterLaps.forEach(l => {
-    if (!carsMap[l.carId]) {
-      carsMap[l.carId] = {
-        id: l.carId,
-        driver: l.driver,
-        car: l.car,
-        laps: 0,
-        bestLap: 0
-      };
-    }
-    carsMap[l.carId].laps++;
-    if (l.time > 0 && (carsMap[l.carId].bestLap === 0 || l.time < carsMap[l.carId].bestLap)) {
-      carsMap[l.carId].bestLap = l.time;
-    }
-  });
-
-  let results = Object.values(carsMap);
-  let isRankByBest = (clusterLaps[0].mode === 1 || clusterLaps[0].mode === 4);
-  if (isRankByBest) {
-    results.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
-  } else {
-    results.sort((a, b) => b.laps - a.laps || a.bestLap - b.bestLap);
-  }
-
-  results.forEach((r, idx) => { r.pos = idx + 1; });
-
-  let modeVal = clusterLaps[0].mode;
-  let modeName = "Freies Training";
-  if (modeVal === 1) modeName = "Qualifying";
-  if (modeVal === 2) modeName = "Rennen (Runden)";
-  if (modeVal === 3) modeName = "Rennen (Zeit)";
-  if (modeVal === 4) modeName = "Dragrace";
-
-  let firstLap = clusterLaps[0];
-  let lastLap = clusterLaps[clusterLaps.length - 1];
-  let startTs = firstLap.ts < 10000000000 ? firstLap.ts : Math.floor(firstLap.ts / 1000);
-  let endTs = lastLap.ts < 10000000000 ? lastLap.ts : Math.floor(lastLap.ts / 1000);
-
-  return {
-    ts: endTs,
-    startTs: startTs,
-    endTs: endTs,
-    mode: modeVal,
-    modeName: modeName,
-    results: results
-  };
-}
-
-function toggleSessionDetails(ts) {
-  let el = document.getElementById('session_detail_' + ts);
-  let arrow = document.getElementById('session_arrow_' + ts);
+function toggleSessionDetails(safeId, forceOpen = null) {
+  let el = document.getElementById('session_detail_' + safeId);
+  let arrow = document.getElementById('session_arrow_' + safeId);
   if (el) {
     let isOpen = (el.style.display === 'block');
-    el.style.display = isOpen ? 'none' : 'block';
-    if (arrow) arrow.innerText = isOpen ? 'Details 🔽' : 'Details 🔼';
+    let nextOpen = (forceOpen !== null) ? forceOpen : !isOpen;
+    el.style.display = nextOpen ? 'block' : 'none';
+    if (arrow) arrow.innerText = nextOpen ? 'Details 🔼' : 'Details 🔽';
   }
 }
 
-async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLapsCount, sessionOverallBest, isDrag, modeFilter) {
+async function fetchSessionFileData(filePath) {
+  if (!filePath) return null;
+  if (sessionFileCache[filePath]) return sessionFileCache[filePath];
+  let res = await fetch('/api/sessionfile?file=' + encodeURIComponent(filePath));
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let data = await res.json();
+  sessionFileCache[filePath] = data;
+  return data;
+}
+
+async function toggleDriverLapsInSession(elemId, sessionId, sessionFile, carId, sessionOverallBest, isDrag, forceOpen = false) {
   let trElem = document.getElementById(elemId + '_tr');
   let contentElem = document.getElementById(elemId + '_content');
   let btnElem = document.getElementById('btn_arrow_' + elemId);
 
   if (!trElem || !contentElem) return;
 
-  if (trElem.style.display === 'table-row') {
+  if (!forceOpen && trElem.style.display === 'table-row') {
     trElem.style.display = 'none';
     if (btnElem) btnElem.innerText = 'Details 🔽';
     return;
@@ -507,71 +485,65 @@ async function toggleDriverLapsInSession(elemId, carId, startTs, endTs, targetLa
   if (btnElem) btnElem.innerText = 'Details 🔼';
 
   try {
-    let res = await fetch('/api/stats?id=' + carId);
-    let data = await res.json();
-
-    if (!data.laps || data.laps.length === 0) {
-      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Zeiten im Speicher vorhanden.</span>';
+    let data = await fetchSessionFileData(sessionFile);
+    if (!data || !data.laps || data.laps.length === 0) {
+      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten in dieser Session-Datei vorhanden.</span>';
       return;
     }
 
-    let startMs = (startTs && startTs > 0) ? (startTs < 10000000000 ? startTs * 1000 : startTs) : 0;
-    let endMs = (endTs && endTs > 0) ? (endTs < 10000000000 ? endTs * 1000 : endTs) : 0;
-
-    let modeLaps = data.laps.filter(l => {
-      if (Array.isArray(modeFilter)) return modeFilter.includes(l.mode);
-      return l.mode === modeFilter;
-    });
-
-    modeLaps.sort((a, b) => a.ts - b.ts);
-
-    let candidatesBeforeEnd = modeLaps.filter(l => {
-      let lapMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
-      return endMs > 0 ? (lapMs <= endMs + 15000) : true;
-    });
-
-    let runLaps = [];
-    if (candidatesBeforeEnd.length > 0) {
-      for (let i = candidatesBeforeEnd.length - 1; i >= 0; i--) {
-        let l = candidatesBeforeEnd[i];
-        let lapMs = l.ts < 10000000000 ? l.ts * 1000 : l.ts;
-
-        // Zeitfenster-Prüfung (mit großzügiger Toleranz)
-        if (startMs > 0 && lapMs < (startMs - 15000) && runLaps.length >= (targetLapsCount || 1)) {
-          break;
-        }
-
-        // Wenn wir bereits Runden gesammelt haben und die vorherige Runde im Array eine HÖHERE
-        // Rundennummer hat als das gerade betrachtete Element, gehören ältere Einträge zu einer früheren Session!
-        if (runLaps.length > 0 && l.lap >= runLaps[0].lap && !isDrag) {
-          break;
-        }
-
-        runLaps.unshift(l);
-
-        // Wenn wir die exakte Anzahl der Läufe/Runden dieser Session erreicht haben und bei Lauf 1 sind, fertig!
-        if (targetLapsCount > 0 && runLaps.length >= targetLapsCount) {
-          break;
-        }
-      }
-    }
-
+    let runLaps = data.laps.filter(l => l.carId === carId);
     if (runLaps.length === 0) {
-      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten in diesem Durchgang erfasst.</span>';
+      contentElem.innerHTML = '<span style="color:var(--text-muted);">Keine Rundenzeiten für diesen Fahrer in diesem Durchgang erfasst.</span>';
       return;
     }
 
-    renderEmbeddedLapsTable(contentElem, runLaps, sessionOverallBest || 0, isDrag);
+    let sortState = embeddedLapsState[elemId] || { col: 'lap', dir: 'desc' };
+    embeddedLapsState[elemId] = {
+      laps: runLaps,
+      sessionOverallBest: sessionOverallBest || 0,
+      isDrag: isDrag,
+      sessionId: sessionId,
+      sessionFile: sessionFile,
+      carId: carId,
+      col: sortState.col,
+      dir: sortState.dir
+    };
+
+    renderEmbeddedLapsTable(elemId, contentElem);
   } catch (e) {
     console.error(e);
-    contentElem.innerHTML = '<span style="color:var(--neon-red);">Fehler beim Laden der Zeiten.</span>';
+    contentElem.innerHTML = '<span style="color:var(--neon-red);">Fehler beim Laden der Session-Datei.</span>';
   }
 }
 
-function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag) {
+function sortEmbeddedDriverLaps(elemId, col) {
+  let state = embeddedLapsState[elemId];
+  if (!state) return;
+  if (state.col === col) {
+    state.dir = (state.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    state.col = col;
+    state.dir = (col === 'lap' || col === 'ts') ? 'desc' : 'asc';
+  }
+  let contentElem = document.getElementById(elemId + '_content');
+  if (contentElem) {
+    renderEmbeddedLapsTable(elemId, contentElem);
+  }
+}
+
+function renderEmbeddedLapsTable(elemId, containerElem) {
+  let state = embeddedLapsState[elemId];
+  if (!state || !state.laps) return;
+
+  let laps = state.laps;
+  let sessionOverallBest = state.sessionOverallBest;
+  let isDrag = state.isDrag;
+  let sessionId = state.sessionId;
+  let sessionFile = state.sessionFile;
+  let carId = state.carId;
+
   let minSz1 = 0, minSz2 = 0, minSz3 = 0, minSz4 = 0, minTime = 0;
   let maxSz1 = 0, maxSz2 = 0, maxSz3 = 0, maxSz4 = 0, maxTime = 0;
-
   let anySz2 = false, anySz3 = false, anySz4 = false;
 
   laps.forEach(l => {
@@ -609,24 +581,58 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
 
   let roundLabel = isDrag ? "Lauf" : "Runde";
   let timeLabel = isDrag ? "Laufzeit" : "Zeit";
+  let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
+
+  let sortedLaps = [...laps];
+  sortedLaps.sort((a, b) => {
+    let res = 0;
+    if (state.col === 'lap') res = a.lap - b.lap;
+    else if (state.col === 'time') {
+      let vA = a.time > 0 ? a.time : 99999999;
+      let vB = b.time > 0 ? b.time : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz1') {
+      let vA = a.sz1 > 0 ? a.sz1 : 99999999;
+      let vB = b.sz1 > 0 ? b.sz1 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz2') {
+      let vA = a.sz2 > 0 ? a.sz2 : 99999999;
+      let vB = b.sz2 > 0 ? b.sz2 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz3') {
+      let vA = a.sz3 > 0 ? a.sz3 : 99999999;
+      let vB = b.sz3 > 0 ? b.sz3 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz4') {
+      let vA = a.sz4 > 0 ? a.sz4 : 99999999;
+      let vB = b.sz4 > 0 ? b.sz4 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'pos') {
+      res = (a.pos || 99) - (b.pos || 99);
+    } else if (state.col === 'ts') {
+      res = a.ts - b.ts;
+    }
+    return (state.dir === 'asc') ? res : -res;
+  });
 
   let html = `<div class="table-responsive"><table style="margin:0; font-size:12px;">
     <thead>
       <tr>
-        <th>${roundLabel}</th>
-        <th>SZ1</th>
-        ${showSz2Col ? '<th>SZ2</th>' : ''}
-        ${showSz3Col ? '<th>SZ3</th>' : ''}
-        ${showSz4Col ? '<th>SZ4</th>' : ''}
-        <th>${timeLabel}</th>
-        <th>Platz</th>
-        <th>Uhrzeit</th>
+        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'lap')">${roundLabel} ${getSortIconHtml(state, 'lap')}</th>
+        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz1')">SZ1 ${getSortIconHtml(state, 'sz1')}</th>
+        ${showSz2Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz2')">SZ2 ${getSortIconHtml(state, 'sz2')}</th>` : ''}
+        ${showSz3Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz3')">SZ3 ${getSortIconHtml(state, 'sz3')}</th>` : ''}
+        ${showSz4Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz4')">SZ4 ${getSortIconHtml(state, 'sz4')}</th>` : ''}
+        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'time')">${timeLabel} ${getSortIconHtml(state, 'time')}</th>
+        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'pos')">Platz ${getSortIconHtml(state, 'pos')}</th>
+        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'ts')">Uhrzeit ${getSortIconHtml(state, 'ts')}</th>
+        ${isAdmin ? '<th>Aktion</th>' : ''}
       </tr>
     </thead>
     <tbody>`;
 
-  laps.slice().reverse().forEach((l, revIdx) => {
-    let displayNum = isDrag ? (laps.length - revIdx) : l.lap;
+  sortedLaps.forEach((l) => {
+    let displayNum = l.lap;
 
     let getSectorStyle = (val, bestVal, worstVal) => {
       if (!val || val === 0) return 'color: var(--text-muted);';
@@ -673,6 +679,10 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
     let sz3Content = formatCell(l.sz3, split3, styleSz3);
     let sz4Content = showSz4Col ? formatCell(l.sz4, 0, styleSz4) : '';
 
+    let delCol = isAdmin
+      ? `<td><button class="btn-icon" title="Runde löschen" onclick="deleteSingleLapFromSession('${sessionId}', '${sessionFile}', ${carId}, ${l.lap})">🗑</button></td>`
+      : '';
+
     html += `<tr>
       <td>${roundLabel} ${displayNum}</td>
       <td>${sz1Content}</td>
@@ -682,6 +692,7 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
       <td style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
       <td style="color:var(--neon-orange); font-weight:bold;">${l.pos ? 'P' + l.pos : '---'}</td>
       <td style="color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
+      ${delCol}
     </tr>`;
   });
 
@@ -689,48 +700,479 @@ function renderEmbeddedLapsTable(containerElem, laps, sessionOverallBest, isDrag
   containerElem.innerHTML = html;
 }
 
-function deleteSingleLapAndReload(carId, lapNum) {
-  fetch(`/api/deletelap?id=${carId}&lap=${lapNum}`, { method: 'POST' })
-    .then(() => switchStatsTab(currentTab))
-    .catch(err => console.error(err));
-}
-
-function deleteSession(ts) {
-  if (confirm("Möchtest du diesen Durchgang wirklich löschen?")) {
-    fetch('/api/deletesession?ts=' + ts, { method: 'POST' })
-      .then(() => switchStatsTab(currentTab))
-      .catch(e => console.error(e));
+async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum) {
+  if (!confirm(`Runde ${lapNum} wirklich aus dieser Session löschen?`)) return;
+  try {
+    await fetch(`/api/deletelap?sessionId=${encodeURIComponent(sessionId)}&id=${carId}&lap=${lapNum}`, { method: 'POST' });
+    delete sessionFileCache[sessionFile];
+    await fetchSessionsAndStorageInfo();
+    switchStatsTab(currentTab);
+  } catch (err) {
+    console.error(err);
   }
 }
 
-function openDriverStats(carId) {
+async function deleteSession(sessionId) {
+  if (!confirm("Möchtest du diesen Durchgang inklusive seiner Session-Datei wirklich löschen?")) return;
+  try {
+    await fetch('/api/deletesession?id=' + encodeURIComponent(sessionId), { method: 'POST' });
+    sessionFileCache = {};
+    await fetchSessionsAndStorageInfo();
+    switchStatsTab(currentTab);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function jumpToSessionInStats(sessionId, mode, trackId, carId = null) {
+  closeStatsModal();
+
+  let overviewModal = document.getElementById('statsOverviewModal');
+  if (!overviewModal || overviewModal.style.display !== 'block') {
+    if (overviewModal) overviewModal.style.display = 'block';
+    await fetchSessionsAndStorageInfo();
+  }
+
+  if (currentStatsTrackFilter !== 'all' && trackId && currentStatsTrackFilter !== trackId) {
+    currentStatsTrackFilter = 'all';
+    let sel = document.getElementById('statsTrackFilterSelect');
+    if (sel) sel.value = 'all';
+  }
+
+  let targetTab = modeToTabName(mode);
+  switchStatsTab(targetTab);
+
+  let safeId = sanitizeDomId(sessionId);
+  toggleSessionDetails(safeId, true);
+
+  let card = document.getElementById('session_card_' + safeId);
+  if (card) {
+    card.classList.remove('session-highlight-flash');
+    void card.offsetWidth;
+    card.classList.add('session-highlight-flash');
+    setTimeout(() => {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  }
+
+  if (carId !== null) {
+    let sObj = allSessionsCache.find(s => s.id === sessionId);
+    if (sObj && sObj.file) {
+      let sessionOverallBest = 0;
+      (sObj.results || []).forEach(r => {
+        if (r.bestLap > 0 && (sessionOverallBest === 0 || r.bestLap < sessionOverallBest)) {
+          sessionOverallBest = r.bestLap;
+        }
+      });
+      let driverDetailId = `s_${safeId}_driver_${carId}`;
+      toggleDriverLapsInSession(driverDetailId, sObj.id, sObj.file, carId, sessionOverallBest, sObj.mode === 4, true);
+    }
+  }
+}
+
+async function openDriverStats(carId) {
   activeStatsCarId = carId;
-  statsSortColumn = 'default';
-  statsSortDir = 'desc';
-  updateStatsSortIcons();
-
   let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
-  document.getElementById('statsModalTitle').innerText = driverName + " (ID " + carId + ")";
-  document.getElementById('deleteDriverStatsBtn').innerText = "Statistiken von " + driverName + " löschen";
-  
-  closeStatsOverviewModal();
-  document.getElementById('statsModal').style.display = 'block';
+  let carName = carNamesMap[carId]?.car || ("Auto " + carId);
 
-  loadDriverStats(carId);
+  let titleElem = document.getElementById('statsModalTitle');
+  if (titleElem) titleElem.innerText = `${driverName} (${carName} - ID ${carId})`;
+
+  let delBtn = document.getElementById('deleteDriverStatsBtn');
+  if (delBtn) delBtn.innerText = "Alle Einträge von " + driverName + " löschen";
+
+  closeStatsOverviewModal();
+  let modal = document.getElementById('statsModal');
+  if (modal) modal.style.display = 'block';
+
+  let container = document.getElementById('driverProfileContent');
+  if (container) container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Lade Fahrer-Statistik...</p>';
+
+  await Promise.all([
+    loadCarNames(),
+    typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
+    fetchSessionsAndStorageInfo()
+  ]);
+
+  driverProfileAllLapsState = null;
+  renderDriverProfile(carId);
+}
+
+function sortDriverProfileSessions(col) {
+  if (driverProfileSessionSort.col === col) {
+    driverProfileSessionSort.dir = (driverProfileSessionSort.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    driverProfileSessionSort.col = col;
+    driverProfileSessionSort.dir = (col === 'ts' || col === 'laps') ? 'desc' : 'asc';
+  }
+  if (activeStatsCarId) {
+    renderDriverProfile(activeStatsCarId);
+  }
+}
+
+function sortDriverProfileAllLaps(col) {
+  if (!driverProfileAllLapsState) return;
+  if (driverProfileAllLapsState.col === col) {
+    driverProfileAllLapsState.dir = (driverProfileAllLapsState.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    driverProfileAllLapsState.col = col;
+    driverProfileAllLapsState.dir = (col === 'time' || col.startsWith('sz') || col === 'pos') ? 'asc' : 'desc';
+  }
+  renderDriverProfileAllLapsTable();
+}
+
+async function toggleDriverProfileAllLaps(carId) {
+  let box = document.getElementById('driverAllLapsBox');
+  let btn = document.getElementById('driverAllLapsToggleBtn');
+  if (!box) return;
+
+  if (box.style.display === 'block') {
+    box.style.display = 'none';
+    if (btn) btn.innerText = '⏱️ Alle Runden & Sektorzeiten anzeigen 🔽';
+    return;
+  }
+
+  box.style.display = 'block';
+  if (btn) btn.innerText = '⏱️ Rundenzeiten ausblenden 🔼';
+  box.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:15px;">Lade alle Rundenzeiten aus den Sessions...</p>';
+
+  try {
+    let allLaps = [];
+    for (let s of allSessionsCache) {
+      let r = (s.results || []).find(item => item.id === carId);
+      if (r && s.file) {
+        try {
+          let sData = await fetchSessionFileData(s.file);
+          if (sData && sData.laps) {
+            let carLaps = sData.laps.filter(l => l.carId === carId);
+            carLaps.forEach(l => {
+              allLaps.push({
+                ...l,
+                sessionId: s.id,
+                sessionFile: s.file,
+                mode: s.mode,
+                modeName: s.modeName || 'Durchgang',
+                trackId: s.trackId || 'standard',
+                trackName: getTrackNameById(s.trackId, s.trackName)
+              });
+            });
+          }
+        } catch (e) {}
+      }
+    }
+
+    driverProfileAllLapsState = {
+      laps: allLaps,
+      col: 'ts',
+      dir: 'desc'
+    };
+
+    renderDriverProfileAllLapsTable();
+  } catch (err) {
+    box.innerHTML = '<p style="color:var(--neon-red); text-align:center;">Fehler beim Laden der Rundenzeiten.</p>';
+  }
+}
+
+function renderDriverProfileAllLapsTable() {
+  let box = document.getElementById('driverAllLapsBox');
+  if (!box || !driverProfileAllLapsState) return;
+
+  let laps = driverProfileAllLapsState.laps;
+  if (!laps || laps.length === 0) {
+    box.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:15px;">Keine Rundenzeiten vorhanden.</p>';
+    return;
+  }
+
+  let state = driverProfileAllLapsState;
+  let sorted = [...laps];
+  sorted.sort((a, b) => {
+    let res = 0;
+    if (state.col === 'lap') res = a.lap - b.lap;
+    else if (state.col === 'time') {
+      let vA = a.time > 0 ? a.time : 99999999;
+      let vB = b.time > 0 ? b.time : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz1') {
+      let vA = a.sz1 > 0 ? a.sz1 : 99999999;
+      let vB = b.sz1 > 0 ? b.sz1 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz2') {
+      let vA = a.sz2 > 0 ? a.sz2 : 99999999;
+      let vB = b.sz2 > 0 ? b.sz2 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz3') {
+      let vA = a.sz3 > 0 ? a.sz3 : 99999999;
+      let vB = b.sz3 > 0 ? b.sz3 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'sz4') {
+      let vA = a.sz4 > 0 ? a.sz4 : 99999999;
+      let vB = b.sz4 > 0 ? b.sz4 : 99999999;
+      res = vA - vB;
+    } else if (state.col === 'track') {
+      res = a.trackName.localeCompare(b.trackName);
+    } else if (state.col === 'mode') {
+      res = a.modeName.localeCompare(b.modeName);
+    } else if (state.col === 'pos') {
+      res = (a.pos || 99) - (b.pos || 99);
+    } else if (state.col === 'ts') {
+      res = a.ts - b.ts;
+    }
+    return (state.dir === 'asc') ? res : -res;
+  });
+
+  let minTime = Math.min(...laps.filter(l => l.time > 0).map(l => l.time));
+
+  let html = `<div class="table-responsive" style="max-height:300px; overflow-y:auto;"><table style="margin:0; font-size:12px;">
+    <thead>
+      <tr>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('lap')">Runde ${getSortIconHtml(state, 'lap')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('time')">Zeit ${getSortIconHtml(state, 'time')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('sz1')">SZ1 ${getSortIconHtml(state, 'sz1')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('sz2')">SZ2 ${getSortIconHtml(state, 'sz2')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('sz3')">SZ3 ${getSortIconHtml(state, 'sz3')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('sz4')">SZ4 ${getSortIconHtml(state, 'sz4')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('track')">Strecke ${getSortIconHtml(state, 'track')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('mode')">Modus ${getSortIconHtml(state, 'mode')}</th>
+        <th class="sortable" onclick="sortDriverProfileAllLaps('ts')">Datum ${getSortIconHtml(state, 'ts')}</th>
+        <th>Session</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  sorted.forEach(l => {
+    let isBest = (l.time > 0 && l.time === minTime);
+    let timeCol = isBest ? 'var(--neon-purple)' : 'var(--text-main)';
+    let szDisp = (v) => v > 0 ? (v / 1000).toFixed(2) + 's' : '---';
+
+    html += `<tr>
+      <td>${l.mode === 4 ? 'Lauf' : 'Rnd'} ${l.lap}</td>
+      <td style="color:${timeCol}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
+      <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz1)}</td>
+      <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz2)}</td>
+      <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz3)}</td>
+      <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz4)}</td>
+      <td><span class="session-track-pill">📍 ${l.trackName}</span></td>
+      <td style="font-size:11px;">${l.modeName}</td>
+      <td style="font-size:11px; color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
+      <td><button class="btn btn-purple" style="padding:2px 6px; font-size:10px; margin:0;" onclick="jumpToSessionInStats('${l.sessionId}', ${l.mode}, '${l.trackId}', ${activeStatsCarId})">🔗</button></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table></div>';
+  box.innerHTML = html;
+}
+
+function renderDriverProfile(carId) {
+  let container = document.getElementById('driverProfileContent');
+  if (!container) return;
+
+  let totalLaps = 0;
+  let participatedSessions = [];
+  let trackBestsMap = {};
+  let overallBest = null;
+
+  allSessionsCache.forEach(s => {
+    let r = (s.results || []).find(item => item.id === carId);
+    if (!r || (r.laps === 0 && !r.bestLap)) return;
+
+    let tId = s.trackId || 'standard';
+    let tName = getTrackNameById(tId, s.trackName);
+
+    totalLaps += (r.laps || 0);
+    participatedSessions.push({
+      session: s,
+      result: r,
+      trackId: tId,
+      trackName: tName
+    });
+
+    if (!trackBestsMap[tId]) {
+      trackBestsMap[tId] = {
+        trackId: tId,
+        trackName: tName,
+        bestLap: 0,
+        sessionId: s.id,
+        mode: s.mode,
+        modeName: s.modeName || 'Durchgang',
+        ts: s.endTs || s.startTs,
+        totalTrackLaps: 0,
+        trackSessionsCount: 0
+      };
+    }
+
+    let tb = trackBestsMap[tId];
+    tb.totalTrackLaps += (r.laps || 0);
+    tb.trackSessionsCount += 1;
+
+    if (r.bestLap > 0) {
+      if (tb.bestLap === 0 || r.bestLap < tb.bestLap) {
+        tb.bestLap = r.bestLap;
+        tb.sessionId = s.id;
+        tb.mode = s.mode;
+        tb.modeName = s.modeName || 'Durchgang';
+        tb.ts = s.endTs || s.startTs;
+      }
+
+      if (!overallBest || r.bestLap < overallBest.bestLap) {
+        overallBest = {
+          bestLap: r.bestLap,
+          sessionId: s.id,
+          mode: s.mode,
+          modeName: s.modeName || 'Durchgang',
+          trackId: tId,
+          trackName: tName,
+          ts: s.endTs || s.startTs
+        };
+      }
+    }
+  });
+
+  participatedSessions.sort((a, b) => {
+    let res = 0;
+    let sA = a.session;
+    let sB = b.session;
+    let rA = a.result;
+    let rB = b.result;
+
+    if (driverProfileSessionSort.col === 'ts') {
+      let tsA = sA.endTs || sA.startTs || 0;
+      let tsB = sB.endTs || sB.startTs || 0;
+      res = tsA - tsB;
+    } else if (driverProfileSessionSort.col === 'track') {
+      res = a.trackName.localeCompare(b.trackName);
+    } else if (driverProfileSessionSort.col === 'mode') {
+      res = (sA.modeName || '').localeCompare(sB.modeName || '');
+    } else if (driverProfileSessionSort.col === 'pos') {
+      res = (rA.pos || 99) - (rB.pos || 99);
+    } else if (driverProfileSessionSort.col === 'laps') {
+      res = (rA.laps || 0) - (rB.laps || 0);
+    } else if (driverProfileSessionSort.col === 'bestLap') {
+      let vA = rA.bestLap > 0 ? rA.bestLap : 99999999;
+      let vB = rB.bestLap > 0 ? rB.bestLap : 99999999;
+      res = vA - vB;
+    }
+    return (driverProfileSessionSort.dir === 'asc') ? res : -res;
+  });
+
+  if (participatedSessions.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:30px;">Für diesen Fahrer wurden noch keine Sessions aufgezeichnet.</p>';
+    return;
+  }
+
+  let overallCardHtml = '';
+  if (overallBest) {
+    let obSec = (overallBest.bestLap / 1000).toFixed(2) + 's';
+    overallCardHtml = `
+      <div style="background:rgba(181,50,255,0.1); border:1px solid var(--neon-purple); border-radius:8px; padding:12px; text-align:center; cursor:pointer;" onclick="jumpToSessionInStats('${overallBest.sessionId}', ${overallBest.mode}, '${overallBest.trackId}', ${carId})" title="Klicken, um direkt zur Session dieser Bestzeit zu springen">
+        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Schnellste Runde (Gesamt)</div>
+        <div style="font-size:22px; font-weight:bold; color:var(--neon-purple); margin:4px 0;">${obSec} 🔗</div>
+        <div style="font-size:11px; color:var(--neon-cyan);">📍 ${overallBest.trackName} (${overallBest.modeName})</div>
+      </div>`;
+  } else {
+    overallCardHtml = `
+      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Schnellste Runde</div>
+        <div style="font-size:22px; font-weight:bold; color:var(--text-muted); margin:4px 0;">---</div>
+      </div>`;
+  }
+
+  let html = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:18px;">
+      <div style="background:rgba(0,240,255,0.07); border:1px solid rgba(0,240,255,0.3); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Gefahrene Runden</div>
+        <div style="font-size:22px; font-weight:bold; color:var(--neon-cyan); margin:4px 0;">${totalLaps}</div>
+        <div style="font-size:11px; color:var(--text-muted);">in ${participatedSessions.length} Sessions</div>
+      </div>
+      ${overallCardHtml}
+      <div style="background:rgba(57,255,20,0.07); border:1px solid rgba(57,255,20,0.3); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Befahrene Strecken</div>
+        <div style="font-size:22px; font-weight:bold; color:var(--neon-green); margin:4px 0;">${Object.keys(trackBestsMap).length}</div>
+        <div style="font-size:11px; color:var(--text-muted);">Strecken-Profile</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px; color:var(--neon-cyan); margin:16px 0 6px 0;">🏆 Bestzeiten je Strecke <small style="color:var(--text-muted); font-weight:normal;">(Klick öffnet die zugehörige Session)</small></h3>
+    <div class="driver-pb-track-grid">`;
+
+  Object.values(trackBestsMap).forEach(tb => {
+    let bestStr = tb.bestLap > 0 ? (tb.bestLap / 1000).toFixed(2) + 's' : '---';
+    let dateStr = formatTimestamp(tb.ts);
+    html += `
+      <div class="driver-pb-track-card" onclick="jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${carId})">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong style="color:var(--neon-cyan); font-size:14px;">📍 ${tb.trackName}</strong>
+          <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestStr} 🔗</span>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+          <span>🏁 ${tb.modeName} (${dateStr})</span>
+          <span>🔄 ${tb.totalTrackLaps} Rnd. (${tb.trackSessionsCount} Sess.)</span>
+        </div>
+      </div>`;
+  });
+
+  html += `</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 8px 0; flex-wrap:wrap; gap:8px;">
+      <h3 style="font-size:14px; color:var(--neon-cyan); margin:0;">📋 Teilgenommene Sessions (${participatedSessions.length})</h3>
+      <button id="driverAllLapsToggleBtn" class="btn btn-purple" style="padding:4px 10px; font-size:11px; margin:0;" onclick="toggleDriverProfileAllLaps(${carId})">⏱️ Alle Runden & Sektorzeiten anzeigen 🔽</button>
+    </div>
+
+    <div id="driverAllLapsBox" style="display:none; margin-bottom:15px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(181,50,255,0.3); padding:8px;"></div>
+
+    <div class="table-responsive" style="max-height:340px; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortDriverProfileSessions('ts')">Datum & Uhrzeit ${getSortIconHtml(driverProfileSessionSort, 'ts')}</th>
+            <th class="sortable" onclick="sortDriverProfileSessions('track')">Strecke ${getSortIconHtml(driverProfileSessionSort, 'track')}</th>
+            <th class="sortable" onclick="sortDriverProfileSessions('mode')">Modus ${getSortIconHtml(driverProfileSessionSort, 'mode')}</th>
+            <th class="sortable" onclick="sortDriverProfileSessions('pos')">Platz ${getSortIconHtml(driverProfileSessionSort, 'pos')}</th>
+            <th class="sortable" onclick="sortDriverProfileSessions('laps')">Runden ${getSortIconHtml(driverProfileSessionSort, 'laps')}</th>
+            <th class="sortable" onclick="sortDriverProfileSessions('bestLap')">Bestzeit ${getSortIconHtml(driverProfileSessionSort, 'bestLap')}</th>
+            <th>Session</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  participatedSessions.forEach(item => {
+    let s = item.session;
+    let r = item.result;
+    let dateStr = formatTimestamp(s.endTs || s.startTs);
+    let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
+
+    let modeCol = 'var(--neon-green)';
+    if (s.mode === 1) modeCol = 'var(--neon-purple)';
+    else if (s.mode === 2 || s.mode === 3) modeCol = 'var(--neon-cyan)';
+    else if (s.mode === 4) modeCol = 'var(--neon-orange)';
+
+    html += `<tr style="cursor:pointer;" onclick="jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${carId})">
+      <td style="font-size:12px; color:var(--text-muted);">${dateStr}</td>
+      <td><span class="session-track-pill">📍 ${item.trackName}</span></td>
+      <td style="color:${modeCol}; font-weight:bold; font-size:12px;">${s.modeName || 'Durchgang'}</td>
+      <td><strong style="color:var(--neon-orange);">P${r.pos}</strong></td>
+      <td>${r.laps}</td>
+      <td style="color:var(--neon-green); font-weight:bold;">${bestStr}</td>
+      <td><button class="btn btn-purple" style="padding:2px 8px; font-size:11px; margin:0;" onclick="event.stopPropagation(); jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${carId})">🔗 Öffnen</button></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  container.innerHTML = html;
 }
 
 function closeStatsModal() {
-  document.getElementById('statsModal').style.display = 'none';
+  let m = document.getElementById('statsModal');
+  if (m) m.style.display = 'none';
   activeStatsCarId = null;
 }
 
-function closeStatsOverviewModal() { 
-  document.getElementById('statsOverviewModal').style.display = 'none'; 
+function closeStatsOverviewModal() {
+  let m = document.getElementById('statsOverviewModal');
+  if (m) m.style.display = 'none';
 }
 
-function backToStatsOverview() { 
-  closeStatsModal(); 
-  openStatsOverviewModal(); 
+function backToStatsOverview() {
+  closeStatsModal();
+  openStatsOverviewModal();
 }
 
 function formatTimestamp(ts) {
@@ -744,173 +1186,75 @@ function formatTimestamp(ts) {
   let hours = String(d.getHours()).padStart(2, '0');
   let mins = String(d.getMinutes()).padStart(2, '0');
   let secs = String(d.getSeconds()).padStart(2, '0');
-  
+
   return `${day}.${month}.${year} ${hours}:${mins}:${secs}`;
 }
 
-function loadDriverStats(carId) {
-  let tbody = document.getElementById('statsTableBody');
-  tbody.innerHTML = '<tr><td colspan="6">Lade Daten...</td></tr>';
-
-  fetch('/api/stats?id=' + carId)
-    .then(r => r.json())
-    .then(data => {
-      rawDriverLapsData = data.laps || [];
-      renderDriverStatsTable();
-    }).catch(err => {
-      console.error(err);
-      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--neon-red);">Fehler beim Laden.</td></tr>';
-    });
-}
-
-function renderDriverStatsTable() {
-  let tbody = document.getElementById('statsTableBody');
-  if (!rawDriverLapsData || rawDriverLapsData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6">Keine gespeicherten Runden vorhanden.</td></tr>';
-    return;
-  }
-
-  let minTime = Math.min(...rawDriverLapsData.map(l => l.time));
-  let maxTime = Math.max(...rawDriverLapsData.map(l => l.time));
-  let allowWorst = (rawDriverLapsData.length > 1);
-
-  let sorted = [...rawDriverLapsData];
-  if (statsSortColumn !== 'default') {
-    sorted.sort((a, b) => {
-      let valA, valB;
-      if (statsSortColumn === 'lap') {
-        valA = a.lap || 0; valB = b.lap || 0;
-      } else if (statsSortColumn === 'time') {
-        valA = a.time || 0; valB = b.time || 0;
-      } else if (statsSortColumn === 'ts') {
-        valA = a.ts || 0; valB = b.ts || 0;
-      } else if (statsSortColumn === 'mode') {
-        valA = a.mode || 0; valB = b.mode || 0;
-      }
-
-      if (valA < valB) return statsSortDir === 'asc' ? -1 : 1;
-      if (valA > valB) return statsSortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-  } else {
-    sorted.reverse();
-  }
-
-  let html = '';
-  sorted.forEach(l => {
-    let modeStr = "Training";
-    if (l.mode === 1) modeStr = "Quali";
-    if (l.mode === 2 || l.mode === 3) modeStr = "Rennen (P" + (l.pos || '-') + ")";
-    if (l.mode === 4) modeStr = "Dragrace (P" + (l.pos || '-') + ")";
-
-    let timeSec = (l.time / 1000).toFixed(2) + 's';
-    let dateStr = formatTimestamp(l.ts);
-
-    let timeColor = 'var(--text-main)';
-    if (l.time === minTime) {
-      timeColor = 'var(--neon-purple)';
-    } else if (allowWorst && l.time === maxTime) {
-      timeColor = 'var(--neon-red)';
-    }
-
-    let secParts = [];
-    if (l.sz1 > 0) secParts.push(`S1: ${(l.sz1 / 1000).toFixed(2)}s`);
-    if (l.sz2 > 0) secParts.push(`S2: ${(l.sz2 / 1000).toFixed(2)}s`);
-    if (l.sz3 > 0) secParts.push(`S3: ${(l.sz3 / 1000).toFixed(2)}s`);
-    if (l.sz4 > 0 && l.mode !== 4) secParts.push(`S4: ${(l.sz4 / 1000).toFixed(2)}s`);
-    let sectorsStr = secParts.length > 0 ? secParts.join(' | ') : '---';
-
-    html += `<tr>
-      <td>${l.mode === 4 ? 'Lauf' : 'Runde'} ${l.lap}</td>
-      <td style="color:${timeColor}; font-weight:bold;">${timeSec}</td>
-      <td style="color:var(--neon-cyan); font-size:12px;">${sectorsStr}</td>
-      <td style="color:var(--text-muted); font-size:12px;">${dateStr}</td>
-      <td>${modeStr}</td>
-      <td>
-        <button class="btn-icon" title="Runde löschen" onclick="deleteSingleLap(${activeStatsCarId}, ${l.lap})">🗑</button>
-      </td>
-    </tr>`;
-  });
-  tbody.innerHTML = html;
-}
-
-function sortStatsTable(column) {
-  if (statsSortColumn === column) {
-    statsSortDir = (statsSortDir === 'asc') ? 'desc' : 'asc';
-  } else {
-    statsSortColumn = column;
-    statsSortDir = 'asc';
-  }
-  updateStatsSortIcons();
-  renderDriverStatsTable();
-}
-
-function updateStatsSortIcons() {
-  const columns = ['lap', 'time', 'ts', 'mode'];
-  columns.forEach(col => {
-    let iconElem = document.getElementById('sort-stats-icon-' + col);
-    if (!iconElem) return;
-    if (statsSortColumn === col) {
-      iconElem.innerText = statsSortDir === 'asc' ? '▲' : '▼';
-    } else {
-      iconElem.innerText = '';
-    }
-  });
-}
-
-function deleteSingleLap(carId, lapNum) {
-  fetch(`/api/deletelap?id=${carId}&lap=${lapNum}`, { method: 'POST' })
-    .then(() => loadDriverStats(carId))
-    .catch(err => console.error(err));
-}
-
-function confirmDeleteDriverStats() {
+async function confirmDeleteDriverStats() {
+  if (!activeStatsCarId) return;
   let driverName = carNamesMap[activeStatsCarId]?.driver || ("Fahrer " + activeStatsCarId);
-  if (confirm(`Wirklich ALLE gespeicherten Statistiken von ${driverName} dauerhaft löschen?`)) {
-    fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' })
-      .then(() => { loadDriverStats(activeStatsCarId); }).catch(err => console.error(err));
+  if (!confirm(`Wirklich ALLE gespeicherten Einträge von ${driverName} aus allen Sessions dauerhaft löschen?`)) return;
+  try {
+    await fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' });
+    sessionFileCache = {};
+    await fetchSessionsAndStorageInfo();
+    renderDriverProfile(activeStatsCarId);
+  } catch (err) {
+    console.error(err);
   }
 }
 
-function confirmDeleteAllStats() {
-  if (confirm("WARNUNG: Möchtest du wirklich ALLE Statistiken unwiderruflich löschen?")) {
-    fetch('/api/deleteallstats', { method: 'POST' })
-      .then(() => {
-        alert("Alle Statistiken wurden gelöscht.");
-        closeStatsOverviewModal();
-      }).catch(err => console.error(err));
+async function confirmDeleteAllStats() {
+  if (!confirm("WARNUNG: Möchtest du wirklich ALLE Sessions und Streckenrekorde unwiderruflich löschen?")) return;
+  try {
+    await fetch('/api/deleteallstats', { method: 'POST' });
+    sessionFileCache = {};
+    await fetchSessionsAndStorageInfo();
+    if (typeof loadTracks === 'function') await loadTracks();
+    alert("Alle Statistiken wurden gelöscht.");
+    closeStatsOverviewModal();
+  } catch (err) {
+    console.error(err);
   }
 }
 
 async function downloadStatsBackup() {
   let btn = document.querySelector('button[onclick="downloadStatsBackup()"]');
   let originalText = btn ? btn.innerText : "💾 Backup herunterladen";
-  
+
   if (btn) {
     btn.innerText = "⏳ Erstelle Backup... (Bitte warten)";
     btn.disabled = true;
   }
 
   let backupData = {
-    version: 2,
+    version: 3,
     exportedAt: Math.floor(Date.now() / 1000),
-    driverStats: {},
-    sessions: []
+    tracks: [],
+    sessions: [],
+    sessionFiles: {}
   };
 
   try {
-    for (let i = 1; i <= MAX_CARS; i++) {
-      let res = await fetch('/api/stats?id=' + i);
-      let data = await res.json();
-      if (data && data.laps) {
-        backupData.driverStats[i] = data;
-      }
+    let tRes = await fetch('/api/tracks');
+    if (tRes.ok) {
+      let tData = await tRes.json();
+      backupData.tracks = tData;
     }
 
     let sRes = await fetch('/api/sessions');
-    let sData = await sRes.json();
-    if (sData && sData.sessions) {
-      backupData.sessions = sData.sessions;
+    if (sRes.ok) {
+      let sData = await sRes.json();
+      backupData.sessions = sData.sessions || [];
+    }
+
+    for (let s of backupData.sessions) {
+      if (s.file) {
+        try {
+          let fData = await fetchSessionFileData(s.file);
+          if (fData) backupData.sessionFiles[s.file] = fData;
+        } catch (e) {}
+      }
     }
 
     let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
@@ -932,29 +1276,62 @@ async function downloadStatsBackup() {
 }
 
 function triggerRestoreBackup() {
-  document.getElementById('backupFileInput').click();
+  let inp = document.getElementById('backupFileInput');
+  if (inp) inp.click();
 }
 
 async function handleRestoreBackup(event) {
   let file = event.target.files[0];
   if (!file) return;
 
-  if (!confirm("Soll das Backup eingespielt werden?")) return;
-
-  let formData = new FormData();
-  formData.append('data', file, 'backup.json');
+  if (!confirm("Soll das Backup wiederhergestellt werden?")) {
+    event.target.value = '';
+    return;
+  }
 
   try {
-    let res = await fetch('/api/upload', { method: 'POST', body: formData });
-    if (res.ok) {
+    let text = await file.text();
+    let parsed = JSON.parse(text);
+
+    if (parsed.version === 3 && parsed.sessionFiles) {
+      // Upload /tracks.json
+      if (parsed.tracks) {
+        let tBlob = new Blob([JSON.stringify(parsed.tracks)], { type: 'application/json' });
+        let fd = new FormData();
+        fd.append('data', tBlob, '/tracks.json');
+        await fetch('/api/upload', { method: 'POST', body: fd });
+      }
+      // Upload each session file
+      let fileKeys = Object.keys(parsed.sessionFiles);
+      for (let fPath of fileKeys) {
+        let sBlob = new Blob([JSON.stringify(parsed.sessionFiles[fPath])], { type: 'application/json' });
+        let fd = new FormData();
+        fd.append('data', sBlob, fPath);
+        await fetch('/api/upload', { method: 'POST', body: fd });
+      }
+      // Upload /sessions.json
+      let idxBlob = new Blob([JSON.stringify({ sessions: parsed.sessions || [] })], { type: 'application/json' });
+      let fdIdx = new FormData();
+      fdIdx.append('data', idxBlob, '/sessions.json');
+      await fetch('/api/upload', { method: 'POST', body: fdIdx });
+
       alert("Backup erfolgreich wiederhergestellt!");
-      switchStatsTab(currentTab);
+      sessionFileCache = {};
+      await openStatsOverviewModal();
     } else {
-      alert("Fehler beim Hochladen des Backups.");
+      let formData = new FormData();
+      formData.append('data', file, 'backup.json');
+      let res = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        alert("Backup erfolgreich hochgeladen!");
+        await openStatsOverviewModal();
+      } else {
+        alert("Fehler beim Hochladen des Backups.");
+      }
     }
   } catch (err) {
     alert("Fehler beim Einlesen: " + err.message);
   }
-  
+
   event.target.value = '';
 }

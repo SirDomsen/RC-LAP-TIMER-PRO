@@ -80,6 +80,7 @@ uint32_t dailyBestLapMs = 0;
 uint8_t dailyBestCarId = 0;
 String dailyBestDriver = "";
 String dailyBestCar = "";
+String dailyBestDate = "";
 
 const uint16_t CLEARANCE_TIMEOUT_MS = 1000; 
 
@@ -93,33 +94,11 @@ static uint8_t  detectionCount = 0;
 #define VALIDATION_WINDOW_MICROS 85000 
 
 void loadDailyBest() {
-  if (LittleFS.exists("/daily_best.json")) {
-    File f = LittleFS.open("/daily_best.json", "r");
-    if (f) {
-      JsonDocument doc;
-      if (!deserializeJson(doc, f)) {
-        dailyBestLapMs = doc["time"] | 0;
-        dailyBestCarId = doc["id"] | 0;
-        dailyBestDriver = doc["driver"] | "";
-        dailyBestCar = doc["car"] | "";
-      }
-      f.close();
-    }
-  }
+  loadTracksFromFS();
 }
 
 void saveDailyBest() {
-  JsonDocument doc;
-  doc["time"] = dailyBestLapMs;
-  doc["id"] = dailyBestCarId;
-  doc["driver"] = dailyBestDriver;
-  doc["car"] = dailyBestCar;
-
-  File f = LittleFS.open("/daily_best.json", "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
+  saveActiveTrackBestToFS();
 }
 
 uint32_t getAverageLapTimeMs(uint8_t carId) {
@@ -182,6 +161,7 @@ void syncClockOnce(uint64_t clientTsSec) {
     
     timeval tv = { (time_t)clientTsSec, 0 };
     settimeofday(&tv, nullptr);
+    checkDailyBestDateRollover();
   }
 }
 
@@ -201,6 +181,8 @@ void addRecentID(uint8_t newId) {
 }
 
 void resetAllLaps(bool isHardReset) {
+  startNewSessionFrame((uint8_t)currentMode);
+
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     lastCrossTime[i] = 0;
     lastLapDuration[i] = 0;
@@ -244,9 +226,8 @@ void resetAllLaps(bool isHardReset) {
     dailyBestCarId = 0;
     dailyBestDriver = "";
     dailyBestCar = "";
-    if (LittleFS.exists("/daily_best.json")) {
-      LittleFS.remove("/daily_best.json");
-    }
+    dailyBestDate = getCurrentLocalDateStr();
+    saveActiveTrackBestToFS();
   }
 
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
@@ -825,6 +806,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
           dailyBestCarId = carId;
           dailyBestDriver = driverNames[carId];
           dailyBestCar = carNames[carId];
+          dailyBestDate = getCurrentLocalDateStr();
           saveDailyBest(); 
         }
       }
@@ -947,18 +929,12 @@ void updateLapLogicTasks() {
     }
   }
   
-  // --- FREIES TRAINING AUTO-SAVE ---
-  static uint32_t lastSessionSave = 0;
-  if (currentMode == MODE_PRACTICE && (now - lastSessionSave > 60000)) {
-    lastSessionSave = now;
-    broadcastWebSocket("{\"type\":\"request_session_save\"}");
-  }
-
   static bool sessionEndBroadcasted = false;
   if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
     if (modeEndTimeMs > 0 && now > modeEndTimeMs) {
       if (!sessionEndBroadcasted && areAllActiveCarsFinished()) {
         sessionEndBroadcasted = true;
+        flushCurrentSessionToIndex();
         broadcastWebSocket("{\"type\":\"session_completed\"}");
       }
     } else {
@@ -967,6 +943,8 @@ void updateLapLogicTasks() {
   } else {
     sessionEndBroadcasted = false;
   }
+
+  checkDailyBestDateRollover();
 }
 
 void updateLEDs() {

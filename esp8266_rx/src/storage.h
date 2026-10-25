@@ -16,6 +16,15 @@ extern String apSSID;
 extern String apPass;
 extern uint8_t activeWifiMode; // 0 = AP, 1 = Heim-WLAN, 2 = Hotspot
 
+// Aktive Strecke & Flash-Speicherstatus
+extern String activeTrackId;
+extern String activeTrackName;
+extern uint8_t cachedFsUsedPct;
+extern uint32_t cachedFsUsedBytes;
+extern uint32_t cachedFsTotalBytes;
+extern bool storageFullLocked;
+extern int32_t clientTzOffsetSec;
+
 // Puffer-Struktur mit vollständigen Sektorzeiten
 struct PendingLap {
   uint8_t carId;
@@ -43,17 +52,32 @@ void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, 
 void saveHotspotConfigToFS(const String& ssid, const String& pass);
 
 void initFS();
+void updateFsUsageCache();
+
+// Streckenverwaltung (/tracks.json) & Tagesbestzeit
+void loadTracksFromFS();
+void saveTracksToFS();
+String sanitizeTrackSlug(const String& rawName);
+bool selectTrackById(const String& trackId);
+bool addOrSelectTrack(const String& rawName);
+bool deleteTrackById(const String& trackId);
+void saveActiveTrackBestToFS();
+String getCurrentLocalDateStr();
+void checkDailyBestDateRollover();
+
+// Session-basierte Statistik-Speicherung (/<track>/<mode>/<YY-MM-DD_HH-MM-SS>.json)
+void startNewSessionFrame(uint8_t mode);
+void flushCurrentSessionToIndex();
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio);
 
 void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
 void processStorageQueue();
 
-void deleteLapFromHistory(uint8_t carId, uint16_t lapNum);
+void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNum);
 void deleteDriverHistory(uint8_t carId);
 void deleteAllHistory();
 
-void saveSessionToHistory(const String& sessionJsonStr);
-void deleteSessionFromHistory(uint64_t sessionTs);
+void deleteSessionById(const String& sessionId);
 
 #endif

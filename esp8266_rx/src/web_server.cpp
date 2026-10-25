@@ -258,6 +258,23 @@ static void connectNetworkCascade(uint8_t startMode) {
   setupFallbackAP();
 }
 
+static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
+  Dir dir = LittleFS.openDir(basePath);
+  while (dir.next()) {
+    String entryName = dir.fileName();
+    String fullPath = (basePath == "/") ? ("/" + entryName) : (basePath + "/" + entryName);
+    if (dir.isDirectory()) {
+      listFilesRecursive(fullPath, response, first);
+    } else {
+      if (!first) response->print(",");
+      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
+      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                       relName.c_str(), (unsigned int)dir.fileSize(), (unsigned long)dir.fileTime());
+      first = false;
+    }
+  }
+}
+
 void initNetworkAndServer() {
   connectNetworkCascade(activeWifiMode);
 
@@ -313,43 +330,42 @@ void initNetworkAndServer() {
   });
 
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+    flushCurrentSessionToIndex();
     FSInfo fs_info;
     LittleFS.info(fs_info);
+    updateFsUsageCache();
 
-    String json;
-    json.reserve(2048);
-    json = "{\"total\":";
-    json += fs_info.totalBytes;
-    json += ",\"used\":";
-    json += fs_info.usedBytes;
-    json += ",\"files\":[";
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
+                     (unsigned int)fs_info.totalBytes, (unsigned int)fs_info.usedBytes);
 
-    Dir dir = LittleFS.openDir("/");
     bool first = true;
-    while (dir.next()) {
-      if (!first) json += ",";
-      json += "{\"name\":\"";
-      json += dir.fileName();
-      json += "\",\"size\":";
-      json += dir.fileSize();
-      json += ",\"time\":";
-      json += (uint32_t)dir.fileTime();
-      json += "}";
-      first = false;
-    }
-    json += "]}";
-    request->send(200, "application/json", json);
+    listFilesRecursive("/", response, first);
+
+    response->print("]}");
+    request->send(response);
   });
 
   server.on("/api/deletefile", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("file")) {
       String filename = request->getParam("file")->value();
+      filename.replace("%2F", "/");
+      filename.replace("%2f", "/");
       if (!filename.startsWith("/")) filename = "/" + filename;
+
+      // Falls es eine Session-Datei aus einem Unterordner ist, auch sauber aus /sessions.json entfernen
+      int lastSlash = filename.lastIndexOf('/');
+      if (lastSlash > 0 && filename.endsWith(".json")) {
+        String baseName = filename.substring(lastSlash + 1, filename.length() - 5);
+        deleteSessionById(baseName);
+      }
+
       if (LittleFS.exists(filename)) {
         LittleFS.remove(filename);
-        request->send(200, "text/plain", "Geloescht");
-        return;
       }
+      updateFsUsageCache();
+      request->send(200, "text/plain", "Geloescht");
+      return;
     }
     request->send(400, "text/plain", "Datei nicht gefunden");
   });
@@ -363,27 +379,6 @@ void initNetworkAndServer() {
       fn = "/" + fn;
       if (LittleFS.exists(fn)) {
         request->send(LittleFS, fn, "application/octet-stream", true);
-        return;
-      }
-    }
-    if (isHeapCriticalForFileTransfer()) {
-      AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Server busy");
-      res->addHeader("Retry-After", "2");
-      res->addHeader("Connection", "close");
-      request->send(res);
-      return;
-    }
-
-    if (request->hasParam("file")) {
-      String filename = request->getParam("file")->value();
-      if (!filename.startsWith("/")) filename = "/" + filename;
-      if (LittleFS.exists(filename)) {
-        request->send(LittleFS, filename, "application/octet-stream", true);
-        return;
-
-
-
-
         return;
       }
     }
@@ -449,13 +444,18 @@ void initNetworkAndServer() {
   server.on("/api/reset", HTTP_POST, handlePostReset);
 
   server.on("/api/synctime", HTTP_POST, handlePostSyncTime);
-  server.on("/api/stats", HTTP_GET, handleGetStats);
+  server.on("/api/sessions", HTTP_GET, handleGetSessions);
+  server.on("/api/sessionfile", HTTP_GET, handleGetSessionFile);
   server.on("/api/deletelap", HTTP_POST, handlePostDeleteLap);
   server.on("/api/deletedriverstats", HTTP_POST, handlePostDeleteDriverStats);
   server.on("/api/deleteallstats", HTTP_POST, handlePostDeleteAllStats);
-  server.on("/api/sessions", HTTP_GET, handleGetSessions);
-  server.on("/api/savesessionresult", HTTP_POST, handlePostSaveSessionResult);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
+
+  server.on("/api/tracks", HTTP_GET, handleGetTracks);
+  server.on("/api/tracks/select", HTTP_POST, handlePostSelectTrack);
+  server.on("/api/tracks/add", HTTP_POST, handlePostAddTrack);
+  server.on("/api/tracks/delete", HTTP_POST, handlePostDeleteTrack);
+
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
   

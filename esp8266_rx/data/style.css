@@ -959,3 +959,138 @@ footer {
   gap: 4px;
   align-items: center;
 }
+
+/* --- STRECKEN-AUSWAHLLEISTE --- */
+.track-selector-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.track-selector-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.track-selector-label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--neon-cyan);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.track-select-dropdown {
+  background: #0d1117;
+  color: var(--neon-green);
+  border: 1px solid var(--neon-cyan);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.track-select-dropdown:focus {
+  outline: none;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+}
+.track-selector-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- SPEICHERPLATZ-WARNUNG --- */
+.storage-warning-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4;
+}
+.storage-warning-yellow {
+  background: rgba(255, 153, 0, 0.15);
+  border: 1px solid var(--neon-orange);
+  color: var(--neon-orange);
+}
+.storage-warning-red {
+  background: rgba(255, 51, 102, 0.2);
+  border: 2px solid var(--neon-red);
+  color: var(--neon-red);
+  box-shadow: 0 0 15px rgba(255, 51, 102, 0.4);
+  animation: pulseCritical 1.6s infinite ease-in-out;
+}
+@keyframes pulseCritical {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+  50% { box-shadow: 0 0 22px rgba(255, 51, 102, 0.75); }
+}
+
+/* --- FAHRER-BESTZEITEN JE STRECKE & SESSION-SPRUNG --- */
+.driver-pb-track-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.driver-pb-track-card {
+  background: #0d1117;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-left: 3px solid var(--neon-purple);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.driver-pb-track-card:hover {
+  border-color: var(--neon-purple);
+  background: rgba(181, 50, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(181, 50, 255, 0.25);
+}
+.session-track-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-family: var(--font-display);
+  color: var(--neon-cyan);
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+}
+.driver-track-pb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(181, 50, 255, 0.12);
+  border: 1px solid rgba(181, 50, 255, 0.45);
+  color: var(--text-main);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin: 2px;
+}
+.driver-track-pb-pill:hover {
+  background: var(--neon-purple);
+  color: #fff;
+  box-shadow: 0 0 8px var(--neon-purple);
+}
+@keyframes sessionHighlightGlow {
+  0%, 100% { box-shadow: none; }
+  25%, 75% { box-shadow: 0 0 20px var(--neon-cyan); border-color: var(--neon-cyan); }
+}
+.session-highlight-flash {
+  animation: sessionHighlightGlow 2.5s ease-in-out;
+}

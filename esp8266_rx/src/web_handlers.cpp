@@ -46,6 +46,7 @@ void handleGetLaps(AsyncWebServerRequest *request) {
 }
 
 void handleGetStationsStatus(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(160);
   json = "{";
@@ -69,6 +70,7 @@ void handlePostSession(AsyncWebServerRequest *request) {
     }
 
     currentMode = newMode;
+    startNewSessionFrame((uint8_t)newMode);
     
     uint16_t duration = request->hasParam("duration") ? request->getParam("duration")->value().toInt() : 0;
     targetRounds = request->hasParam("laps") ? request->getParam("laps")->value().toInt() : 0;
@@ -99,8 +101,9 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
       secondsLeft = 0;
     }
   }
+  checkDailyBestDateRollover();
   String json;
-  json.reserve(320);
+  json.reserve(450);
   json = "{\"mode\":";
   json += (int)currentMode;
   json += ",\"secondsLeft\":";
@@ -121,11 +124,24 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += dailyBestDriver;
   json += "\",\"dailyBestCar\":\"";
   json += dailyBestCar;
-  json += "\"}";
+  json += "\",\"activeTrackId\":\"";
+  json += activeTrackId;
+  json += "\",\"activeTrackName\":\"";
+  json += activeTrackName;
+  json += "\",\"fsPct\":";
+  json += cachedFsUsedPct;
+  json += ",\"fsFull\":";
+  json += (storageFullLocked || cachedFsUsedPct >= 95 ? "true" : "false");
+  json += ",\"fsUsed\":";
+  json += cachedFsUsedBytes;
+  json += ",\"fsTotal\":";
+  json += cachedFsTotalBytes;
+  json += "}";
   request->send(200, "application/json", json);
 }
 
 void handleGetRecent(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(64);
   json = "[";
@@ -138,6 +154,7 @@ void handleGetRecent(AsyncWebServerRequest *request) {
 }
 
 void handleGetDeadtime(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(32);
   json = "{\"ms\":";
@@ -147,6 +164,7 @@ void handleGetDeadtime(AsyncWebServerRequest *request) {
 }
 
 void handleGetFilter(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(32);
   json = "{\"enabled\":";
@@ -167,6 +185,7 @@ void handleGetNames(AsyncWebServerRequest *request) {
 }
 
 void handleGetVersion(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(64);
   json = "{\"firmware\":\"" FIRMWARE_VERSION "\"}";
@@ -223,6 +242,9 @@ void handlePostReset(AsyncWebServerRequest *request) {
 }
 
 void handlePostSyncTime(AsyncWebServerRequest *request) {
+  if (request->hasParam("tz")) {
+    clientTzOffsetSec = request->getParam("tz")->value().toInt();
+  }
   if (request->hasParam("ts")) {
     uint64_t clientTsSec = strtoull(request->getParam("ts")->value().c_str(), NULL, 10);
     syncClockOnce(clientTsSec);
@@ -230,26 +252,38 @@ void handlePostSyncTime(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
-void handleGetStats(AsyncWebServerRequest *request) {
-  if (request->hasParam("id")) {
-    uint8_t id = request->getParam("id")->value().toInt();
-    String filepath = "/stats_" + String(id) + ".json";
-    
-    if (LittleFS.exists(filepath)) {
-      request->send(LittleFS, filepath, "application/json");
-    } else {
-      request->send(200, "application/json", "{\"laps\":[]}");
-    }
+void handleGetSessions(AsyncWebServerRequest *request) {
+  flushCurrentSessionToIndex();
+  updateFsUsageCache();
+  String filepath = "/sessions.json";
+  if (LittleFS.exists(filepath)) {
+    request->send(LittleFS, filepath, "application/json");
   } else {
-    request->send(400, "text/plain", "Fehlende ID");
+    request->send(200, "application/json", "{\"sessions\":[]}");
   }
 }
 
+void handleGetSessionFile(AsyncWebServerRequest *request) {
+  flushCurrentSessionToIndex();
+  if (request->hasParam("file")) {
+    String fn = request->getParam("file")->value();
+    fn.replace("%2F", "/");
+    fn.replace("%2f", "/");
+    if (!fn.startsWith("/")) fn = "/" + fn;
+    if (fn.indexOf("..") < 0 && LittleFS.exists(fn)) {
+      request->send(LittleFS, fn, "application/json");
+      return;
+    }
+  }
+  request->send(404, "application/json", "{\"laps\":[]}");
+}
+
 void handlePostDeleteLap(AsyncWebServerRequest *request) {
-  if (request->hasParam("id") && request->hasParam("lap")) {
+  if (request->hasParam("sessionId") && request->hasParam("id") && request->hasParam("lap")) {
+    String sessionId = request->getParam("sessionId")->value();
     uint8_t id = request->getParam("id")->value().toInt();
     uint16_t lap = request->getParam("lap")->value().toInt();
-    deleteLapFromHistory(id, lap);
+    deleteLapFromSession(sessionId, id, lap);
     request->send(200, "text/plain", "OK");
   } else {
     request->send(400, "text/plain", "Bad Request");
@@ -271,26 +305,69 @@ void handlePostDeleteAllStats(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
-void handleGetSessions(AsyncWebServerRequest *request) {
-  String filepath = "/sessions.json";
-  if (LittleFS.exists(filepath)) {
-    request->send(LittleFS, filepath, "application/json");
-  } else {
-    request->send(200, "application/json", "{\"sessions\":[]}");
-  }
-}
-
-void handlePostSaveSessionResult(AsyncWebServerRequest *request) {
-  if (request->hasParam("data", true)) {
-    String jsonStr = request->getParam("data", true)->value();
-    saveSessionToHistory(jsonStr);
+void handlePostDeleteSession(AsyncWebServerRequest *request) {
+  if (request->hasParam("id")) {
+    String sessionId = request->getParam("id")->value();
+    deleteSessionById(sessionId);
     request->send(200, "text/plain", "OK");
   } else {
     request->send(400, "text/plain", "Bad Request");
   }
 }
 
+// --- STRECKEN-HANDLERS ---
+void handleGetTracks(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
+  if (LittleFS.exists("/tracks.json")) {
+    request->send(LittleFS, "/tracks.json", "application/json");
+  } else {
+    saveTracksToFS();
+    if (LittleFS.exists("/tracks.json")) {
+      request->send(LittleFS, "/tracks.json", "application/json");
+    } else {
+      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Standard-Strecke\",\"bestLap\":0}]}");
+    }
+  }
+}
+
+void handlePostSelectTrack(AsyncWebServerRequest *request) {
+  if (request->hasParam("id")) {
+    String id = request->getParam("id")->value();
+    if (selectTrackById(id)) {
+      request->send(200, "text/plain", "OK");
+      return;
+    }
+  }
+  request->send(400, "text/plain", "Strecke nicht gefunden");
+}
+
+void handlePostAddTrack(AsyncWebServerRequest *request) {
+  String name = "";
+  if (request->hasParam("name")) {
+    name = request->getParam("name")->value();
+  } else if (request->hasParam("name", true)) {
+    name = request->getParam("name", true)->value();
+  }
+  if (name.length() > 0 && addOrSelectTrack(name)) {
+    request->send(200, "text/plain", activeTrackId);
+  } else {
+    request->send(400, "text/plain", "Ungueltiger Streckenname");
+  }
+}
+
+void handlePostDeleteTrack(AsyncWebServerRequest *request) {
+  if (request->hasParam("id")) {
+    String id = request->getParam("id")->value();
+    if (deleteTrackById(id)) {
+      request->send(200, "text/plain", activeTrackId);
+      return;
+    }
+  }
+  request->send(400, "text/plain", "Fehler beim Loeschen");
+}
+
 void handleGetSectorConfig(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
   String json;
   json.reserve(160);
   json = "{";
@@ -314,16 +391,6 @@ void handlePostSetSectorConfig(AsyncWebServerRequest *request) {
 
   saveSectorConfigToEEPROM(useSz1, useSz2, useSz3, checkpointMode, dragraceMode, sectorAudioFeedback);
   request->send(200, "text/plain", "OK");
-}
-
-void handlePostDeleteSession(AsyncWebServerRequest *request) {
-  if (request->hasParam("ts")) {
-    uint64_t ts = strtoull(request->getParam("ts")->value().c_str(), NULL, 10);
-    deleteSessionFromHistory(ts);
-    request->send(200, "text/plain", "OK");
-  } else {
-    request->send(400, "text/plain", "Bad Request");
-  }
 }
 
 static File uploadFile;
@@ -358,6 +425,17 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       snprintf(cleanPath, sizeof(cleanPath), "/%s", filename.c_str());
     } else {
       snprintf(cleanPath, sizeof(cleanPath), "%s", filename.c_str());
+    }
+
+    // Eventuelle Unterordner im Pfad automatisch anlegen
+    String pathStr = String(cleanPath);
+    int slashIdx = pathStr.indexOf('/', 1);
+    while (slashIdx > 0) {
+      String dirPart = pathStr.substring(0, slashIdx);
+      if (!LittleFS.exists(dirPart)) {
+        LittleFS.mkdir(dirPart);
+      }
+      slashIdx = pathStr.indexOf('/', slashIdx + 1);
     }
     
     if (strstr(cleanPath, ".gz") != NULL) {
@@ -396,55 +474,10 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 
       if (filename.indexOf("names.json") >= 0) {
         loadNamesFromFS();
-      } 
-      else if (filename.indexOf("backup.json") >= 0) {
-        File bFile = LittleFS.open("/" + filename, "r");
-        if (bFile) {
-          JsonDocument doc;
-          DeserializationError err = deserializeJson(doc, bFile);
-          bFile.close();
-
-          if (!err) {
-            if (doc["sessions"].is<JsonArray>()) {
-              for (JsonObject sess : doc["sessions"].as<JsonArray>()) {
-                String sessStr;
-                serializeJson(sess, sessStr);
-                saveSessionToHistory(sessStr);
-              }
-            }
-
-            JsonObject statsObj;
-            if (doc["driverStats"].is<JsonObject>()) {
-              statsObj = doc["driverStats"].as<JsonObject>();
-            } else if (doc["stats"].is<JsonObject>()) {
-              statsObj = doc["stats"].as<JsonObject>();
-            }
-
-            if (!statsObj.isNull()) {
-              for (JsonPair kv : statsObj) {
-                uint8_t carId = String(kv.key().c_str()).toInt();
-                if (carId >= 1 && carId <= MAX_CARS && kv.value()["laps"].is<JsonArray>()) {
-                  for (JsonObject lapObj : kv.value()["laps"].as<JsonArray>()) {
-                    uint16_t lap = lapObj["lap"] | 0;
-                    uint32_t timeMs = lapObj["time"] | 0;
-                    uint32_t sz1 = lapObj["sz1"] | 0;
-                    uint32_t sz2 = lapObj["sz2"] | 0;
-                    uint32_t sz3 = lapObj["sz3"] | 0;
-                    uint32_t sz4 = lapObj["sz4"] | 0;
-                    uint8_t mode = lapObj["mode"] | 0;
-                    uint64_t ts = lapObj["ts"] | 0;
-                    uint8_t pos = lapObj["pos"] | 1;
-                    
-                    if (lap > 0 && timeMs > 0) {
-                      saveLapToHistory(carId, lap, timeMs, sz1, sz2, sz3, sz4, pos, mode, ts);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+      } else if (filename.indexOf("tracks.json") >= 0) {
+        loadTracksFromFS();
       }
+      updateFsUsageCache();
     }
   }
 }
@@ -474,6 +507,7 @@ void handleGetWifiConfig(AsyncWebServerRequest *request) {
   doc["apPass"] = apPass;
   doc["currentIP"] = WiFi.localIP().toString();
 
+  checkDailyBestDateRollover();
   String json;
   serializeJson(doc, json);
   request->send(200, "application/json", json);
