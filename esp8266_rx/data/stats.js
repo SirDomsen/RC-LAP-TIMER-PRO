@@ -513,7 +513,7 @@ function renderSessionsByMode(mode, containerId) {
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'car')">Fahrzeug ${getSortIconHtml(resSort, 'car')}</th>
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'laps')">${roundWord} ${getSortIconHtml(resSort, 'laps')}</th>
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'bestLap')">Beste Zeit ${getSortIconHtml(resSort, 'bestLap')}</th>
-                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'avgLap')">Ã˜-Zeit ${getSortIconHtml(resSort, 'avgLap')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'avgLap')">&Oslash;-Zeit ${getSortIconHtml(resSort, 'avgLap')}</th>
                 <th>${roundTimeWord}</th>
               </tr>
             </thead>
@@ -545,7 +545,7 @@ function renderSessionsByMode(mode, containerId) {
       </tr>
       <tr id="${driverDetailId}_tr" style="display:${driverTrDisplay}; background: rgba(0,0,0,0.35);">
         <td colspan="7">
-          <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
+          <div id="${driverDetailId}_content" class="driver-lap-details" style="display:${isDriverOpen ? 'block' : 'none'};">Lade ${roundTimeWord}...</div>
         </td>
       </tr>`;
     });
@@ -664,6 +664,7 @@ function sortEmbeddedDriverLaps(elemId, col) {
 }
 
 function renderEmbeddedLapsTable(elemId, containerElem) {
+  if (containerElem) containerElem.style.display = 'block';
   let state = embeddedLapsState[elemId];
   if (!state || !state.laps) return;
 
@@ -751,14 +752,14 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
   let html = `<div class="table-responsive"><table style="margin:0; font-size:12px;">
     <thead>
       <tr>
-        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'lap')">${roundLabel} ${getSortIconHtml(state, 'lap')}</th>
-        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz1')">SZ1 ${getSortIconHtml(state, 'sz1')}</th>
-        ${showSz2Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz2')">SZ2 ${getSortIconHtml(state, 'sz2')}</th>` : ''}
-        ${showSz3Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz3')">SZ3 ${getSortIconHtml(state, 'sz3')}</th>` : ''}
-        ${showSz4Col ? `<th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'sz4')">SZ4 ${getSortIconHtml(state, 'sz4')}</th>` : ''}
-        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'time')">${timeLabel} ${getSortIconHtml(state, 'time')}</th>
-        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'pos')">Platz ${getSortIconHtml(state, 'pos')}</th>
-        <th class="sortable" onclick="sortEmbeddedDriverLaps('${elemId}', 'ts')">Uhrzeit ${getSortIconHtml(state, 'ts')}</th>
+        <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'lap')">${roundLabel} ${getSortIconHtml(state, 'lap')}</th>
+        <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz1')">SZ1 ${getSortIconHtml(state, 'sz1')}</th>
+        ${showSz2Col ? `<th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz2')">SZ2 ${getSortIconHtml(state, 'sz2')}</th>` : ''}
+        ${showSz3Col ? `<th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz3')">SZ3 ${getSortIconHtml(state, 'sz3')}</th>` : ''}
+        ${showSz4Col ? `<th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz4')">SZ4 ${getSortIconHtml(state, 'sz4')}</th>` : ''}
+        <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'time')">${timeLabel} ${getSortIconHtml(state, 'time')}</th>
+        <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'pos')">Platz ${getSortIconHtml(state, 'pos')}</th>
+        <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'ts')">Uhrzeit ${getSortIconHtml(state, 'ts')}</th>
         ${isAdmin ? '<th>Aktion</th>' : ''}
       </tr>
     </thead>
@@ -983,6 +984,7 @@ async function toggleDriverProfileAllLaps(carId) {
 
   if (box.style.display === 'block') {
     box.style.display = 'none';
+    driverProfileAllLapsState = null;
     if (btn) btn.innerText = '⏱️ Alle Runden & Sektorzeiten anzeigen 🔽';
     return;
   }
@@ -1269,10 +1271,10 @@ function renderDriverProfile(carId) {
   html += `</div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 8px 0; flex-wrap:wrap; gap:8px;">
       <h3 style="font-size:14px; color:var(--neon-cyan); margin:0;">📋 Teilgenommene Sessions (${participatedSessions.length})</h3>
-      <button id="driverAllLapsToggleBtn" class="btn btn-purple" style="padding:4px 10px; font-size:11px; margin:0;" onclick="toggleDriverProfileAllLaps(${carId})">⏱️ Alle Runden & Sektorzeiten anzeigen 🔽</button>
+      <button id="driverAllLapsToggleBtn" class="btn btn-purple" style="padding:4px 10px; font-size:11px; margin:0;" onclick="toggleDriverProfileAllLaps(${carId})">${(driverProfileAllLapsState ? '⏱️ Rundenzeiten ausblenden 🔼' : '⏱️ Alle Runden & Sektorzeiten anzeigen 🔽')}</button>
     </div>
 
-    <div id="driverAllLapsBox" style="display:none; margin-bottom:15px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(181,50,255,0.3); padding:8px;"></div>
+    <div id="driverAllLapsBox" style="display:${driverProfileAllLapsState ? 'block' : 'none'}; margin-bottom:15px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(181,50,255,0.3); padding:8px;"></div>
 
     <div class="table-responsive" style="max-height:340px; overflow-y:auto;">
       <table>
@@ -1311,7 +1313,7 @@ function renderDriverProfile(carId) {
     </tr>`;
   });
 
-  html += `</tbody></table></div>`;
+  html += `</tbody></table></div>`; setTimeout(() => { if (driverProfileAllLapsState) renderDriverProfileAllLapsTable(); }, 0);
   container.innerHTML = html;
 }
 
