@@ -1,6 +1,7 @@
 let initialCacheState = null;
 let pendingWifiMode = 0;
 let lastLearnedApIp = '192.168.0.8';
+let defaultApSSID = 'RC-LapTimer';
 
 function openConfigModal() {
   let modal = document.getElementById('configModal');
@@ -29,6 +30,10 @@ function openConfigModal() {
     if (hotP) hotP.value = data.hotspotPass || '';
     if (apS) apS.value = data.apSSID || '';
     if (apP) apP.value = data.apPass || '';
+    if (data.defaultApSSID) {
+      defaultApSSID = data.defaultApSSID;
+      if (apS) apS.placeholder = data.defaultApSSID;
+    }
     if (data.learnedApIP) lastLearnedApIp = data.learnedApIP;
 
     let badge = document.getElementById('activeWifiBadge');
@@ -255,6 +260,7 @@ async function forceWifiMode(mode) {
   let hS = document.getElementById('cfg_home_ssid')?.value || '';
   let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
   let apS = document.getElementById('cfg_ap_ssid')?.value || '';
+  let apPassVal = document.getElementById('cfg_ap_pass')?.value || 'Rennstrecke123';
 
   if (mode === 2 && !hsSsid) {
     alert("Bitte erst eine Hotspot SSID eintragen!");
@@ -263,44 +269,45 @@ async function forceWifiMode(mode) {
 
   pendingWifiMode = mode;
 
-  let modeName = "";
   let expectedSsid = "";
   let targetIp = "";
-  let step1Text = "1. Scanne nach diesem Geister-WLAN:";
-  let step2Text = "2. Ã–ffne im Browser:";
+  let step1Text = "";
+  let step2Text = "";
   let descText = "";
+  let noteHtml = "";
 
   if (mode === 1) {
-    modeName = "Heim-WLAN";
+    let cleanSsid = hS.trim();
     let maxLen = 31 - 4 - 15;
-    let shortSsid = hS;
-    if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
-    expectedSsid = "LT_" + shortSsid + "-[IP-Endung]";
-    targetIp = "IP aus Geister-WLAN ablesen";
-    step1Text = "1. Finde deine IP Ã¼ber das Geister-WLAN:";
-    step2Text = "2. Ã–ffne im Browser (wird auch neue AP-IP):";
-    descText = "Der Laptimer verbindet sich mit deinem Heim-WLAN. Lies die neue IP aus dem Geister-WLAN ab â€“ sie wird automatisch auch als feste IP fÃ¼r den AP-Modus gespeichert!";
+    let shortSsid = cleanSsid.length > maxLen ? cleanSsid.substring(0, maxLen) : (cleanSsid || "Heimnetzwerk");
+    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
+    targetIp = "<IP aus Geister-WLAN>";
+    step1Text = "1. Im Smartphone-WLAN nach Geister-WLAN suchen:";
+    step2Text = "2. Im Heim-WLAN im Browser öffnen:";
+    descText = "Der Laptimer verbindet sich mit deinem Heim-WLAN per DHCP. Die vom Router vergebene IP liest du einfach am Ende des Geister-WLAN-Namens ab!";
+    noteHtml = "💡 <strong>Super praktisch:</strong> Die Box speichert diese Heim-IP automatisch auch für den AP-Modus! Unterwegs an der Rennstrecke öffnest du den Laptimer also unter exakt derselben Adresse.";
   } else if (mode === 2) {
-    modeName = "Hotspot";
+    let cleanSsid = hsSsid.trim();
     let maxLen = 31 - 4 - 15;
-    let shortSsid = hsSsid;
-    if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
-    expectedSsid = "LT_" + shortSsid + "-[IP-Endung]";
-    targetIp = "IP aus Geister-WLAN ablesen";
-    step1Text = "1. Finde deine IP Ã¼ber das Geister-WLAN:";
-    step2Text = "2. Ã–ffne im Browser:";
-    descText = "Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN ab.";
+    let shortSsid = cleanSsid.length > maxLen ? cleanSsid.substring(0, maxLen) : cleanSsid;
+    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
+    targetIp = "<IP aus Geister-WLAN>";
+    step1Text = "1. Geister-WLAN oder Hotspot-Liste am Handy prüfen:";
+    step2Text = "2. Im Browser aufrufen:";
+    descText = "Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN oder der Hotspot-Übersicht deines Smartphones ab.";
+    noteHtml = "📱 <strong>Tipp:</strong> Sobald dein Handy die Verbindung per Browser aufruft, schaltet sich das Geister-WLAN nach 20 Sekunden stromsparend ab.";
   } else {
-    modeName = "AP-Modus (Eigenes WLAN)";
-    expectedSsid = (apS || "RC-LapTimer") + " (Direktes Laptimer-WLAN)";
+    let activeAp = (apS.trim().length > 0) ? apS.trim() : defaultApSSID;
+    expectedSsid = activeAp + (apPassVal ? " (PW: " + apPassVal + ")" : "");
     targetIp = lastLearnedApIp || "192.168.0.8";
-    step1Text = "1. Verbinde dein Smartphone mit:";
-    step2Text = "2. Ã–ffne im Browser (gewohnte Heim-IP):";
-    descText = "Der Laptimer spannt sein eigenes WLAN auf. Verbinde dich direkt damit und nutze deine gewohnte IP!";
+    step1Text = "1. Smartphone direkt mit Laptimer-WLAN verbinden:";
+    step2Text = "2. Im Browser öffnen (gewohnte Heim-IP):";
+    descText = "Der Laptimer spannt sein eigenes Direkt-WLAN an der Rennstrecke auf (kein Router erforderlich).";
+    noteHtml = "🎯 <strong>Dank IP-Sync:</strong> Dein Handy verbindet sich mit dem Laptimer-WLAN und nutzt dieselbe IP wie daheim (" + targetIp + ")!";
   }
 
   let desc = document.getElementById('alertModalDesc');
-  if (desc) desc.innerText = descText;
+  if (desc) desc.innerHTML = descText;
 
   let s1Label = document.getElementById('alertStep1Label');
   if (s1Label) s1Label.innerText = step1Text;
@@ -312,7 +319,20 @@ async function forceWifiMode(mode) {
   if (displaySsid) displaySsid.innerText = expectedSsid;
 
   let displayIp = document.getElementById('alertIpDisplay');
-  if (displayIp) displayIp.innerText = targetIp;
+  if (displayIp) {
+    displayIp.innerText = targetIp;
+    displayIp.style.color = (mode === 0) ? "var(--neon-green)" : "var(--neon-orange)";
+  }
+
+  let noteElem = document.getElementById('alertModalNote');
+  if (noteElem) {
+    if (noteHtml) {
+      noteElem.innerHTML = noteHtml;
+      noteElem.style.display = "block";
+    } else {
+      noteElem.style.display = "none";
+    }
+  }
 
   closeConfigModal();
   let modal = document.getElementById('connectionAlertModal');
@@ -369,7 +389,7 @@ async function confirmOtaAlert() {
   btns.style.display = 'none';
   desc.style.display = 'none';
   statusBox.style.display = 'block';
-  statusText.style.color = 'var(--neon-cyan)';
+  statusText.color = 'var(--neon-cyan)';
   statusText.innerText = "Sende Trigger-Signal an Sektorstationen...";
 
   try {

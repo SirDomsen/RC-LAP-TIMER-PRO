@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4.0.0">
+  <link rel="stylesheet" href="style.css?v=4.2.2">
 </head>
 <body class="role-admin">
 
@@ -313,7 +313,7 @@
       <div class="modal-body" id="statsTabRace_time" style="display:none;"></div>
       <div class="modal-body" id="statsTabDrag" style="display:none;"></div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:gap; gap:10px;">
         <button class="btn btn-danger admin-only" onclick="confirmDeleteAllStats()">Alle Statistiken löschen</button>
         <button class="btn btn-warning" onclick="closeStatsOverviewModal()">Schließen</button>
       </div>
@@ -497,18 +497,22 @@
   </div>
 
   <div id="connectionAlertModal" class="modal" style="z-index: 9999;">
-    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
+    <div class="modal-content" style="max-width: 480px; text-align: center; border: 1px solid var(--neon-orange); box-shadow: 0 0 25px rgba(255, 153, 0, 0.4);">
       <h3 style="color:var(--neon-orange); font-family:var(--font-display); margin-top:0;">🚀 WLAN WIRD GEWECHSELT</h3>
-      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="alertModalDesc">
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px; line-height:1.4;" id="alertModalDesc">
         Das System bricht nun alle aktuellen Verbindungen ab und startet den Wechsel.
       </p>
       
       <div style="background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
-        <p id="alertStep1Label" style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">1. Scanne nach diesem Geister-WLAN:</p>
-        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:18px; color:var(--neon-cyan); font-weight:bold;">LT_Netzwerk-IP</p>
-        <p id="alertStep2Label" style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase;">2. Öffne im Browser:</p>
-        <p style="margin:0; font-family:monospace; font-size:18px; color:var(--neon-green); font-weight:bold;">http://<span id="alertIpDisplay" style="color:var(--text-main);">DIE.ANGEZEIGTE.IP</span></p>
+        <p id="alertStep1Label" style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">1. Scanne nach diesem Geister-WLAN:</p>
+        <p id="alertSsidDisplay" style="margin:0 0 15px 0; font-family:monospace; font-size:17px; color:var(--neon-cyan); font-weight:bold; word-break:break-all;">LT_Netzwerk-IP</p>
+        <p id="alertStep2Label" style="margin:0 0 5px 0; color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">2. Öffne im Browser:</p>
+        <p id="alertUrlContainer" style="margin:0; font-family:monospace; font-size:18px; color:var(--neon-green); font-weight:bold;">
+          <span style="color:var(--neon-green);">http://</span><span id="alertIpDisplay" style="color:var(--text-main);">DIE.ANGEZEIGTE.IP</span>
+        </p>
       </div>
+
+      <div id="alertModalNote" style="background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.25); border-radius:6px; padding:10px; margin-bottom:20px; font-size:12px; line-height:1.4; color:var(--neon-cyan); text-align:left; display:none;"></div>
       
       <button class="btn btn-warning" style="width:100%; padding:14px; font-size:15px; font-weight:bold;" onclick="confirmConnectionAlert()">ALLES KLAR, AUSFÜHREN!</button>
     </div>
@@ -574,11 +578,11 @@
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.0.0"></script>
-  <script src="websocket.js?v=4.0.0"></script>
-  <script src="modes.js?v=4.0.0"></script>
-  <script src="stats.js?v=4.0.0"></script>
-  <script src="config.js?v=4.0.0"></script>
-  <script src="main.js?v=4.0.0"></script>
+  <script src="tts.js?v=4.2.2"></script>
+  <script src="websocket.js?v=4.2.2"></script>
+  <script src="modes.js?v=4.2.2"></script>
+  <script src="stats.js?v=4.2.2"></script>
+  <script src="config.js?v=4.2.2"></script>
+  <script src="main.js?v=4.2.2"></script>
 </body>
 </html>

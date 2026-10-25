@@ -537,6 +537,7 @@ void handleGetWifiConfig(AsyncWebServerRequest *request) {
   doc["apPass"] = apPass;
   doc["currentIP"] = WiFi.localIP().toString();
   doc["learnedApIP"] = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+  doc["defaultApSSID"] = getDefaultApSSID();
 
   checkDailyBestDateRollover();
   String json;
