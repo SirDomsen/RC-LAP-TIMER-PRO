@@ -188,10 +188,10 @@ static void setupFallbackAP() {
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(local_IP, gateway, subnet);
   
-  const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
+  String activeApName = (apSSID.length() > 0 && apSSID != AP_SSID) ? apSSID : getDefaultApSSID();
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
-  WiFi.softAP(apName, apKey, 1, 0, 8);
+  WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 8);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
   digitalWrite(LED_READY, HIGH); 
@@ -210,7 +210,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
-    WiFi.hostname("RCLaptimerPro");
+    WiFi.hostname(getDeviceHostname());
     
     WiFi.begin(s.c_str(), p.c_str());
     uint32_t startMs = millis();
@@ -238,7 +238,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
-    WiFi.hostname("RCLaptimerPro"); 
+    WiFi.hostname(getDeviceHostname());
     
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
@@ -483,7 +483,7 @@ void initNetworkAndServer() {
 
   server.begin();
   
-  ArduinoOTA.setHostname("LapTimer-Base");
+  ArduinoOTA.setHostname(getOtaHostname().c_str());
   ArduinoOTA.begin();
 }
 

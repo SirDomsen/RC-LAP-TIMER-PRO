@@ -219,7 +219,8 @@ function onLapLiveEvent(msg) {
     pendingRecordFlagsMap[msg.carId] = {
       lapTime: msg.lapTime || 0,
       isTrackRecord: !!msg.isTrackRecord,
-      isDailyRecord: !!msg.isDailyRecord
+      isDailyRecord: !!msg.isDailyRecord,
+      isOutLap: !!msg.isOutLap
     };
   }
   if (msg && (msg.isTrackRecord || msg.isDailyRecord)) {

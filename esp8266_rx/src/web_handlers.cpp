@@ -36,8 +36,8 @@ void handleGetLaps(AsyncWebServerRequest *request) {
       response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", sz1TimeMs[i], sz2TimeMs[i], sz3TimeMs[i], sz4TimeMs[i]);
       response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", bestSz1TimeMs[i], bestSz2TimeMs[i], bestSz3TimeMs[i], bestSz4TimeMs[i]);
       response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", split1TimeMs[i], split2TimeMs[i], split3TimeMs[i]);
-      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
-                       lastLapDuration[i], bestLapDuration[i], getAverageLapTimeMs(i), lastSeenMs[i], stateStr);
+      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastLapIsOutLap\":%s,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
+                       lastLapDuration[i], bestLapDuration[i], getAverageLapTimeMs(i), lastLapIsOutLap[i] ? "true" : "false", lastSeenMs[i], stateStr);
       first = false;
     }
   }
@@ -592,9 +592,9 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
     strncpy(syncPkt.pass, homePass.c_str(), sizeof(syncPkt.pass) - 1);
     syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
   } else {
-    const char* apName = apSSID.length() > 0 ? apSSID.c_str() : AP_SSID;
+    String activeApName = (apSSID.length() > 0 && apSSID != AP_SSID) ? apSSID : getDefaultApSSID();
     const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
-    strncpy(syncPkt.ssid, apName, sizeof(syncPkt.ssid) - 1);
+    strncpy(syncPkt.ssid, activeApName.c_str(), sizeof(syncPkt.ssid) - 1);
     syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
     strncpy(syncPkt.pass, apKey, sizeof(syncPkt.pass) - 1);
     syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';

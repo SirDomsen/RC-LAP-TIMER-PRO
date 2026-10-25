@@ -477,6 +477,11 @@ function renderSessionsByMode(mode, containerId) {
         let vB = b.bestLap > 0 ? b.bestLap : 99999999;
         res = vA - vB;
       }
+      else if (resSort.col === 'avgLap') {
+        let vA = a.avgLap > 0 ? a.avgLap : 99999999;
+        let vB = b.avgLap > 0 ? b.avgLap : 99999999;
+        res = vA - vB;
+      }
       return (resSort.dir === 'asc') ? res : -res;
     });
 
@@ -508,6 +513,7 @@ function renderSessionsByMode(mode, containerId) {
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'car')">Fahrzeug ${getSortIconHtml(resSort, 'car')}</th>
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'laps')">${roundWord} ${getSortIconHtml(resSort, 'laps')}</th>
                 <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'bestLap')">Beste Zeit ${getSortIconHtml(resSort, 'bestLap')}</th>
+                <th class="sortable" onclick="event.stopPropagation(); sortSessionResults('${safeId}', 'avgLap')">Ã˜-Zeit ${getSortIconHtml(resSort, 'avgLap')}</th>
                 <th>${roundTimeWord}</th>
               </tr>
             </thead>
@@ -517,6 +523,7 @@ function renderSessionsByMode(mode, containerId) {
       let isOverallWinner = (sessionOverallBest > 0 && r.bestLap > 0 && r.bestLap <= sessionOverallBest);
       let bestColor = isOverallWinner ? 'var(--neon-purple)' : 'var(--neon-green)';
       let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
+      let avgStr = r.avgLap > 0 ? (r.avgLap / 1000).toFixed(2) + 's' : '---';
       let driverDetailId = `s_${safeId}_driver_${r.id}`;
       let dName = carNamesMap[r.id]?.driver || r.driver || ("Fahrer " + r.id);
       let cName = carNamesMap[r.id]?.car || r.car || ("Auto " + r.id);
@@ -531,12 +538,13 @@ function renderSessionsByMode(mode, containerId) {
         <td style="color:var(--text-muted);">${cName}</td>
         <td>${r.laps}</td>
         <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
+        <td style="color:var(--text-muted);">${avgStr}</td>
         <td>
           <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', '${s.id}', '${s.file}', ${r.id}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'})">${driverBtnText}</button>
         </td>
       </tr>
       <tr id="${driverDetailId}_tr" style="display:${driverTrDisplay}; background: rgba(0,0,0,0.35);">
-        <td colspan="6">
+        <td colspan="7">
           <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
         </td>
       </tr>`;
@@ -671,6 +679,7 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
   let anySz2 = false, anySz3 = false, anySz4 = false;
 
   laps.forEach(l => {
+    if (l.outlap) return;
     if (l.sz1 > 0) {
       if (minSz1 === 0 || l.sz1 < minSz1) minSz1 = l.sz1;
       if (maxSz1 === 0 || l.sz1 > maxSz1) maxSz1 = l.sz1;
@@ -813,7 +822,7 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
       ${showSz2Col ? `<td>${sz2Content}</td>` : ''}
       ${showSz3Col ? `<td>${sz3Content}</td>` : ''}
       ${showSz4Col ? `<td>${sz4Content}</td>` : ''}
-      <td style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
+      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${(l.time / 1000).toFixed(2)}s)</small>` : `<span style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</span>`}</td>
       <td style="color:var(--neon-orange); font-weight:bold;">${l.pos ? 'P' + l.pos : '---'}</td>
       <td style="color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
       ${delCol}
@@ -1066,7 +1075,8 @@ function renderDriverProfileAllLapsTable() {
     return (state.dir === 'asc') ? res : -res;
   });
 
-  let minTime = Math.min(...laps.filter(l => l.time > 0).map(l => l.time));
+  let validLaps = laps.filter(l => l.time > 0 && !l.outlap);
+  let minTime = validLaps.length > 0 ? Math.min(...validLaps.map(l => l.time)) : 0;
 
   let html = `<div class="table-responsive" style="max-height:300px; overflow-y:auto;"><table style="margin:0; font-size:12px;">
     <thead>
@@ -1086,13 +1096,13 @@ function renderDriverProfileAllLapsTable() {
     <tbody>`;
 
   sorted.forEach(l => {
-    let isBest = (l.time > 0 && l.time === minTime);
+    let isBest = (!l.outlap && l.time > 0 && l.time === minTime);
     let timeCol = isBest ? 'var(--neon-purple)' : 'var(--text-main)';
     let szDisp = (v) => v > 0 ? (v / 1000).toFixed(2) + 's' : '---';
 
     html += `<tr>
       <td>${l.mode === 4 ? 'Lauf' : 'Rnd'} ${l.lap}</td>
-      <td style="color:${timeCol}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</td>
+      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${(l.time / 1000).toFixed(2)}s)</small>` : `<span style="color:${timeCol}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</span>`}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz1)}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz2)}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz3)}</td>

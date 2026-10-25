@@ -28,6 +28,7 @@ uint8_t activeDragCarId              = 0;
 
 bool inPitOrPause[MAX_CARS + 1]      = {false};
 bool isOutLap[MAX_CARS + 1]          = {false};
+bool lastLapIsOutLap[MAX_CARS + 1]   = {false};
 
 // Ringpuffer für die letzten 3 gültigen Rundenzeiten pro Fahrzeug
 static uint32_t recentValidLaps[MAX_CARS + 1][3] = {{0}};
@@ -135,13 +136,14 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
   broadcastWebSocket(buffer);
 }
 
-void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest, bool isTrackRecord = false, bool isDailyRecord = false) {
-  char buffer[210];
+void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest, bool isTrackRecord, bool isDailyRecord, bool isOutLap) {
+  char buffer[240];
   snprintf(buffer, sizeof(buffer), 
-    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s}",
+    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
     carId, driverNames[carId].c_str(), lapNum, lapTimeMs, 
     isPB ? "true" : "false", isOverallBest ? "true" : "false",
-    isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false");
+    isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false",
+    isOutLap ? "true" : "false");
   broadcastWebSocket(buffer);
 }
 
@@ -203,6 +205,7 @@ void resetAllLaps(bool isHardReset) {
     dragRunActive[i] = false;
     inPitOrPause[i] = false;
     isOutLap[i] = false;
+    lastLapIsOutLap[i] = false;
     sectorPassedInLap[i] = 0;
     currentExpectedSector[i] = 1;
     sz1TimeMs[i] = 0;
@@ -303,6 +306,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   }
 
   if (currentMode != MODE_DRAGRACE && inPitOrPause[carId]) {
+    lastLapIsOutLap[carId] = false;
     inPitOrPause[carId] = false;
     isOutLap[carId] = true;
     readyForNextLap[carId] = true;
@@ -333,7 +337,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   if (elapsedMs < 100 || elapsedMs > 600000) return;
 
   uint32_t avgLap = getAverageLapTimeMs(carId);
-  uint32_t szOutlapThresholdMs = (avgLap * 3 > 45000UL) ? (avgLap * 3) : 45000UL;
+  uint32_t szOutlapThresholdMs = avgLap * 3;
   if (currentMode != MODE_DRAGRACE && avgLap > 0 && elapsedMs > szOutlapThresholdMs) {
     isOutLap[carId] = true;
   }
@@ -663,6 +667,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
 
     awaitingBaseCross[carId] = false;
+    lastLapIsOutLap[carId] = false;
     inPitOrPause[carId] = false;
     isOutLap[carId] = false;
     sectorPassedInLap[carId] = 0;
@@ -716,7 +721,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     uint32_t avgLap = getAverageLapTimeMs(carId);
     bool currentLapIsOutLap = isOutLap[carId] || inPitOrPause[carId];
-    uint32_t outlapThresholdMs = (avgLap * 3 > 45000UL) ? (avgLap * 3) : 45000UL;
+    uint32_t outlapThresholdMs = avgLap * 3;
     if (avgLap > 0 && currentLapTimeMs > outlapThresholdMs) {
       currentLapIsOutLap = true;
     }
@@ -821,6 +826,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
     
+    lastLapIsOutLap[carId] = currentLapIsOutLap;
     inPitOrPause[carId] = false;
     isOutLap[carId] = false;
     sectorPassedInLap[carId] = 0;
@@ -835,9 +841,9 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     uint64_t currentTsMs = getCurrentTimestampMs();
     uint8_t pos = getCurrentPosition(carId);
     
-    queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs);
+    queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs, currentLapIsOutLap);
 
-    broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord);
+    broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
   }
 
   if (lapCounted) {
@@ -900,7 +906,7 @@ void updateLapLogicTasks() {
         uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
         if (now > lapStartMs) {
           uint32_t currentElapsedMs = now - lapStartMs;
-          uint32_t thresholdMs = (avgMs * 3 > 45000UL) ? (avgMs * 3) : 45000UL;
+          uint32_t thresholdMs = avgMs * 3;
           if (currentElapsedMs > thresholdMs) {
             inPitOrPause[i] = true;
           }

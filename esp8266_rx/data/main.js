@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.0.0'; 
+window.UI_VERSION = '4.2.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -372,16 +372,24 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   if (dPb) dPb.innerText = rowData.bestLap > 0 ? (rowData.bestLap / 1000).toFixed(2) + 's' : '--:--';
 
   if (dLast) {
-    dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
-    let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
-    let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
-    if (isOverall) dLast.style.color = 'var(--neon-purple)';
-    else if (isPb) dLast.style.color = 'var(--neon-green)';
-    else dLast.style.color = 'var(--text-main)';
+    if (rowData.lastLapIsOutLap) {
+      dLast.innerText = rowData.lastLap > 0 ? "Outlap (" + (rowData.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      dLast.style.color = 'var(--text-muted)';
+    } else {
+      dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
+      let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
+      let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
+      if (isOverall) dLast.style.color = 'var(--neon-purple)';
+      else if (isPb) dLast.style.color = 'var(--neon-green)';
+      else dLast.style.color = 'var(--text-main)';
+    }
   }
 
   if (dDelta) {
-    let deltaInfo = lastLapDeltaMap[carId];
+    if (rowData.lastLapIsOutLap) {
+      dDelta.innerText = '';
+    } else {
+      let deltaInfo = lastLapDeltaMap[carId];
     if (deltaInfo && deltaInfo.diffMs !== null && rowData.lastLap > 0) {
       let diffSec = (Math.abs(deltaInfo.diffMs) / 1000).toFixed(2).replace('.', ',');
       if (deltaInfo.diffMs < 0) {
@@ -412,6 +420,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
       }
     } else {
       dDelta.innerText = '';
+    }
     }
   }
 
@@ -586,7 +595,10 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
     // Letzte Runde & Delta
     let lastDisp = '---';
     let lastColor = 'color:var(--text-main);';
-    if (row.lastLap > 0) {
+    if (row.lastLapIsOutLap) {
+      lastDisp = row.lastLap > 0 ? "Outlap (" + (row.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      lastColor = 'color:var(--text-muted);';
+    } else if (row.lastLap > 0) {
       lastDisp = (row.lastLap / 1000).toFixed(2) + 's';
       let isOverallLast = (minBestLap > 0 && row.lastLap <= minBestLap);
       let isPbLast = (row.bestLap > 0 && row.lastLap <= row.bestLap);
@@ -596,7 +608,9 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
 
     let deltaHtml = '';
     let deltaInfo = lastLapDeltaMap[row.id];
-    if (deltaInfo && deltaInfo.diffMs !== null && row.lastLap > 0) {
+    if (row.lastLapIsOutLap) {
+      deltaHtml = '';
+    } else if (deltaInfo && deltaInfo.diffMs !== null && row.lastLap > 0) {
       let diffSec = (Math.abs(deltaInfo.diffMs) / 1000).toFixed(2).replace('.', ',');
       if (deltaInfo.diffMs < 0) {
         let dCol = deltaInfo.isAbsolute ? 'var(--neon-purple)' : 'var(--neon-green)';
@@ -1540,7 +1554,10 @@ async function updateData(fullSync = false) {
             else if (isPB) lastClass = 'lap-time-green';
           }
         } else {
-          if (row.lastLap > 0) {
+          if (row.lastLapIsOutLap) {
+            lastDisplay = row.lastLap > 0 ? '<span class="outlap-badge">Outlap</span> <span style="font-size:12px; opacity:0.85;">(' + (row.lastLap / 1000).toFixed(2) + 's)</span>' : '<span class="outlap-badge">Outlap</span>';
+            lastClass = 'lap-time-neutral';
+          } else if (row.lastLap > 0) {
             lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
@@ -1999,13 +2016,21 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       }
     }
 
+    let recFlags = pendingRecordFlagsMap[carId];
+    if (recFlags) {
+      delete pendingRecordFlagsMap[carId];
+    }
+    let isOutLapDone = !!(car.lastLapIsOutLap || (recFlags && recFlags.isOutLap));
+    let isNewTrackRecord = !!(recFlags && recFlags.isTrackRecord);
+    let isNewDailyRecord = !!(recFlags && recFlags.isDailyRecord);
+
     let isPersonalBest = false;
     let isAbsoluteBest = false;
 
     if (minBestLap > 0 && (sessionBestLap === 0 || minBestLap < sessionBestLap)) sessionBestLap = minBestLap;
 
     let deltaMs = null;
-    if (completedLapNum >= 1 && lastLapMs > 0) {
+    if (completedLapNum >= 1 && lastLapMs > 0 && !isOutLapDone) {
       if (car.bestLap > 0 && lastLapMs <= car.bestLap && (prevBest === 0 || lastLapMs < prevBest)) {
         isPersonalBest = true;
         if (prevBest > 0) {
@@ -2031,37 +2056,40 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
         isPb: isPersonalBest,
         isAbsolute: isAbsoluteBest
       };
+    } else if (isOutLapDone) {
+      lastLapDeltaMap[carId] = {
+        diffMs: null,
+        isPb: false,
+        isAbsolute: false
+      };
     }
 
-    let recFlags = pendingRecordFlagsMap[carId];
-    if (recFlags) {
-      delete pendingRecordFlagsMap[carId];
-    }
-    let isNewTrackRecord = !!(recFlags && recFlags.isTrackRecord);
-    let isNewDailyRecord = !!(recFlags && recFlags.isDailyRecord);
+    if (!isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
+      if (isOutLapDone) {
+        speak(driverName + ", Outlap beendet!");
+      } else if (car.lastLap > 0) {
+        let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
+        let posText = ", ";
+        if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
 
-    if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
-      let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
-      let posText = ", ";
-      if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
+        let lapAnnouncement = "";
+        let isRaceMode = (currentMode >= 2);
 
-      let lapAnnouncement = "";
-      let isRaceMode = (currentMode >= 2);
-
-      if (isNewTrackRecord) {
-        lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
-      } else if (isNewDailyRecord) {
-        lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
-      } else if (isRaceMode && !announceLapTimesInRace) {
-        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
-        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
-        else lapAnnouncement = driverName + posText;
-      } else {
-        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
-        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
-        else lapAnnouncement = driverName + posText + timeSec;
+        if (isNewTrackRecord) {
+          lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
+        } else if (isNewDailyRecord) {
+          lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
+        } else if (isRaceMode && !announceLapTimesInRace) {
+          if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persÃ¶nliche Bestzeit! " + timeSec;
+          else lapAnnouncement = driverName + posText;
+        } else {
+          if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persÃ¶nliche Bestzeit! " + timeSec;
+          else lapAnnouncement = driverName + posText + timeSec;
+        }
+        speak(lapAnnouncement);
       }
-      speak(lapAnnouncement);
     }
   }
 }

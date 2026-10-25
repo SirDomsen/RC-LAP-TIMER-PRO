@@ -55,6 +55,7 @@ struct PendingLap {
   uint8_t position;
   uint8_t mode;
   uint64_t timestampMs;
+  bool isOutLap;
 };
 
 void loadSettingsFromEEPROM();
@@ -89,10 +90,10 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index);
 // Session-basierte Statistik-Speicherung (/<track>/<mode>/<YY-MM-DD_HH-MM-SS>.json)
 void startNewSessionFrame(uint8_t mode);
 void flushCurrentSessionToIndex();
-void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap = false);
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio);
 
-void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs);
+void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap = false);
 void processStorageQueue();
 
 void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNum);
@@ -100,5 +101,11 @@ void deleteDriverHistory(uint8_t carId);
 void deleteAllHistory();
 
 void deleteSessionById(const String& sessionId);
+
+// Eindeutige Hardware-Identifikatoren (Hardware Chip-ID Suffix)
+String getChipIdSuffix();
+String getDefaultApSSID();
+String getDeviceHostname();
+String getOtaHostname();
 
 #endif

@@ -20,6 +20,25 @@ String apSSID = AP_SSID;
 String apPass = AP_PASS;
 uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 
+// Eindeutige Hardware-Identifikatoren
+String getChipIdSuffix() {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getChipId() & 0xFFFF));
+  return String(buf);
+}
+
+String getDefaultApSSID() {
+  return String(AP_SSID) + "-" + getChipIdSuffix();
+}
+
+String getDeviceHostname() {
+  return String("RCLaptimerPro-") + getChipIdSuffix();
+}
+
+String getOtaHostname() {
+  return String("LapTimer-Base-") + getChipIdSuffix();
+}
+
 // Aktive Strecke & Speicherstatus
 String activeTrackId = "standard";
 String activeTrackName = "Standard-Strecke";
@@ -49,6 +68,9 @@ static uint32_t lastIndexFlushMs = 0;
 
 static uint16_t sessionCarLaps[MAX_CARS + 1] = {0};
 static uint32_t sessionCarBest[MAX_CARS + 1] = {0};
+static uint16_t sessionCarValidLaps[MAX_CARS + 1] = {0};
+static uint64_t sessionCarTimeSum[MAX_CARS + 1] = {0};
+static uint32_t sessionCarAvg[MAX_CARS + 1] = {0};
 
 static const String defaultDrivers[MAX_CARS + 1] = {
   "-", "Fahrer 1", "Fahrer 2", "Fahrer 3", "Fahrer 4", "Fahrer 5",
@@ -982,6 +1004,9 @@ void loadWifiConfigFromFS() {
       }
     }
   }
+  if (apSSID.length() == 0 || apSSID == AP_SSID) {
+    apSSID = getDefaultApSSID();
+  }
 }
 
 void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, const String& hsSsid, const String& hsPass, const String& aSsid, const String& aPass) {
@@ -1147,7 +1172,7 @@ void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool 
 
 // --- SESSION & RUNDEN SPEICHERUNG ---
 
-static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[]) {
+static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[], uint32_t carAvg[] = nullptr) {
   uint8_t activeIds[MAX_CARS + 1];
   uint8_t count = 0;
   for (uint8_t c = 1; c <= MAX_CARS; c++) {
@@ -1189,7 +1214,8 @@ static String buildSessionEntryJson(const String& sId, const String& sFile, cons
   for (uint8_t idx = 0; idx < count; idx++) {
     uint8_t c = activeIds[idx];
     if (idx > 0) out += ",";
-    out += "{\"pos\":" + String(idx + 1) + ",\"id\":" + String(c) + ",\"driver\":\"" + escapeJsonStr(driverNames[c]) + "\",\"car\":\"" + escapeJsonStr(carNames[c]) + "\",\"laps\":" + String(carLaps[c]) + ",\"bestLap\":" + String(carBest[c]) + "}";
+    uint32_t aLap = (carAvg != nullptr) ? carAvg[c] : 0;
+    out += "{\"pos\":" + String(idx + 1) + ",\"id\":" + String(c) + ",\"driver\":\"" + escapeJsonStr(driverNames[c]) + "\",\"car\":\"" + escapeJsonStr(carNames[c]) + "\",\"laps\":" + String(carLaps[c]) + ",\"bestLap\":" + String(carBest[c]) + ",\"avgLap\":" + String(aLap) + "}";
   }
   out += "]}";
   return out;
@@ -1210,7 +1236,8 @@ void flushCurrentSessionToIndex() {
     currentSessionStartSec,
     sessionLastEndSec,
     sessionCarLaps,
-    sessionCarBest
+    sessionCarBest,
+    sessionCarAvg
   );
 
   const char* indexPath = "/sessions.json";
@@ -1310,19 +1337,22 @@ void startNewSessionFrame(uint8_t mode) {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     sessionCarLaps[i] = 0;
     sessionCarBest[i] = 0;
+    sessionCarValidLaps[i] = 0;
+    sessionCarTimeSum[i] = 0;
+    sessionCarAvg[i] = 0;
   }
 
   updateFsUsageCache();
   storageFullLocked = (cachedFsUsedPct >= 95);
 }
 
-void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap) {
   // Regel: Keine Aufzeichnung bevor Time-Sync durch ein verbundenes Gerät erfolgt ist!
   if (baseUnixTimestampSec == 0) return;
 
   uint8_t nextHead = (queueHead + 1) % QUEUE_MAX;
   if (nextHead != queueTail) { 
-    lapQueue[queueHead] = {carId, lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, mode, timestampMs};
+    lapQueue[queueHead] = {carId, lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, mode, timestampMs, isOutLap};
     queueHead = nextHead;
   }
 }
@@ -1334,7 +1364,7 @@ void processStorageQueue() {
   if (queueHead != queueTail) { 
     PendingLap lap = lapQueue[queueTail];
     queueTail = (queueTail + 1) % QUEUE_MAX;
-    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.sz1, lap.sz2, lap.sz3, lap.sz4, lap.position, lap.mode, lap.timestampMs);
+    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.sz1, lap.sz2, lap.sz3, lap.sz4, lap.position, lap.mode, lap.timestampMs, lap.isOutLap);
     lastStorageWrite = millis();
   } else if (sessionIndexDirty && (millis() - lastIndexFlushMs > 2000)) {
     flushCurrentSessionToIndex();
@@ -1342,7 +1372,7 @@ void processStorageQueue() {
   }
 }
 
-void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs) {
+void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap) {
   // 1. Nicht speichern bevor Time-Sync erfolgt ist
   if (baseUnixTimestampSec == 0) return;
 
@@ -1397,19 +1427,25 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
   } else {
     sessionCarLaps[carId]++;
   }
-  if (lapTimeMs > 0 && (sessionCarBest[carId] == 0 || lapTimeMs < sessionCarBest[carId])) {
-    sessionCarBest[carId] = lapTimeMs;
+  if (!isOutLap && lapTimeMs > 0) {
+    if (sessionCarBest[carId] == 0 || lapTimeMs < sessionCarBest[carId]) {
+      sessionCarBest[carId] = lapTimeMs;
+    }
+    sessionCarValidLaps[carId]++;
+    sessionCarTimeSum[carId] += lapTimeMs;
+    sessionCarAvg[carId] = sessionCarTimeSum[carId] / sessionCarValidLaps[carId];
   }
+
   sessionLastEndSec = timestampMs / 1000ULL;
 
   // 5. Runden-JSON formatieren & stromausfallsicher in die Session-Datei schreiben
   String escDriver = escapeJsonStr(driverNames[carId]);
   String escCar = escapeJsonStr(carNames[carId]);
 
-  char newLapJson[340];
+  char newLapJson[360];
   snprintf(newLapJson, sizeof(newLapJson),
-           "{\"carId\":%u,\"driver\":\"%s\",\"car\":\"%s\",\"lap\":%u,\"time\":%lu,\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,\"pos\":%u,\"ts\":%llu}",
-           carId, escDriver.c_str(), escCar.c_str(), lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, timestampMs);
+           "{\"carId\":%u,\"driver\":\"%s\",\"car\":\"%s\",\"lap\":%u,\"time\":%lu,\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,\"pos\":%u,\"ts\":%llu,\"outlap\":%u}",
+           carId, escDriver.c_str(), escCar.c_str(), lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, timestampMs, isOutLap ? 1 : 0);
 
   if (!LittleFS.exists(currentSessionFilePath)) {
     File f = LittleFS.open(currentSessionFilePath, "w");
@@ -1705,6 +1741,9 @@ void deleteAllHistory() {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     sessionCarLaps[i] = 0;
     sessionCarBest[i] = 0;
+    sessionCarValidLaps[i] = 0;
+    sessionCarTimeSum[i] = 0;
+    sessionCarAvg[i] = 0;
   }
 
   // Alle Unterordner im Root (Strecken-Ordner) leeren & entfernen
