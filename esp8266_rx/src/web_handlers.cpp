@@ -343,7 +343,7 @@ void handleGetTracks(AsyncWebServerRequest *request) {
     if (LittleFS.exists("/tracks.json")) {
       request->send(LittleFS, "/tracks.json", "application/json");
     } else {
-      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Standard-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
+      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Test-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
     }
   }
 }

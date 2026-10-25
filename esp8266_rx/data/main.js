@@ -1,15 +1,15 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.2.0'; 
+window.UI_VERSION = '4.2.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 
 let activeTrackId = 'standard';
-let activeTrackName = 'Standard-Strecke';
-let allTracksList = [{ id: 'standard', name: 'Standard-Strecke', bestLap: 0, recordLap: 0, allTimeRecords: [], dailyRecords: [] }];
+let activeTrackName = 'Test-Strecke';
+let allTracksList = [{ id: 'standard', name: 'Test-Strecke', bestLap: 0, recordLap: 0, allTimeRecords: [], dailyRecords: [] }];
 let pendingRecordFlagsMap = {};
 let lastKnownInfoCache = null;
 let isInitialDataLoaded = false;

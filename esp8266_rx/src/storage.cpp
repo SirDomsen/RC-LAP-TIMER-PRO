@@ -41,7 +41,7 @@ String getOtaHostname() {
 
 // Aktive Strecke & Speicherstatus
 String activeTrackId = "standard";
-String activeTrackName = "Standard-Strecke";
+String activeTrackName = "Test-Strecke";
 uint8_t cachedFsUsedPct = 0;
 uint32_t cachedFsUsedBytes = 0;
 uint32_t cachedFsTotalBytes = 0;
@@ -618,7 +618,7 @@ void loadTracksFromFS() {
             foundObj = arr[0];
           }
           activeTrackId = foundObj["id"] | "standard";
-          activeTrackName = foundObj["name"] | "Standard-Strecke";
+          activeTrackName = foundObj["name"] | "Test-Strecke";
           loadActiveTrackRecordsFromJsonObj(foundObj, needsSaveBack);
           loaded = true;
         }
@@ -628,7 +628,7 @@ void loadTracksFromFS() {
 
   if (!loaded) {
     activeTrackId = "standard";
-    activeTrackName = "Standard-Strecke";
+    activeTrackName = "Test-Strecke";
     clearRecordList(activeAllTimeRecords, activeAllTimeCount);
     clearRecordList(activeDailyRecords, activeDailyCount);
     syncTopRecordVars();
@@ -960,7 +960,7 @@ bool deleteTrackById(const String& trackId) {
   if (arr.size() == 0) {
     JsonObject def = arr.add<JsonObject>();
     def["id"] = "standard";
-    def["name"] = "Standard-Strecke";
+    def["name"] = "Test-Strecke";
     def["recordLap"] = 0;
     def["bestLap"] = 0;
     def["allTimeRecords"].to<JsonArray>();

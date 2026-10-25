@@ -22,7 +22,7 @@
       <div id="dimmerTrackRecordBanner" class="dimmer-track-record-banner" onclick="openTrackRecordsModal()" style="cursor:pointer;" title="Top 5 Bestenliste öffnen">
         <div class="dimmer-record-line">
           <span class="track-record-icon">🏆</span>
-          <span class="track-record-label">Streckenrekord (<span id="dimmerTrackNameVal" style="color:var(--neon-cyan);">Standard-Strecke</span>):</span>
+          <span class="track-record-label">Streckenrekord (<span id="dimmerTrackNameVal" style="color:var(--neon-cyan);">Test-Strecke</span>):</span>
           <span id="dimmerAllTimeRecordVal" class="track-record-val">--:--</span>
         </div>
         <div class="dimmer-record-line">
@@ -115,7 +115,7 @@
 
       <div id="trackRecordBar" class="track-record-bar">
         <div class="track-record-header">
-          <span class="track-record-track-badge">📍 STRECKE: <strong id="activeTrackNameBadge" style="color:var(--neon-cyan);">Standard-Strecke</strong></span>
+          <span class="track-record-track-badge">📍 STRECKE: <strong id="activeTrackNameBadge" style="color:var(--neon-cyan);">Test-Strecke</strong></span>
           <button type="button" class="track-top5-btn" onclick="openTrackRecordsModal()" title="Top 5 Bestenliste & Verwaltung öffnen">📋 Top 5 ▾</button>
         </div>
         <div class="track-record-rows" onclick="openTrackRecordsModal()" title="Klicken für Top 5 Bestenliste & Löschfunktion">
@@ -136,7 +136,7 @@
         <div class="track-selector-left">
           <span class="track-selector-label">📍 AKTUELLE STRECKE:</span>
           <select id="activeTrackSelect" class="track-select-dropdown" onchange="onTrackSelectChange(this.value)">
-            <option value="standard">Standard-Strecke</option>
+            <option value="standard">Test-Strecke</option>
           </select>
         </div>
         <div class="track-selector-actions">
@@ -568,7 +568,7 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.0</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.1</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>

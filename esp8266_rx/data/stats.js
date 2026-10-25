@@ -257,7 +257,7 @@ function getTrackNameById(trackId, fallbackName) {
     let found = allTracksList.find(t => t.id === trackId);
     if (found) return found.name;
   }
-  return trackId || 'Standard-Strecke';
+  return trackId || 'Test-Strecke';
 }
 
 function toggleDriversSort(col) {
