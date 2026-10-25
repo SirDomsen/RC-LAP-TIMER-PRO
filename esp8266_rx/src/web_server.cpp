@@ -184,6 +184,12 @@ static void setupFallbackAP() {
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
   IPAddress local_IP(192, 168, 0, 8);
+  if (learnedApIP.length() > 0) {
+    IPAddress parsed;
+    if (parsed.fromString(learnedApIP)) {
+      local_IP = parsed;
+    }
+  }
   IPAddress gateway(192, 168, 0, 8);
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(local_IP, gateway, subnet);
@@ -220,6 +226,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     
     if (WiFi.status() == WL_CONNECTED) {
       currentRuntimeWifiMode = 1;
+      updateLearnedApIP(WiFi.localIP());
       setupGhostWLAN();
       return; 
     } else {

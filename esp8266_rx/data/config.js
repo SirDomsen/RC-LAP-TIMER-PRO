@@ -1,5 +1,6 @@
 let initialCacheState = null;
 let pendingWifiMode = 0;
+let lastLearnedApIp = '192.168.0.8';
 
 function openConfigModal() {
   let modal = document.getElementById('configModal');
@@ -28,6 +29,7 @@ function openConfigModal() {
     if (hotP) hotP.value = data.hotspotPass || '';
     if (apS) apS.value = data.apSSID || '';
     if (apP) apP.value = data.apPass || '';
+    if (data.learnedApIP) lastLearnedApIp = data.learnedApIP;
 
     let badge = document.getElementById('activeWifiBadge');
     if (badge) {
@@ -250,45 +252,67 @@ async function saveConfig() {
 }
 
 async function forceWifiMode(mode) {
+  let hS = document.getElementById('cfg_home_ssid')?.value || '';
   let hsSsid = document.getElementById('cfg_hotspot_ssid')?.value || '';
-  
-  if (mode === 2 && !hsSsid) { 
-    alert("Bitte erst eine Hotspot SSID eintragen!"); 
-    return; 
+  let apS = document.getElementById('cfg_ap_ssid')?.value || '';
+
+  if (mode === 2 && !hsSsid) {
+    alert("Bitte erst eine Hotspot SSID eintragen!");
+    return;
   }
-  
+
   pendingWifiMode = mode;
-  
+
   let modeName = "";
   let expectedSsid = "";
-  
-  if (mode === 1) { 
-    modeName = "Heim-WLAN"; 
-    expectedSsid = "Dein Heimnetzwerk (Basis IP: 192.168.0.8)"; 
-  }
-  else if (mode === 2) { 
-    modeName = "Hotspot"; 
-    let maxLen = 31 - 4 - 15; 
+  let targetIp = "";
+  let step1Text = "1. Scanne nach diesem Geister-WLAN:";
+  let step2Text = "2. Ã–ffne im Browser:";
+  let descText = "";
+
+  if (mode === 1) {
+    modeName = "Heim-WLAN";
+    let maxLen = 31 - 4 - 15;
+    let shortSsid = hS;
+    if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
+    expectedSsid = "LT_" + shortSsid + "-[IP-Endung]";
+    targetIp = "IP aus Geister-WLAN ablesen";
+    step1Text = "1. Finde deine IP Ã¼ber das Geister-WLAN:";
+    step2Text = "2. Ã–ffne im Browser (wird auch neue AP-IP):";
+    descText = "Der Laptimer verbindet sich mit deinem Heim-WLAN. Lies die neue IP aus dem Geister-WLAN ab â€“ sie wird automatisch auch als feste IP fÃ¼r den AP-Modus gespeichert!";
+  } else if (mode === 2) {
+    modeName = "Hotspot";
+    let maxLen = 31 - 4 - 15;
     let shortSsid = hsSsid;
     if (shortSsid.length > maxLen) shortSsid = shortSsid.substring(0, maxLen);
-    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
+    expectedSsid = "LT_" + shortSsid + "-[IP-Endung]";
+    targetIp = "IP aus Geister-WLAN ablesen";
+    step1Text = "1. Finde deine IP Ã¼ber das Geister-WLAN:";
+    step2Text = "2. Ã–ffne im Browser:";
+    descText = "Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN ab.";
+  } else {
+    modeName = "AP-Modus (Eigenes WLAN)";
+    expectedSsid = (apS || "RC-LapTimer") + " (Direktes Laptimer-WLAN)";
+    targetIp = lastLearnedApIp || "192.168.0.8";
+    step1Text = "1. Verbinde dein Smartphone mit:";
+    step2Text = "2. Ã–ffne im Browser (gewohnte Heim-IP):";
+    descText = "Der Laptimer spannt sein eigenes WLAN auf. Verbinde dich direkt damit und nutze deine gewohnte IP!";
   }
-  else { 
-    modeName = "AP-Modus"; 
-    expectedSsid = (document.getElementById('cfg_ap_ssid')?.value || "RC-LapTimer") + " (Kein Geister-WLAN)"; 
-  }
-  
+
   let desc = document.getElementById('alertModalDesc');
-  if (desc) desc.innerText = "Das Laptimer-System bricht alle aktuellen Verbindungen ab und wechselt sofort in: " + modeName + ".";
-  
+  if (desc) desc.innerText = descText;
+
+  let s1Label = document.getElementById('alertStep1Label');
+  if (s1Label) s1Label.innerText = step1Text;
+
+  let s2Label = document.getElementById('alertStep2Label');
+  if (s2Label) s2Label.innerText = step2Text;
+
   let displaySsid = document.getElementById('alertSsidDisplay');
   if (displaySsid) displaySsid.innerText = expectedSsid;
 
   let displayIp = document.getElementById('alertIpDisplay');
-  if (displayIp) {
-    if (mode === 0 || mode === 1) displayIp.innerText = "192.168.0.8";
-    else displayIp.innerText = "DIE.ANGEZEIGTE.IP";
-  }
+  if (displayIp) displayIp.innerText = targetIp;
 
   closeConfigModal();
   let modal = document.getElementById('connectionAlertModal');

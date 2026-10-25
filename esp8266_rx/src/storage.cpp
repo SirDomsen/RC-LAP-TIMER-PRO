@@ -18,6 +18,7 @@ String hotspotSSID = "";
 String hotspotPass = "";
 String apSSID = AP_SSID;
 String apPass = AP_PASS;
+String learnedApIP = "";
 uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 
 // Eindeutige Hardware-Identifikatoren
@@ -1000,6 +1001,7 @@ void loadWifiConfigFromFS() {
         else if (doc["pass"].is<String>()) hotspotPass = doc["pass"].as<String>();
         if (doc["apSSID"].is<String>()) apSSID = doc["apSSID"].as<String>();
         if (doc["apPass"].is<String>()) apPass = doc["apPass"].as<String>();
+        if (doc["learnedApIP"].is<String>()) learnedApIP = doc["learnedApIP"].as<String>();
         if (doc["mode"].is<uint8_t>()) activeWifiMode = doc["mode"].as<uint8_t>();
       }
     }
@@ -1028,11 +1030,21 @@ void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, 
   doc["apPass"] = apPass;
   doc["ssid"] = hotspotSSID;
   doc["pass"] = hotspotPass;
+  if (learnedApIP.length() > 0) doc["learnedApIP"] = learnedApIP;
 
   File f = LittleFS.open("/wifi.json", "w");
   if (f) {
     serializeJson(doc, f);
     f.close();
+  }
+}
+
+void updateLearnedApIP(const IPAddress& ip) {
+  if (ip[0] == 0 || ip[3] == 0) return;
+  String ipStr = ip.toString();
+  if (learnedApIP != ipStr) {
+    learnedApIP = ipStr;
+    saveWifiConfigToFS(activeWifiMode, homeSSID, homePass, hotspotSSID, hotspotPass, apSSID, apPass);
   }
 }
 

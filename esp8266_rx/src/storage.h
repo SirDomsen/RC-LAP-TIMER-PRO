@@ -2,6 +2,7 @@
 #define STORAGE_H
 
 #include "config.h"
+#include <IPAddress.h>
 
 #define MAX_TRACK_RECORDS 5
 
@@ -26,6 +27,7 @@ extern String hotspotSSID;
 extern String hotspotPass;
 extern String apSSID;
 extern String apPass;
+extern String learnedApIP;
 extern uint8_t activeWifiMode; // 0 = AP, 1 = Heim-WLAN, 2 = Hotspot
 
 // Aktive Strecke & Flash-Speicherstatus
@@ -69,6 +71,7 @@ void saveCacheConfigToEEPROM(bool enable);
 void loadWifiConfigFromFS();
 void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, const String& hsSsid, const String& hsPass, const String& aSsid, const String& aPass);
 void saveHotspotConfigToFS(const String& ssid, const String& pass);
+void updateLearnedApIP(const IPAddress& ip);
 
 void initFS();
 void updateFsUsageCache();
