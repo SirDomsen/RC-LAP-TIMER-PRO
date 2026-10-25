@@ -181,6 +181,7 @@ function resetLapsData(hardReset = true) {
     window.sessionStartTs = Math.floor(Date.now() / 1000);
     let leaderDisp = document.getElementById('leaderLapDisplay');
     if (leaderDisp) leaderDisp.innerText = "0";
+    if (hardReset && typeof loadTracks === 'function') loadTracks();
     updateData(true);
   }).catch(err => console.error(err));
 }

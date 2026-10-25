@@ -3,6 +3,18 @@
 
 #include "config.h"
 
+#define MAX_TRACK_RECORDS 5
+
+struct RecordEntry {
+  uint32_t lapMs;
+  uint8_t carId;
+  String driver;
+  String car;
+  String date;
+  uint32_t prevLapMs;
+  String prevDate;
+};
+
 extern String driverNames[MAX_CARS + 1];
 extern String carNames[MAX_CARS + 1];
 extern bool webCacheEnabled;
@@ -24,6 +36,12 @@ extern uint32_t cachedFsUsedBytes;
 extern uint32_t cachedFsTotalBytes;
 extern bool storageFullLocked;
 extern int32_t clientTzOffsetSec;
+
+// Top-5 Rekordlisten der aktiven Strecke (All-Time & Heute)
+extern RecordEntry activeAllTimeRecords[MAX_TRACK_RECORDS];
+extern uint8_t activeAllTimeCount;
+extern RecordEntry activeDailyRecords[MAX_TRACK_RECORDS];
+extern uint8_t activeDailyCount;
 
 // Puffer-Struktur mit vollständigen Sektorzeiten
 struct PendingLap {
@@ -54,7 +72,7 @@ void saveHotspotConfigToFS(const String& ssid, const String& pass);
 void initFS();
 void updateFsUsageCache();
 
-// Streckenverwaltung (/tracks.json) & Tagesbestzeit
+// Streckenverwaltung (/tracks.json), Streckenrekord (Top 5) & Tagesbestzeit (Top 5)
 void loadTracksFromFS();
 void saveTracksToFS();
 String sanitizeTrackSlug(const String& rawName);
@@ -64,6 +82,9 @@ bool deleteTrackById(const String& trackId);
 void saveActiveTrackBestToFS();
 String getCurrentLocalDateStr();
 void checkDailyBestDateRollover();
+void syncTopRecordVars();
+void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest);
+bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index);
 
 // Session-basierte Statistik-Speicherung (/<track>/<mode>/<YY-MM-DD_HH-MM-SS>.json)
 void startNewSessionFrame(uint8_t mode);

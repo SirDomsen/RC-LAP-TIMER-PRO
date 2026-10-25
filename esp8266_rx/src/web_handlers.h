@@ -25,11 +25,12 @@ void handlePostDeleteDriverStats(AsyncWebServerRequest *request);
 void handlePostDeleteAllStats(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);
 
-// Strecken-Verwaltung
+// Strecken-Verwaltung & Top-5 Rekord-Management
 void handleGetTracks(AsyncWebServerRequest *request);
 void handlePostSelectTrack(AsyncWebServerRequest *request);
 void handlePostAddTrack(AsyncWebServerRequest *request);
 void handlePostDeleteTrack(AsyncWebServerRequest *request);
+void handlePostDeleteTrackRecord(AsyncWebServerRequest *request);
 
 void handleGetSectorConfig(AsyncWebServerRequest *request);
 void handlePostSetSectorConfig(AsyncWebServerRequest *request);

@@ -75,7 +75,14 @@ bool readyForNextLap[MAX_CARS + 1] = {false};
 uint64_t baseUnixTimestampSec = 0;
 uint32_t baseMillis = 0;
 
-// Tagesbestzeit-Variablen (Track Record)
+// All-Time Streckenrekord (P1 der aktiven Strecke)
+uint32_t allTimeBestLapMs = 0;
+uint8_t allTimeBestCarId = 0;
+String allTimeBestDriver = "";
+String allTimeBestCar = "";
+String allTimeBestDate = "";
+
+// Tagesbestzeit-Variablen (P1 heute der aktiven Strecke)
 uint32_t dailyBestLapMs = 0;
 uint8_t dailyBestCarId = 0;
 String dailyBestDriver = "";
@@ -128,12 +135,13 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
   broadcastWebSocket(buffer);
 }
 
-void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest) {
-  char buffer[160];
+void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest, bool isTrackRecord = false, bool isDailyRecord = false) {
+  char buffer[210];
   snprintf(buffer, sizeof(buffer), 
-    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s}",
+    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s}",
     carId, driverNames[carId].c_str(), lapNum, lapTimeMs, 
-    isPB ? "true" : "false", isOverallBest ? "true" : "false");
+    isPB ? "true" : "false", isOverallBest ? "true" : "false",
+    isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false");
   broadcastWebSocket(buffer);
 }
 
@@ -222,12 +230,8 @@ void resetAllLaps(bool isHardReset) {
   overallBestSz4Ms = 0;
   
   if (isHardReset) {
-    dailyBestLapMs = 0;
-    dailyBestCarId = 0;
-    dailyBestDriver = "";
-    dailyBestCar = "";
-    dailyBestDate = getCurrentLocalDateStr();
-    saveActiveTrackBestToFS();
+    // Setzt die Tagesbestzeiten (Top 5 heute) zurück, erhält aber den ewigen Streckenrekord!
+    deleteTrackRecordEntry(activeTrackId, true, -1);
   }
 
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
@@ -298,8 +302,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     timestampMs = now;
   }
 
-  // Wenn das Auto in Box oder Pause war, hebt das Überfahren IRGENDEINES Sektors
-  // den Status auf und setzt das Fahrzeug auf "Outlap"!
   if (currentMode != MODE_DRAGRACE && inPitOrPause[carId]) {
     inPitOrPause[carId] = false;
     isOutLap[carId] = true;
@@ -330,7 +332,6 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   uint32_t elapsedMs = timestampMs - lapStartMs;
   if (elapsedMs < 100 || elapsedMs > 600000) return;
 
-  // Prüfen, ob die aktuelle Zeit bereits über 150% des Durchschnitts liegt -> ebenfalls Outlap
   uint32_t avgLap = getAverageLapTimeMs(carId);
   if (currentMode != MODE_DRAGRACE && avgLap > 0 && elapsedMs > (avgLap + (avgLap >> 1))) {
     isOutLap[carId] = true;
@@ -446,7 +447,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         carId, driverNames[carId].c_str(), elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
       broadcastWebSocket(finishJson);
 
-      broadcastLapEvent(carId, completedRun, elapsedMs, isPB, isOverall);
+      broadcastLapEvent(carId, completedRun, elapsedMs, isPB, isOverall, false, false);
       return;
     }
 
@@ -630,7 +631,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   uint32_t nowMs = exactMicros / 1000UL;
 
   if (currentMode == MODE_DRAGRACE) {
-    // Streckensperre: Start im Dragrace nur erlaubt, wenn kein Fahrzeug auf der Strecke ist!
     if (dragTrackOccupied) return;
     if (dragRunActive[carId]) return;
     if (lastCrossTime[carId] > 0 && (exactMicros - lastCrossTime[carId] < ((uint32_t)minLapTimeMs * 1000UL))) return;
@@ -713,7 +713,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
     uint32_t currentLapTimeMs = (exactMicros - lastCrossTime[carId]) / 1000UL;
     
-    // --- DYNAMISCHE OUT-LAP / BOXEN-PRÜFUNG (50% über Durchschnitt der letzten 3 Runden) ---
     uint32_t avgLap = getAverageLapTimeMs(carId);
     bool currentLapIsOutLap = isOutLap[carId] || inPitOrPause[carId];
     if (avgLap > 0 && currentLapTimeMs > (avgLap + (avgLap >> 1))) {
@@ -776,6 +775,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     lastLapDuration[carId] = currentLapTimeMs;
     bool isLapPB = false;
     bool isLapOverall = false;
+    bool isNewTrackRecord = false;
+    bool isNewDailyRecord = false;
 
     // Bestzeiten & Durchschnitt NUR aktualisieren, wenn es keine Outlap / Boxenrunde war!
     if (!currentLapIsOutLap) {
@@ -799,16 +800,9 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
         isLapOverall = true;
       }
 
-      // --- TAGESBESTZEIT CHECK (Nur für rundenbasierte Events!) ---
+      // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur für rundenbasierte Events!) ---
       if (currentMode != MODE_DRAGRACE && currentLapTimeMs > 100) {
-        if (dailyBestLapMs == 0 || currentLapTimeMs < dailyBestLapMs) {
-          dailyBestLapMs = currentLapTimeMs;
-          dailyBestCarId = carId;
-          dailyBestDriver = driverNames[carId];
-          dailyBestCar = carNames[carId];
-          dailyBestDate = getCurrentLocalDateStr();
-          saveDailyBest(); 
-        }
+        checkAndUpdateTrackRecords(carId, currentLapTimeMs, isNewTrackRecord, isNewDailyRecord);
       }
     }
     
@@ -825,12 +819,10 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
     
-    // Nach der Basis-Überfahrt ist das Fahrzeug wieder auf einer regulären fliegenden Runde
     inPitOrPause[carId] = false;
     isOutLap[carId] = false;
     sectorPassedInLap[carId] = 0;
     split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
-    // HINWEIS: sz1TimeMs .. sz4TimeMs bleiben absichtlich stehen, bis der jeweilige Sektor in der neuen Runde überfahren wird!
     
     lapCounted = true;
 
@@ -843,7 +835,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs);
 
-    broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall);
+    broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord);
   }
 
   if (lapCounted) {
@@ -900,14 +892,13 @@ void updateLapLogicTasks() {
       readyForNextLap[i] = true; 
     }
 
-    // Prüfen, ob Durchschnittszeit der letzten 3 Runden um 50% überschritten wurde -> Box / Pause
     if (currentMode != MODE_DRAGRACE && lapCounter[i] > 0 && !finishedFinalLap[i] && !inPitOrPause[i] && !isOutLap[i]) {
       uint32_t avgMs = getAverageLapTimeMs(i);
       if (avgMs > 0 && lastCrossTime[i] > 0) {
         uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
         if (now > lapStartMs) {
           uint32_t currentElapsedMs = now - lapStartMs;
-          uint32_t thresholdMs = avgMs + (avgMs >> 1); // 1.5x Durchschnitt (+50%)
+          uint32_t thresholdMs = avgMs + (avgMs >> 1);
           if (currentElapsedMs > thresholdMs) {
             inPitOrPause[i] = true;
           }

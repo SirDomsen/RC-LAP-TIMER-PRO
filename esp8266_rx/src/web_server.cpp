@@ -455,6 +455,7 @@ void initNetworkAndServer() {
   server.on("/api/tracks/select", HTTP_POST, handlePostSelectTrack);
   server.on("/api/tracks/add", HTTP_POST, handlePostAddTrack);
   server.on("/api/tracks/delete", HTTP_POST, handlePostDeleteTrack);
+  server.on("/api/tracks/deleterecord", HTTP_POST, handlePostDeleteTrackRecord);
 
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);

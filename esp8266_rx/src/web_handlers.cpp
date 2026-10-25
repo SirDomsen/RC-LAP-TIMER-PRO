@@ -103,7 +103,7 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   }
   checkDailyBestDateRollover();
   String json;
-  json.reserve(450);
+  json.reserve(560);
   json = "{\"mode\":";
   json += (int)currentMode;
   json += ",\"secondsLeft\":";
@@ -116,7 +116,17 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += (dragTrackOccupied ? "true" : "false");
   json += ",\"activeDragCar\":";
   json += activeDragCarId;
-  json += ",\"dailyBestLap\":";
+  json += ",\"recordLap\":";
+  json += allTimeBestLapMs;
+  json += ",\"recordCarId\":";
+  json += allTimeBestCarId;
+  json += ",\"recordDriver\":\"";
+  json += allTimeBestDriver;
+  json += "\",\"recordCar\":\"";
+  json += allTimeBestCar;
+  json += "\",\"recordDate\":\"";
+  json += allTimeBestDate;
+  json += "\",\"dailyBestLap\":";
   json += dailyBestLapMs;
   json += ",\"dailyBestCarId\":";
   json += dailyBestCarId;
@@ -124,6 +134,8 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += dailyBestDriver;
   json += "\",\"dailyBestCar\":\"";
   json += dailyBestCar;
+  json += "\",\"dailyBestDate\":\"";
+  json += dailyBestDate;
   json += "\",\"activeTrackId\":\"";
   json += activeTrackId;
   json += "\",\"activeTrackName\":\"";
@@ -222,9 +234,15 @@ void handlePostRename(AsyncWebServerRequest *request) {
       driverNames[id] = driver;
       carNames[id] = car;
       saveNamesToEEPROM(id, driver, car);
-      if (dailyBestCarId == id) {
-        dailyBestDriver = driver;
-        dailyBestCar = car;
+      if (dailyBestCarId == id || allTimeBestCarId == id) {
+        if (dailyBestCarId == id) {
+          dailyBestDriver = driver;
+          dailyBestCar = car;
+        }
+        if (allTimeBestCarId == id) {
+          allTimeBestDriver = driver;
+          allTimeBestCar = car;
+        }
         saveDailyBest();
       }
     }
@@ -315,7 +333,7 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
   }
 }
 
-// --- STRECKEN-HANDLERS ---
+// --- STRECKEN-HANDLERS & TOP-5 REKORDVERWALTUNG ---
 void handleGetTracks(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   if (LittleFS.exists("/tracks.json")) {
@@ -325,7 +343,7 @@ void handleGetTracks(AsyncWebServerRequest *request) {
     if (LittleFS.exists("/tracks.json")) {
       request->send(LittleFS, "/tracks.json", "application/json");
     } else {
-      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Standard-Strecke\",\"bestLap\":0}]}");
+      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Standard-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
     }
   }
 }
@@ -364,6 +382,19 @@ void handlePostDeleteTrack(AsyncWebServerRequest *request) {
     }
   }
   request->send(400, "text/plain", "Fehler beim Loeschen");
+}
+
+void handlePostDeleteTrackRecord(AsyncWebServerRequest *request) {
+  String trackId = request->hasParam("trackId") ? request->getParam("trackId")->value() : activeTrackId;
+  String typeStr = request->hasParam("type") ? request->getParam("type")->value() : "daily";
+  int8_t idx = request->hasParam("index") ? (int8_t)request->getParam("index")->value().toInt() : 0;
+
+  bool isDaily = (typeStr == "daily");
+  if (deleteTrackRecordEntry(trackId, isDaily, idx)) {
+    request->send(200, "text/plain", "OK");
+  } else {
+    request->send(400, "text/plain", "Eintrag nicht gefunden");
+  }
 }
 
 void handleGetSectorConfig(AsyncWebServerRequest *request) {
@@ -427,7 +458,6 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       snprintf(cleanPath, sizeof(cleanPath), "%s", filename.c_str());
     }
 
-    // Eventuelle Unterordner im Pfad automatisch anlegen
     String pathStr = String(cleanPath);
     int slashIdx = pathStr.indexOf('/', 1);
     while (slashIdx > 0) {

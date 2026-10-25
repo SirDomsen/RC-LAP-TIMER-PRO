@@ -5,6 +5,9 @@ let currentStatsTrackFilter = 'all';
 let driversSortCol = 'laps';
 let driversSortDir = 'desc';
 
+let openSessionsMap = {};
+let openDriverDetailsMap = {};
+
 let sessionResultsSortMap = {};
 let embeddedLapsState = {};
 let driverProfileSessionSort = { col: 'ts', dir: 'desc' };
@@ -79,6 +82,92 @@ function announceRaceResults() {
   }
 }
 
+function updateStatsModalDailyBest() {
+  let allTimeElem = document.getElementById('statsAllTimeBestVal');
+  let dailyElem = document.getElementById('statsDailyBestVal');
+  let boxElem = document.getElementById('statsDailyBestDisplay');
+  if (!dailyElem && !allTimeElem) return;
+
+  if (boxElem && typeof openTrackRecordsModal === 'function') {
+    boxElem.style.cursor = 'pointer';
+    boxElem.title = 'Klicken für Top 5 Bestenliste';
+    boxElem.onclick = () => {
+      let targetTrack = (currentStatsTrackFilter && currentStatsTrackFilter !== 'all') ? currentStatsTrackFilter : activeTrackId;
+      openTrackRecordsModal(targetTrack);
+    };
+  }
+
+  if (typeof allTracksList === 'undefined' || !Array.isArray(allTracksList) || allTracksList.length === 0) {
+    if (allTimeElem) allTimeElem.innerText = '--:--';
+    if (dailyElem) dailyElem.innerText = '--:--';
+    return;
+  }
+
+  if (currentStatsTrackFilter === 'all') {
+    // 1. All-Time Rekord über alle Strecken
+    let recBest = 0;
+    let recDriver = '';
+    let recTrack = '';
+    allTracksList.forEach(t => {
+      let rLap = t.recordLap || 0;
+      if (rLap > 0 && (recBest === 0 || rLap < recBest)) {
+        recBest = rLap;
+        recDriver = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || ('Fahrer ' + t.recordCarId));
+        recTrack = t.name;
+      }
+    });
+    if (allTimeElem) {
+      if (recBest > 0) {
+        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${(recBest / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${recDriver} - ${recTrack})</small>`;
+      } else {
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+      }
+    }
+
+    // 2. Tagesbestzeit über alle Strecken
+    let best = 0;
+    let bestDriver = '';
+    let bestTrack = '';
+    allTracksList.forEach(t => {
+      if (t.bestLap > 0 && (best === 0 || t.bestLap < best)) {
+        best = t.bestLap;
+        bestDriver = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        bestTrack = t.name;
+      }
+    });
+    if (dailyElem) {
+      if (best > 0) {
+        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${(best / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${bestDriver} - ${bestTrack})</small>`;
+      } else {
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+      }
+    }
+  } else {
+    let t = allTracksList.find(x => x.id === currentStatsTrackFilter);
+    if (allTimeElem) {
+      let rLap = t ? (t.recordLap || 0) : 0;
+      if (t && rLap > 0) {
+        let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || ('Fahrer ' + t.recordCarId));
+        let rc = t.recordCar || (carNamesMap[t.recordCarId]?.car || '');
+        let carPart = rc ? ` (${rc})` : '';
+        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${(rLap / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${rd}${carPart})</small>`;
+      } else {
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+      }
+    }
+    if (dailyElem) {
+      if (t && t.bestLap > 0) {
+        let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        let c = t.bestCar || (carNamesMap[t.bestCarId]?.car || '');
+        let carPart = c ? ` (${c})` : '';
+        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${(t.bestLap / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${d}${carPart})</small>`;
+      } else {
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+      }
+    }
+  }
+}
+
 async function fetchSessionsAndStorageInfo() {
   try {
     let [sRes, tRes] = await Promise.all([
@@ -95,6 +184,7 @@ async function fetchSessionsAndStorageInfo() {
         updateStorageStatusUI(info.fsPct, info.fsFull, info.fsUsed, info.fsTotal);
       }
     }
+    updateStatsModalDailyBest();
   } catch (e) {
     console.error("Fehler beim Laden der Sessions:", e);
   }
@@ -116,6 +206,8 @@ async function openStatsOverviewModal() {
     filterSel.value = currentStatsTrackFilter;
   }
 
+  updateStatsModalDailyBest();
+
   if (!currentTab || currentTab === 'race') currentTab = 'training';
   switchStatsTab(currentTab);
 }
@@ -125,6 +217,7 @@ function onStatsTrackFilterChange() {
   if (sel) {
     currentStatsTrackFilter = sel.value || 'all';
   }
+  updateStatsModalDailyBest();
   switchStatsTab(currentTab);
 }
 
@@ -313,6 +406,7 @@ function renderDriversOverview() {
 }
 
 function sortSessionResults(safeId, col) {
+  openSessionsMap[safeId] = true;
   let curState = sessionResultsSortMap[safeId] || { col: 'pos', dir: 'asc' };
   if (curState.col === col) {
     curState.dir = (curState.dir === 'asc') ? 'desc' : 'asc';
@@ -385,6 +479,10 @@ function renderSessionsByMode(mode, containerId) {
       return (resSort.dir === 'asc') ? res : -res;
     });
 
+    let isSessionOpen = !!openSessionsMap[safeId];
+    let sessionDetailDisplay = isSessionOpen ? 'block' : 'none';
+    let sessionArrowText = isSessionOpen ? 'Details 🔼' : 'Details 🔽';
+
     html += `<div id="session_card_${safeId}" class="${badgeClass}">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;" onclick="toggleSessionDetails('${safeId}')">
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
@@ -394,12 +492,12 @@ function renderSessionsByMode(mode, containerId) {
           <small style="color:var(--text-muted); font-size:10px; opacity:0.7;">(${s.id})</small>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span id="session_arrow_${safeId}" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">Details 🔽</span>
+          <span id="session_arrow_${safeId}" style="font-size:12px; color:var(--neon-cyan); cursor:pointer;">${sessionArrowText}</span>
           ${deleteBtnHtml}
         </div>
       </div>
 
-      <div id="session_detail_${safeId}" class="session-details" style="display:none; margin-top:10px;">
+      <div id="session_detail_${safeId}" class="session-details" style="display:${sessionDetailDisplay}; margin-top:10px;">
         <div class="table-responsive">
           <table>
             <thead>
@@ -422,6 +520,10 @@ function renderSessionsByMode(mode, containerId) {
       let dName = carNamesMap[r.id]?.driver || r.driver || ("Fahrer " + r.id);
       let cName = carNamesMap[r.id]?.car || r.car || ("Auto " + r.id);
 
+      let isDriverOpen = !!openDriverDetailsMap[driverDetailId];
+      let driverBtnText = isDriverOpen ? 'Details 🔼' : 'Details 🔽';
+      let driverTrDisplay = isDriverOpen ? 'table-row' : 'none';
+
       html += `<tr>
         <td><strong>P${r.pos}</strong></td>
         <td><span class="driver-name" onclick="openDriverStats(${r.id})" style="color:var(--neon-cyan); font-weight:bold; cursor:pointer;">${dName}</span></td>
@@ -429,10 +531,10 @@ function renderSessionsByMode(mode, containerId) {
         <td>${r.laps}</td>
         <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
         <td>
-          <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', '${s.id}', '${s.file}', ${r.id}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'})">Details 🔽</button>
+          <button class="btn btn-purple" id="btn_arrow_${driverDetailId}" style="padding:2px 8px; font-size:11px; margin:0;" onclick="toggleDriverLapsInSession('${driverDetailId}', '${s.id}', '${s.file}', ${r.id}, ${sessionOverallBest}, ${isDrag ? 'true' : 'false'})">${driverBtnText}</button>
         </td>
       </tr>
-      <tr id="${driverDetailId}_tr" style="display:none; background: rgba(0,0,0,0.35);">
+      <tr id="${driverDetailId}_tr" style="display:${driverTrDisplay}; background: rgba(0,0,0,0.35);">
         <td colspan="6">
           <div id="${driverDetailId}_content" class="driver-lap-details">Lade ${roundTimeWord}...</div>
         </td>
@@ -443,17 +545,29 @@ function renderSessionsByMode(mode, containerId) {
   });
 
   container.innerHTML = html;
+
+  // Bereits offene Fahrerdetails direkt wieder rendern
+  Object.keys(openDriverDetailsMap).forEach(elemId => {
+    if (openDriverDetailsMap[elemId] && embeddedLapsState[elemId]) {
+      let contentElem = document.getElementById(elemId + '_content');
+      if (contentElem) {
+        renderEmbeddedLapsTable(elemId, contentElem);
+      }
+    }
+  });
 }
 
 function toggleSessionDetails(safeId, forceOpen = null) {
   let el = document.getElementById('session_detail_' + safeId);
   let arrow = document.getElementById('session_arrow_' + safeId);
-  if (el) {
-    let isOpen = (el.style.display === 'block');
-    let nextOpen = (forceOpen !== null) ? forceOpen : !isOpen;
-    el.style.display = nextOpen ? 'block' : 'none';
-    if (arrow) arrow.innerText = nextOpen ? 'Details 🔼' : 'Details 🔽';
-  }
+  let isCurrentlyOpen = !!openSessionsMap[safeId];
+  let nextOpen = (forceOpen !== null) ? forceOpen : !isCurrentlyOpen;
+
+  if (nextOpen) openSessionsMap[safeId] = true;
+  else delete openSessionsMap[safeId];
+
+  if (el) el.style.display = nextOpen ? 'block' : 'none';
+  if (arrow) arrow.innerText = nextOpen ? 'Details 🔼' : 'Details 🔽';
 }
 
 async function fetchSessionFileData(filePath) {
@@ -473,16 +587,25 @@ async function toggleDriverLapsInSession(elemId, sessionId, sessionFile, carId, 
 
   if (!trElem || !contentElem) return;
 
-  if (!forceOpen && trElem.style.display === 'table-row') {
+  let isCurrentlyOpen = !!openDriverDetailsMap[elemId];
+  if (!forceOpen && isCurrentlyOpen) {
     trElem.style.display = 'none';
+    delete openDriverDetailsMap[elemId];
     if (btnElem) btnElem.innerText = 'Details 🔽';
     return;
   }
 
+  openDriverDetailsMap[elemId] = true;
   trElem.style.display = 'table-row';
   contentElem.style.display = 'block';
-  contentElem.innerHTML = 'Lade Zeiten...';
   if (btnElem) btnElem.innerText = 'Details 🔼';
+
+  if (embeddedLapsState[elemId] && embeddedLapsState[elemId].laps) {
+    renderEmbeddedLapsTable(elemId, contentElem);
+    return;
+  }
+
+  contentElem.innerHTML = 'Lade Zeiten...';
 
   try {
     let data = await fetchSessionFileData(sessionFile);
@@ -705,8 +828,26 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
   try {
     await fetch(`/api/deletelap?sessionId=${encodeURIComponent(sessionId)}&id=${carId}&lap=${lapNum}`, { method: 'POST' });
     delete sessionFileCache[sessionFile];
+    let safeId = sanitizeDomId(sessionId);
+    let elemId = `s_${safeId}_driver_${carId}`;
+    if (embeddedLapsState[elemId]) {
+      delete embeddedLapsState[elemId].laps;
+    }
+    if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
     switchStatsTab(currentTab);
+    if (openDriverDetailsMap[elemId]) {
+      let sObj = allSessionsCache.find(s => s.id === sessionId);
+      let sessionOverallBest = 0;
+      if (sObj && sObj.results) {
+        sObj.results.forEach(r => {
+          if (r.bestLap > 0 && (sessionOverallBest === 0 || r.bestLap < sessionOverallBest)) {
+            sessionOverallBest = r.bestLap;
+          }
+        });
+      }
+      toggleDriverLapsInSession(elemId, sessionId, sessionFile, carId, sessionOverallBest, sObj ? sObj.mode === 4 : false, true);
+    }
   } catch (err) {
     console.error(err);
   }
@@ -717,6 +858,9 @@ async function deleteSession(sessionId) {
   try {
     await fetch('/api/deletesession?id=' + encodeURIComponent(sessionId), { method: 'POST' });
     sessionFileCache = {};
+    let safeId = sanitizeDomId(sessionId);
+    delete openSessionsMap[safeId];
+    if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
     switchStatsTab(currentTab);
   } catch (e) {
@@ -737,6 +881,7 @@ async function jumpToSessionInStats(sessionId, mode, trackId, carId = null) {
     currentStatsTrackFilter = 'all';
     let sel = document.getElementById('statsTrackFilterSelect');
     if (sel) sel.value = 'all';
+    updateStatsModalDailyBest();
   }
 
   let targetTab = modeToTabName(mode);
@@ -1197,6 +1342,7 @@ async function confirmDeleteDriverStats() {
   try {
     await fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' });
     sessionFileCache = {};
+    if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
     renderDriverProfile(activeStatsCarId);
   } catch (err) {
@@ -1209,6 +1355,8 @@ async function confirmDeleteAllStats() {
   try {
     await fetch('/api/deleteallstats', { method: 'POST' });
     sessionFileCache = {};
+    openSessionsMap = {};
+    openDriverDetailsMap = {};
     await fetchSessionsAndStorageInfo();
     if (typeof loadTracks === 'function') await loadTracks();
     alert("Alle Statistiken wurden gelöscht.");
@@ -1317,6 +1465,8 @@ async function handleRestoreBackup(event) {
 
       alert("Backup erfolgreich wiederhergestellt!");
       sessionFileCache = {};
+      openSessionsMap = {};
+      openDriverDetailsMap = {};
       await openStatsOverviewModal();
     } else {
       let formData = new FormData();

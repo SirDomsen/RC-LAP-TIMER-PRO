@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '3.9.1'; 
+window.UI_VERSION = '3.9.2'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -9,7 +9,9 @@ let userRole = localStorage.getItem('rctl_user_role') || null;
 
 let activeTrackId = 'standard';
 let activeTrackName = 'Standard-Strecke';
-let allTracksList = [{ id: 'standard', name: 'Standard-Strecke', bestLap: 0 }];
+let allTracksList = [{ id: 'standard', name: 'Standard-Strecke', bestLap: 0, recordLap: 0, allTimeRecords: [], dailyRecords: [] }];
+let pendingRecordFlagsMap = {};
+let lastKnownInfoCache = null;
 let currentFsPct = 0;
 let currentFsUsed = 0;
 let currentFsTotal = 0;
@@ -779,6 +781,16 @@ function syncTimeWithServerOnce() {
 }
 
 // --- STRECKEN-VERWALTUNG & SPEICHERPLATZ-SCHUTZ ---
+function formatRecordDate(dStr) {
+  if (!dStr) return '';
+  let parts = String(dStr).split('-');
+  if (parts.length === 3) {
+    let y = parts[0].length === 4 ? parts[0].slice(2) : parts[0];
+    return `${parts[2]}.${parts[1]}.${y}`;
+  }
+  return dStr;
+}
+
 async function loadTracks() {
   try {
     let res = await fetch('/api/tracks');
@@ -791,6 +803,15 @@ async function loadTracks() {
         activeTrackName = found.name;
       }
       populateTrackSelectDropdowns();
+      updateTrackRecordBar();
+      if (typeof updateStatsModalDailyBest === 'function') {
+        updateStatsModalDailyBest();
+      }
+      let trModal = document.getElementById('trackRecordsModal');
+      if (trModal && trModal.style.display === 'block') {
+        let sel = document.getElementById('top5ModalTrackSelect');
+        renderTrackRecordsModalContent(sel ? sel.value : activeTrackId);
+      }
     }
   } catch (e) {
     console.warn("Streckenliste konnte nicht geladen werden:", e);
@@ -819,10 +840,181 @@ function populateTrackSelectDropdowns() {
     statsSel.innerHTML = html;
   }
 
+  let top5Sel = document.getElementById('top5ModalTrackSelect');
+  if (top5Sel) {
+    let prevVal = top5Sel.value || activeTrackId;
+    if (!allTracksList.some(t => t.id === prevVal)) prevVal = activeTrackId;
+    let html = '';
+    allTracksList.forEach(t => {
+      let sel = (t.id === prevVal) ? 'selected' : '';
+      html += `<option value="${t.id}" ${sel}>🏁 ${t.name}</option>`;
+    });
+    top5Sel.innerHTML = html;
+  }
+
   let badge = document.getElementById('activeTrackNameBadge');
   if (badge) badge.innerText = activeTrackName;
   let dimBadge = document.getElementById('dimmerTrackNameVal');
   if (dimBadge) dimBadge.innerText = activeTrackName;
+}
+
+async function openTrackRecordsModal(trackId) {
+  let modal = document.getElementById('trackRecordsModal');
+  if (!modal) return;
+  modal.style.display = 'block';
+
+  await loadTracks();
+  let targetId = trackId || activeTrackId;
+  let sel = document.getElementById('top5ModalTrackSelect');
+  if (sel) sel.value = targetId;
+  renderTrackRecordsModalContent(targetId);
+}
+
+function closeTrackRecordsModal() {
+  let modal = document.getElementById('trackRecordsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderTrackRecordsModalContent(trackId) {
+  let body = document.getElementById('trackRecordsModalBody');
+  if (!body) return;
+
+  let targetId = trackId || activeTrackId;
+  let trackObj = allTracksList.find(t => t.id === targetId) || allTracksList[0];
+  if (!trackObj) {
+    body.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Keine Streckendaten verfügbar.</p>';
+    return;
+  }
+
+  let isAdmin = (userRole === 'admin');
+
+  let allTimeArr = Array.isArray(trackObj.allTimeRecords) ? trackObj.allTimeRecords : [];
+  if (allTimeArr.length === 0 && trackObj.recordLap > 0) {
+    allTimeArr = [{
+      lap: trackObj.recordLap,
+      carId: trackObj.recordCarId || 0,
+      driver: trackObj.recordDriver || '',
+      car: trackObj.recordCar || '',
+      date: trackObj.recordDate || ''
+    }];
+  }
+
+  let dailyArr = Array.isArray(trackObj.dailyRecords) ? trackObj.dailyRecords : [];
+  if (dailyArr.length === 0 && trackObj.bestLap > 0) {
+    dailyArr = [{
+      lap: trackObj.bestLap,
+      carId: trackObj.bestCarId || 0,
+      driver: trackObj.bestDriver || '',
+      car: trackObj.bestCar || '',
+      date: trackObj.bestDate || ''
+    }];
+  }
+
+  let renderListHtml = (entries, typeKey, emptyText, isAllTime) => {
+    if (!entries || entries.length === 0) {
+      return `<div class="top5-empty-text">${emptyText}</div>`;
+    }
+    let rowsHtml = '';
+    entries.forEach((entry, idx) => {
+      let rank = idx + 1;
+      let rankClass = rank === 1 ? 'top5-rank-1' : (rank === 2 ? 'top5-rank-2' : (rank === 3 ? 'top5-rank-3' : 'top5-rank-other'));
+      let driverName = entry.driver || (carNamesMap[entry.carId]?.driver) || ('Fahrer ' + (entry.carId || '?'));
+      let carName = entry.car || (carNamesMap[entry.carId]?.car) || ('Auto ' + (entry.carId || '?'));
+      let timeStr = (entry.lap / 1000).toFixed(2) + 's';
+      let dateFormatted = formatRecordDate(entry.date);
+      let dateHtml = (isAllTime && dateFormatted) ? `<span class="top5-entry-date">📅 ${dateFormatted}</span>` : '';
+      let prevHintHtml = (isAdmin && entry.prevLap && entry.prevLap > 0)
+        ? `<span style="font-size:10px; color:var(--text-muted); margin-left:4px;" title="Wird beim Löschen dieser Zeit automatisch wiederhergestellt">(vorher: ${(entry.prevLap / 1000).toFixed(2)}s)</span>`
+        : '';
+
+      let timeColor = (rank === 1)
+        ? (isAllTime ? 'color:var(--neon-gold); text-shadow:0 0 8px rgba(255,215,0,0.5);' : 'color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.6);')
+        : 'color:var(--neon-green);';
+
+      let delBtn = isAdmin
+        ? `<button class="top5-del-btn" onclick="deleteTrackRecordEntryUI('${trackObj.id}', '${typeKey}', ${idx})" title="Eintrag löschen${entry.prevLap > 0 ? ' (stellt vorherige Bestzeit wieder her)' : ''}">✕</button>`
+        : '';
+
+      rowsHtml += `
+        <div class="top5-entry-row">
+          <div class="top5-entry-left">
+            <span class="top5-rank-badge ${rankClass}">P${rank}</span>
+            <div class="top5-driver-info">
+              <div>
+                <span class="top5-driver-name">${driverName}</span>
+                <span class="top5-car-name">(${carName})</span>
+              </div>
+              <div>
+                ${dateHtml}
+                ${prevHintHtml}
+              </div>
+            </div>
+          </div>
+          <div class="top5-entry-right">
+            <span class="top5-entry-time" style="${timeColor}">${timeStr}</span>
+            ${delBtn}
+          </div>
+        </div>`;
+    });
+    return rowsHtml;
+  };
+
+  let allTimeClearBtn = (isAdmin && allTimeArr.length > 0)
+    ? `<button class="btn btn-danger" style="padding:2px 8px; font-size:10px; margin:0;" onclick="deleteTrackRecordEntryUI('${trackObj.id}', 'alltime', -1)">Alle löschen</button>`
+    : '';
+  let dailyClearBtn = (isAdmin && dailyArr.length > 0)
+    ? `<button class="btn btn-danger" style="padding:2px 8px; font-size:10px; margin:0;" onclick="deleteTrackRecordEntryUI('${trackObj.id}', 'daily', -1)">Alle löschen</button>`
+    : '';
+
+  body.innerHTML = `
+    <div class="top5-section-card alltime">
+      <div class="top5-section-title" style="color:var(--neon-gold);">
+        <span>🏆 STRECKENREKORD – TOP 5 (ALL-TIME)</span>
+        ${allTimeClearBtn}
+      </div>
+      ${renderListHtml(allTimeArr, 'alltime', 'Noch kein Streckenrekord auf dieser Strecke', true)}
+    </div>
+
+    <div class="top5-section-card daily">
+      <div class="top5-section-title" style="color:var(--neon-green);">
+        <span>⏱️ TAGESBESTZEIT – TOP 5 (HEUTE)</span>
+        ${dailyClearBtn}
+      </div>
+      ${renderListHtml(dailyArr, 'daily', 'Heute noch keine Zeit auf dieser Strecke gefahren', false)}
+    </div>
+    <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-top:6px;">
+      💡 Pro Fahrer &amp; Fahrzeug wird jeweils die schnellste Zeit geführt.
+      ${isAdmin ? '<br>Beim Löschen einer Fehlmessung rückt die vorherige Bestzeit des Fahrers automatisch nach.' : ''}
+    </div>
+  `;
+}
+
+async function deleteTrackRecordEntryUI(trackId, type, index) {
+  let msg = '';
+  if (index < 0) {
+    msg = (type === 'daily')
+      ? 'Wirklich ALLE heutigen Tagesbestzeiten dieser Strecke löschen?'
+      : 'Wirklich ALLE All-Time Streckenrekorde dieser Strecke löschen?';
+  } else {
+    msg = (type === 'daily')
+      ? `Platz ${index + 1} der Tagesbestzeit löschen? (Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt)`
+      : `Platz ${index + 1} des Streckenrekords löschen? (Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt)`;
+  }
+  if (!confirm(msg)) return;
+
+  try {
+    let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(trackId)}&type=${encodeURIComponent(type)}&index=${index}`;
+    let res = await fetch(url, { method: 'POST' });
+    if (res.ok) {
+      await loadTracks();
+      await updateData(true);
+      renderTrackRecordsModalContent(trackId);
+    } else {
+      alert("Eintrag konnte nicht gelöscht werden.");
+    }
+  } catch (e) {
+    console.error("Fehler beim Löschen des Rekord-Eintrags:", e);
+  }
 }
 
 async function onTrackSelectChange(trackId) {
@@ -1088,6 +1280,7 @@ async function loadWifiStatus() {
 
 function updateTrackRecordBar(info) {
   if (info) {
+    lastKnownInfoCache = info;
     if (info.activeTrackId && info.activeTrackName) {
       let trackChanged = (activeTrackId !== info.activeTrackId || activeTrackName !== info.activeTrackName);
       activeTrackId = info.activeTrackId;
@@ -1107,27 +1300,54 @@ function updateTrackRecordBar(info) {
     }
   }
 
-  let bar = document.getElementById('trackRecordBar');
-  let disp = document.getElementById('trackRecordDisplay');
-  let dimBanner = document.getElementById('dimmerTrackRecordBanner');
-  let dimVal = document.getElementById('dimmerTrackRecordVal');
+  let activeTrackObj = allTracksList.find(t => t.id === activeTrackId) || null;
 
-  let hasDailyBest = (info && info.dailyBestLap && info.dailyBestLap > 0);
+  let recLap = (info && info.recordLap !== undefined) ? info.recordLap : (activeTrackObj ? (activeTrackObj.recordLap || 0) : 0);
+  let recCarId = (info && info.recordCarId !== undefined) ? info.recordCarId : (activeTrackObj ? (activeTrackObj.recordCarId || 0) : 0);
+  let recDriver = (info && info.recordDriver !== undefined) ? info.recordDriver : (activeTrackObj ? (activeTrackObj.recordDriver || '') : '');
+  let recCar = (info && info.recordCar !== undefined) ? info.recordCar : (activeTrackObj ? (activeTrackObj.recordCar || '') : '');
+  let recDate = (info && info.recordDate !== undefined) ? info.recordDate : (activeTrackObj ? (activeTrackObj.recordDate || '') : '');
+
+  let dailyLap = (info && info.dailyBestLap !== undefined) ? info.dailyBestLap : (activeTrackObj ? (activeTrackObj.bestLap || 0) : 0);
+  let dailyCarId = (info && info.dailyBestCarId !== undefined) ? info.dailyBestCarId : (activeTrackObj ? (activeTrackObj.bestCarId || 0) : 0);
+  let dailyDriver = (info && info.dailyBestDriver !== undefined) ? info.dailyBestDriver : (activeTrackObj ? (activeTrackObj.bestDriver || '') : '');
+  let dailyCar = (info && info.dailyBestCar !== undefined) ? info.dailyBestCar : (activeTrackObj ? (activeTrackObj.bestCar || '') : '');
+
+  let hasAllTime = (recLap && recLap > 0);
+  let hasDailyBest = (dailyLap && dailyLap > 0);
+
+  let bar = document.getElementById('trackRecordBar');
+  let allTimeDisp = document.getElementById('allTimeRecordDisplay');
+  let dailyDisp = document.getElementById('trackRecordDisplay');
+  let dimBanner = document.getElementById('dimmerTrackRecordBanner');
+  let dimAllTimeVal = document.getElementById('dimmerAllTimeRecordVal');
+  let dimDailyVal = document.getElementById('dimmerTrackRecordVal');
 
   if (dimBanner) {
     dimBanner.style.display = (currentMode === 4) ? 'none' : 'inline-flex';
   }
-  if (dimVal) {
-    if (hasDailyBest) {
-      let timeStr = (info.dailyBestLap / 1000).toFixed(2) + 's';
-      let driver = info.dailyBestDriver || (carNamesMap[info.dailyBestCarId]?.driver) || ('Fahrer ' + info.dailyBestCarId);
-      dimVal.innerHTML = `${driver} — <span style="color:var(--neon-gold); font-size:13px;">${timeStr}</span>`;
+  if (dimAllTimeVal) {
+    if (hasAllTime) {
+      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
+      let dFmt = formatRecordDate(recDate);
+      let dSuffix = dFmt ? ` <small style="color:var(--text-muted); font-size:10px;">(${dFmt})</small>` : '';
+      dimAllTimeVal.innerHTML = `${driver} — <span style="color:var(--neon-gold); font-size:13px;">${timeStr}</span>${dSuffix}`;
     } else {
-      dimVal.innerText = '--:--';
+      dimAllTimeVal.innerText = '--:--';
+    }
+  }
+  if (dimDailyVal) {
+    if (hasDailyBest) {
+      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
+      dimDailyVal.innerHTML = `${driver} — <span style="color:var(--neon-green); font-size:13px;">${timeStr}</span>`;
+    } else {
+      dimDailyVal.innerText = '--:--';
     }
   }
 
-  if (!bar || !disp) return;
+  if (!bar) return;
 
   if (currentMode === 4) {
     bar.style.display = 'none';
@@ -1135,13 +1355,28 @@ function updateTrackRecordBar(info) {
   }
   bar.style.display = 'flex';
 
-  if (hasDailyBest) {
-    let timeStr = (info.dailyBestLap / 1000).toFixed(2) + 's';
-    let driver = info.dailyBestDriver || (carNamesMap[info.dailyBestCarId]?.driver) || ('Fahrer ' + info.dailyBestCarId);
-    let car = info.dailyBestCar || (carNamesMap[info.dailyBestCarId]?.car) || ('Auto ' + info.dailyBestCarId);
-    disp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small> — <span style="color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-size:17px;">${timeStr}</span>`;
-  } else {
-    disp.innerHTML = `<span style="color:var(--text-muted); font-size:13px;">Noch keine Bestzeit gesetzt</span>`;
+  if (allTimeDisp) {
+    if (hasAllTime) {
+      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
+      let car = recCar || (carNamesMap[recCarId]?.car) || ('Auto ' + recCarId);
+      let dFmt = formatRecordDate(recDate);
+      let dateTag = dFmt ? ` <small style="color:var(--text-muted); font-size:11px;">• ${dFmt}</small>` : '';
+      allTimeDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small>${dateTag} — <span style="color:var(--neon-gold); text-shadow:0 0 8px rgba(255,215,0,0.6); font-size:16px;">${timeStr}</span>`;
+    } else {
+      allTimeDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">Noch kein Streckenrekord</span>`;
+    }
+  }
+
+  if (dailyDisp) {
+    if (hasDailyBest) {
+      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
+      let car = dailyCar || (carNamesMap[dailyCarId]?.car) || ('Auto ' + dailyCarId);
+      dailyDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small> — <span style="color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-size:16px;">${timeStr}</span>`;
+    } else {
+      dailyDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">Noch keine Bestzeit heute</span>`;
+    }
   }
 }
 
@@ -1602,6 +1837,7 @@ async function pollData() {
     let mRole = document.getElementById('roleSelectModal');
     let mNewTrack = document.getElementById('newTrackModal');
     let mStorageFull = document.getElementById('storageFullModal');
+    let mTrackRecords = document.getElementById('trackRecordsModal');
     
     let isModalOpen = (mConfig && mConfig.style.display === 'block') ||
                       (mDriverConfig && mDriverConfig.style.display === 'block') ||
@@ -1611,7 +1847,8 @@ async function pollData() {
                       (mReset && mReset.style.display === 'block') ||
                       (mRole && mRole.style.display === 'block') ||
                       (mNewTrack && mNewTrack.style.display === 'block') ||
-                      (mStorageFull && mStorageFull.style.display === 'block');
+                      (mStorageFull && mStorageFull.style.display === 'block') ||
+                      (mTrackRecords && mTrackRecords.style.display === 'block');
                       
     if (!isModalOpen) {
       await updateData(true);
@@ -1760,6 +1997,13 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       };
     }
 
+    let recFlags = pendingRecordFlagsMap[carId];
+    if (recFlags) {
+      delete pendingRecordFlagsMap[carId];
+    }
+    let isNewTrackRecord = !!(recFlags && recFlags.isTrackRecord);
+    let isNewDailyRecord = !!(recFlags && recFlags.isDailyRecord);
+
     if (!isSessionFinished && car.lastLap > 0 && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
       let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
@@ -1768,7 +2012,11 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       let lapAnnouncement = "";
       let isRaceMode = (currentMode >= 2);
 
-      if (isRaceMode && !announceLapTimesInRace) {
+      if (isNewTrackRecord) {
+        lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
+      } else if (isNewDailyRecord) {
+        lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
+      } else if (isRaceMode && !announceLapTimesInRace) {
         if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
         else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
         else lapAnnouncement = driverName + posText;
@@ -1819,6 +2067,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
   if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
   if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
+  if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {
     document.getElementById('roleSelectModal').style.display = 'none';
   }
@@ -1837,6 +2086,7 @@ document.addEventListener('keydown', function(e) {
     closeResetModal();
     closeNewTrackModal();
     closeStorageFullModal();
+    closeTrackRecordsModal();
     if (userRole && document.getElementById('roleSelectModal')) {
       document.getElementById('roleSelectModal').style.display = 'none';
     }

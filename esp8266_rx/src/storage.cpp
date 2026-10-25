@@ -29,6 +29,12 @@ uint32_t cachedFsTotalBytes = 0;
 bool storageFullLocked = false;
 int32_t clientTzOffsetSec = 3600; // Default UTC+1 (MEZ), wird vom Browser exakt synchronisiert
 
+// Top-5 Rekordlisten der aktiven Strecke
+RecordEntry activeAllTimeRecords[MAX_TRACK_RECORDS];
+uint8_t activeAllTimeCount = 0;
+RecordEntry activeDailyRecords[MAX_TRACK_RECORDS];
+uint8_t activeDailyCount = 0;
+
 // Laufende Session-Verwaltung
 static String currentSessionId = "";
 static String currentSessionFilePath = "";
@@ -115,6 +121,210 @@ String getCurrentLocalDateStr() {
   return String(buf);
 }
 
+static void clearRecordList(RecordEntry* list, uint8_t& count) {
+  count = 0;
+  for (uint8_t i = 0; i < MAX_TRACK_RECORDS; i++) {
+    list[i].lapMs = 0;
+    list[i].carId = 0;
+    list[i].driver = "";
+    list[i].car = "";
+    list[i].date = "";
+    list[i].prevLapMs = 0;
+    list[i].prevDate = "";
+  }
+}
+
+static void sortRecordList(RecordEntry* list, uint8_t& count) {
+  for (uint8_t i = 0; i < count; i++) {
+    for (uint8_t j = i + 1; j < count; j++) {
+      if (list[j].lapMs > 0 && (list[i].lapMs == 0 || list[j].lapMs < list[i].lapMs)) {
+        RecordEntry tmp = list[i];
+        list[i] = list[j];
+        list[j] = tmp;
+      }
+    }
+  }
+  while (count > 0 && list[count - 1].lapMs == 0) {
+    count--;
+  }
+}
+
+void syncTopRecordVars() {
+  if (activeAllTimeCount > 0 && activeAllTimeRecords[0].lapMs > 0) {
+    allTimeBestLapMs = activeAllTimeRecords[0].lapMs;
+    allTimeBestCarId = activeAllTimeRecords[0].carId;
+    allTimeBestDriver = activeAllTimeRecords[0].driver;
+    allTimeBestCar = activeAllTimeRecords[0].car;
+    allTimeBestDate = activeAllTimeRecords[0].date;
+  } else {
+    allTimeBestLapMs = 0;
+    allTimeBestCarId = 0;
+    allTimeBestDriver = "";
+    allTimeBestCar = "";
+    allTimeBestDate = "";
+  }
+
+  if (activeDailyCount > 0 && activeDailyRecords[0].lapMs > 0) {
+    dailyBestLapMs = activeDailyRecords[0].lapMs;
+    dailyBestCarId = activeDailyRecords[0].carId;
+    dailyBestDriver = activeDailyRecords[0].driver;
+    dailyBestCar = activeDailyRecords[0].car;
+    dailyBestDate = activeDailyRecords[0].date;
+  } else {
+    dailyBestLapMs = 0;
+    dailyBestCarId = 0;
+    dailyBestDriver = "";
+    dailyBestCar = "";
+    String today = getCurrentLocalDateStr();
+    if (today.length() > 0) dailyBestDate = today;
+  }
+}
+
+static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, uint8_t carId, const String& driver, const String& car, const String& date) {
+  if (lapMs == 0) return false;
+
+  // 1. Prüfen, ob Kombination (Fahrer + Fahrzeug) bereits in der Liste existiert
+  int8_t existingIdx = -1;
+  for (uint8_t i = 0; i < count; i++) {
+    if (list[i].driver.equalsIgnoreCase(driver) && list[i].car.equalsIgnoreCase(car)) {
+      existingIdx = (int8_t)i;
+      break;
+    }
+  }
+
+  if (existingIdx >= 0) {
+    if (lapMs < list[existingIdx].lapMs) {
+      list[existingIdx].prevLapMs = list[existingIdx].lapMs;
+      list[existingIdx].prevDate = list[existingIdx].date;
+      list[existingIdx].lapMs = lapMs;
+      list[existingIdx].carId = carId;
+      list[existingIdx].driver = driver;
+      list[existingIdx].car = car;
+      list[existingIdx].date = date;
+      sortRecordList(list, count);
+      return true;
+    }
+    return false;
+  }
+
+  // 2. Kombination noch nicht vertreten -> Top 5 prüfen
+  if (count < MAX_TRACK_RECORDS) {
+    list[count].lapMs = lapMs;
+    list[count].carId = carId;
+    list[count].driver = driver;
+    list[count].car = car;
+    list[count].date = date;
+    list[count].prevLapMs = 0;
+    list[count].prevDate = "";
+    count++;
+    sortRecordList(list, count);
+    return true;
+  } else if (lapMs < list[MAX_TRACK_RECORDS - 1].lapMs) {
+    list[MAX_TRACK_RECORDS - 1].lapMs = lapMs;
+    list[MAX_TRACK_RECORDS - 1].carId = carId;
+    list[MAX_TRACK_RECORDS - 1].driver = driver;
+    list[MAX_TRACK_RECORDS - 1].car = car;
+    list[MAX_TRACK_RECORDS - 1].date = date;
+    list[MAX_TRACK_RECORDS - 1].prevLapMs = 0;
+    list[MAX_TRACK_RECORDS - 1].prevDate = "";
+    sortRecordList(list, count);
+    return true;
+  }
+
+  return false;
+}
+
+static void loadRecordArrayFromJson(JsonObject trackObj, const char* key, RecordEntry* list, uint8_t& count) {
+  clearRecordList(list, count);
+  if (trackObj[key].is<JsonArray>()) {
+    JsonArray arr = trackObj[key].as<JsonArray>();
+    for (JsonObject item : arr) {
+      if (count >= MAX_TRACK_RECORDS) break;
+      uint32_t lap = item["lap"] | 0;
+      if (lap == 0) continue;
+      list[count].lapMs = lap;
+      list[count].carId = item["carId"] | 0;
+      list[count].driver = item["driver"] | "";
+      list[count].car = item["car"] | "";
+      list[count].date = item["date"] | "";
+      list[count].prevLapMs = item["prevLap"] | 0;
+      list[count].prevDate = item["prevDate"] | "";
+      count++;
+    }
+    sortRecordList(list, count);
+  }
+}
+
+static void saveRecordArrayToJson(JsonObject trackObj, const char* key, const RecordEntry* list, uint8_t count) {
+  JsonArray arr = trackObj[key].to<JsonArray>();
+  for (uint8_t i = 0; i < count && i < MAX_TRACK_RECORDS; i++) {
+    if (list[i].lapMs == 0) continue;
+    JsonObject item = arr.add<JsonObject>();
+    item["lap"] = list[i].lapMs;
+    item["carId"] = list[i].carId;
+    item["driver"] = list[i].driver;
+    item["car"] = list[i].car;
+    item["date"] = list[i].date;
+    if (list[i].prevLapMs > 0) {
+      item["prevLap"] = list[i].prevLapMs;
+      item["prevDate"] = list[i].prevDate;
+    }
+  }
+}
+
+static void loadActiveTrackRecordsFromJsonObj(JsonObject foundObj, bool& needsSaveBack) {
+  String today = getCurrentLocalDateStr();
+
+  loadRecordArrayFromJson(foundObj, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
+  if (activeAllTimeCount == 0) {
+    uint32_t legacyRec = foundObj["recordLap"] | (foundObj["bestLap"] | 0);
+    if (legacyRec > 0) {
+      activeAllTimeRecords[0].lapMs = legacyRec;
+      activeAllTimeRecords[0].carId = foundObj["recordCarId"] | (foundObj["bestCarId"] | 0);
+      activeAllTimeRecords[0].driver = foundObj["recordDriver"] | (foundObj["bestDriver"] | "");
+      activeAllTimeRecords[0].car = foundObj["recordCar"] | (foundObj["bestCar"] | "");
+      activeAllTimeRecords[0].date = foundObj["recordDate"] | (foundObj["bestDate"] | today);
+      activeAllTimeRecords[0].prevLapMs = 0;
+      activeAllTimeRecords[0].prevDate = "";
+      activeAllTimeCount = 1;
+      needsSaveBack = true;
+    }
+  }
+
+  String savedDailyDate = foundObj["bestDate"] | "";
+  if (today.length() > 0 && savedDailyDate.length() > 0 && savedDailyDate != today) {
+    clearRecordList(activeDailyRecords, activeDailyCount);
+    foundObj["bestLap"] = 0;
+    foundObj["bestCarId"] = 0;
+    foundObj["bestDriver"] = "";
+    foundObj["bestCar"] = "";
+    foundObj["bestDate"] = today;
+    foundObj["dailyRecords"].to<JsonArray>();
+    needsSaveBack = true;
+  } else {
+    loadRecordArrayFromJson(foundObj, "dailyRecords", activeDailyRecords, activeDailyCount);
+    if (activeDailyCount == 0) {
+      uint32_t legacyDaily = foundObj["bestLap"] | 0;
+      if (legacyDaily > 0 && (today.length() == 0 || savedDailyDate.length() == 0 || savedDailyDate == today)) {
+        activeDailyRecords[0].lapMs = legacyDaily;
+        activeDailyRecords[0].carId = foundObj["bestCarId"] | 0;
+        activeDailyRecords[0].driver = foundObj["bestDriver"] | "";
+        activeDailyRecords[0].car = foundObj["bestCar"] | "";
+        activeDailyRecords[0].date = savedDailyDate.length() > 0 ? savedDailyDate : today;
+        activeDailyRecords[0].prevLapMs = 0;
+        activeDailyRecords[0].prevDate = "";
+        activeDailyCount = 1;
+        needsSaveBack = true;
+      }
+    }
+  }
+
+  syncTopRecordVars();
+  if (dailyBestDate.length() == 0 && savedDailyDate.length() > 0) {
+    dailyBestDate = savedDailyDate;
+  }
+}
+
 void checkDailyBestDateRollover() {
   static uint32_t lastCheckMs = 0;
   if (millis() - lastCheckMs < 5000) return;
@@ -124,19 +334,182 @@ void checkDailyBestDateRollover() {
   String today = getCurrentLocalDateStr();
   if (today.length() == 0) return;
 
-  if (dailyBestLapMs > 0 && dailyBestDate.length() > 0 && dailyBestDate != today) {
-    dailyBestLapMs = 0;
-    dailyBestCarId = 0;
-    dailyBestDriver = "";
-    dailyBestCar = "";
+  if (dailyBestDate.length() == 0) {
     dailyBestDate = today;
-    saveActiveTrackBestToFS();
+    for (uint8_t i = 0; i < activeDailyCount; i++) {
+      if (activeDailyRecords[i].date.length() == 0) activeDailyRecords[i].date = today;
+    }
+    for (uint8_t i = 0; i < activeAllTimeCount; i++) {
+      if (activeAllTimeRecords[i].date.length() == 0) activeAllTimeRecords[i].date = today;
+    }
+    return;
+  }
+
+  if (dailyBestDate != today) {
+    clearRecordList(activeDailyRecords, activeDailyCount);
+    dailyBestDate = today;
+    syncTopRecordVars();
+    saveTracksToFS();
 
     char buf[160];
     snprintf(buf, sizeof(buf), "{\"type\":\"track_record\",\"trackId\":\"%s\",\"trackName\":\"%s\",\"bestLap\":0}",
              activeTrackId.c_str(), activeTrackName.c_str());
     broadcastWebSocket(buf);
   }
+}
+
+void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest) {
+  isNewAllTimeBest = false;
+  isNewDailyBest = false;
+  if (lapTimeMs == 0 || carId < 1 || carId > MAX_CARS) return;
+
+  String today = getCurrentLocalDateStr();
+  if (today.length() > 0 && dailyBestDate.length() > 0 && dailyBestDate != today) {
+    clearRecordList(activeDailyRecords, activeDailyCount);
+    dailyBestDate = today;
+    syncTopRecordVars();
+  }
+
+  String dName = driverNames[carId];
+  String cName = carNames[carId];
+
+  bool wasNewP1AllTime = (activeAllTimeCount == 0 || lapTimeMs < activeAllTimeRecords[0].lapMs);
+  bool wasNewP1Daily = (activeDailyCount == 0 || lapTimeMs < activeDailyRecords[0].lapMs);
+
+  bool changedAllTime = updateRecordList(activeAllTimeRecords, activeAllTimeCount, lapTimeMs, carId, dName, cName, today);
+  bool changedDaily = updateRecordList(activeDailyRecords, activeDailyCount, lapTimeMs, carId, dName, cName, today);
+
+  if (changedAllTime || changedDaily) {
+    if (changedAllTime && wasNewP1AllTime) isNewAllTimeBest = true;
+    if (changedDaily && wasNewP1Daily) isNewDailyBest = true;
+    syncTopRecordVars();
+    saveTracksToFS();
+
+    char buf[160];
+    snprintf(buf, sizeof(buf), "{\"type\":\"track_record\",\"trackId\":\"%s\",\"recordLap\":%lu,\"bestLap\":%lu}",
+             activeTrackId.c_str(), allTimeBestLapMs, dailyBestLapMs);
+    broadcastWebSocket(buf);
+  }
+}
+
+static bool removeEntryFromList(RecordEntry* list, uint8_t& count, int8_t index, uint32_t& deletedLapOut, uint8_t& deletedCarIdOut, uint32_t& restoredLapOut) {
+  deletedLapOut = 0;
+  deletedCarIdOut = 0;
+  restoredLapOut = 0;
+
+  if (index < 0) {
+    clearRecordList(list, count);
+    return true;
+  }
+  if ((uint8_t)index >= count) return false;
+
+  deletedLapOut = list[index].lapMs;
+  deletedCarIdOut = list[index].carId;
+  restoredLapOut = list[index].prevLapMs;
+
+  if (list[index].prevLapMs > 0) {
+    list[index].lapMs = list[index].prevLapMs;
+    list[index].date = list[index].prevDate;
+    list[index].prevLapMs = 0;
+    list[index].prevDate = "";
+    sortRecordList(list, count);
+  } else {
+    list[index].lapMs = 0;
+    sortRecordList(list, count);
+  }
+  return true;
+}
+
+bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
+  String targetId = trackId.length() > 0 ? trackId : activeTrackId;
+  uint32_t deletedLap = 0;
+  uint8_t deletedCarId = 0;
+  uint32_t restoredLap = 0;
+
+  if (targetId == activeTrackId) {
+    bool ok = false;
+    if (isDaily) {
+      ok = removeEntryFromList(activeDailyRecords, activeDailyCount, index, deletedLap, deletedCarId, restoredLap);
+    } else {
+      ok = removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, index, deletedLap, deletedCarId, restoredLap);
+    }
+    if (!ok) return false;
+
+    if (deletedCarId >= 1 && deletedCarId <= MAX_CARS && deletedLap > 0 && bestLapDuration[deletedCarId] == deletedLap) {
+      bestLapDuration[deletedCarId] = restoredLap;
+    }
+
+    syncTopRecordVars();
+    saveTracksToFS();
+  } else {
+    if (!LittleFS.exists("/tracks.json")) return false;
+    File f = LittleFS.open("/tracks.json", "r");
+    if (!f) return false;
+    JsonDocument doc;
+    if (deserializeJson(doc, f)) {
+      f.close();
+      return false;
+    }
+    f.close();
+
+    JsonArray arr = doc["tracks"].as<JsonArray>();
+    bool found = false;
+    for (JsonObject t : arr) {
+      if (t["id"].as<String>() == targetId) {
+        RecordEntry tempList[MAX_TRACK_RECORDS];
+        uint8_t tempCount = 0;
+        const char* arrKey = isDaily ? "dailyRecords" : "allTimeRecords";
+        loadRecordArrayFromJson(t, arrKey, tempList, tempCount);
+        if (!removeEntryFromList(tempList, tempCount, index, deletedLap, deletedCarId, restoredLap)) {
+          return false;
+        }
+        saveRecordArrayToJson(t, arrKey, tempList, tempCount);
+        if (isDaily) {
+          if (tempCount > 0 && tempList[0].lapMs > 0) {
+            t["bestLap"] = tempList[0].lapMs;
+            t["bestCarId"] = tempList[0].carId;
+            t["bestDriver"] = tempList[0].driver;
+            t["bestCar"] = tempList[0].car;
+            t["bestDate"] = tempList[0].date;
+          } else {
+            t["bestLap"] = 0;
+            t["bestCarId"] = 0;
+            t["bestDriver"] = "";
+            t["bestCar"] = "";
+          }
+        } else {
+          if (tempCount > 0 && tempList[0].lapMs > 0) {
+            t["recordLap"] = tempList[0].lapMs;
+            t["recordCarId"] = tempList[0].carId;
+            t["recordDriver"] = tempList[0].driver;
+            t["recordCar"] = tempList[0].car;
+            t["recordDate"] = tempList[0].date;
+          } else {
+            t["recordLap"] = 0;
+            t["recordCarId"] = 0;
+            t["recordDriver"] = "";
+            t["recordCar"] = "";
+            t["recordDate"] = "";
+          }
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+
+    File fW = LittleFS.open("/tracks.json", "w");
+    if (fW) {
+      serializeJson(doc, fW);
+      fW.close();
+    }
+  }
+
+  char buf[160];
+  snprintf(buf, sizeof(buf), "{\"type\":\"track_record\",\"trackId\":\"%s\",\"recordLap\":%lu,\"bestLap\":%lu}",
+           activeTrackId.c_str(), allTimeBestLapMs, dailyBestLapMs);
+  broadcastWebSocket(buf);
+  return true;
 }
 
 static String escapeJsonStr(const String& s) {
@@ -201,6 +574,7 @@ String sanitizeTrackSlug(const String& rawName) {
 
 void loadTracksFromFS() {
   bool loaded = false;
+  bool needsSaveBack = false;
   if (LittleFS.exists("/tracks.json")) {
     File f = LittleFS.open("/tracks.json", "r");
     if (f) {
@@ -223,26 +597,7 @@ void loadTracksFromFS() {
           }
           activeTrackId = foundObj["id"] | "standard";
           activeTrackName = foundObj["name"] | "Standard-Strecke";
-          dailyBestLapMs = foundObj["bestLap"] | 0;
-          dailyBestCarId = foundObj["bestCarId"] | 0;
-          dailyBestDriver = foundObj["bestDriver"] | "";
-          dailyBestCar = foundObj["bestCar"] | "";
-          dailyBestDate = foundObj["bestDate"] | "";
-          String today = getCurrentLocalDateStr();
-          if (today.length() > 0 && dailyBestDate.length() > 0 && dailyBestDate != today && dailyBestLapMs > 0) {
-            dailyBestLapMs = 0;
-            dailyBestCarId = 0;
-            dailyBestDriver = "";
-            dailyBestCar = "";
-            dailyBestDate = today;
-            foundObj["bestLap"] = 0;
-            foundObj["bestCarId"] = 0;
-            foundObj["bestDriver"] = "";
-            foundObj["bestCar"] = "";
-            foundObj["bestDate"] = today;
-            File fFix = LittleFS.open("/tracks.json", "w");
-            if (fFix) { serializeJson(doc, fFix); fFix.close(); }
-          }
+          loadActiveTrackRecordsFromJsonObj(foundObj, needsSaveBack);
           loaded = true;
         }
       }
@@ -252,11 +607,11 @@ void loadTracksFromFS() {
   if (!loaded) {
     activeTrackId = "standard";
     activeTrackName = "Standard-Strecke";
-    dailyBestLapMs = 0;
-    dailyBestCarId = 0;
-    dailyBestDriver = "";
-    dailyBestCar = "";
-    dailyBestDate = getCurrentLocalDateStr();
+    clearRecordList(activeAllTimeRecords, activeAllTimeCount);
+    clearRecordList(activeDailyRecords, activeDailyCount);
+    syncTopRecordVars();
+    saveTracksToFS();
+  } else if (needsSaveBack) {
     saveTracksToFS();
   }
 }
@@ -277,17 +632,37 @@ void saveTracksToFS() {
     arr = doc["tracks"].to<JsonArray>();
   }
 
+  String today = getCurrentLocalDateStr();
+  syncTopRecordVars();
+
   bool found = false;
   for (JsonObject t : arr) {
     if (t["id"].as<String>() == activeTrackId) {
       t["name"] = activeTrackName;
+      t["recordLap"] = allTimeBestLapMs;
+      t["recordCarId"] = allTimeBestCarId;
+      t["recordDriver"] = allTimeBestDriver;
+      t["recordCar"] = allTimeBestCar;
+      t["recordDate"] = allTimeBestDate;
       t["bestLap"] = dailyBestLapMs;
       t["bestCarId"] = dailyBestCarId;
       t["bestDriver"] = dailyBestDriver;
       t["bestCar"] = dailyBestCar;
       t["bestDate"] = dailyBestDate;
+      saveRecordArrayToJson(t, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
+      saveRecordArrayToJson(t, "dailyRecords", activeDailyRecords, activeDailyCount);
       found = true;
-      break;
+    } else if (today.length() > 0) {
+      // Auch bei inaktiven Strecken abgelaufene Tagesbestzeiten von gestern bereinigen
+      String tDate = t["bestDate"] | "";
+      if (tDate.length() > 0 && tDate != today) {
+        t["bestLap"] = 0;
+        t["bestCarId"] = 0;
+        t["bestDriver"] = "";
+        t["bestCar"] = "";
+        t["bestDate"] = today;
+        t["dailyRecords"].to<JsonArray>();
+      }
     }
   }
 
@@ -295,11 +670,18 @@ void saveTracksToFS() {
     JsonObject t = arr.add<JsonObject>();
     t["id"] = activeTrackId;
     t["name"] = activeTrackName;
+    t["recordLap"] = allTimeBestLapMs;
+    t["recordCarId"] = allTimeBestCarId;
+    t["recordDriver"] = allTimeBestDriver;
+    t["recordCar"] = allTimeBestCar;
+    t["recordDate"] = allTimeBestDate;
     t["bestLap"] = dailyBestLapMs;
     t["bestCarId"] = dailyBestCarId;
     t["bestDriver"] = dailyBestDriver;
     t["bestCar"] = dailyBestCar;
     t["bestDate"] = dailyBestDate;
+    saveRecordArrayToJson(t, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
+    saveRecordArrayToJson(t, "dailyRecords", activeDailyRecords, activeDailyCount);
   }
 
   File fWrite = LittleFS.open("/tracks.json", "w");
@@ -329,33 +711,10 @@ bool selectTrackById(const String& trackId) {
       startNewSessionFrame((uint8_t)currentMode);
       activeTrackId = t["id"].as<String>();
       activeTrackName = t["name"].as<String>();
-      uint32_t bLap = t["bestLap"] | 0;
-      String bDate = t["bestDate"] | "";
-      String today = getCurrentLocalDateStr();
-      if (today.length() > 0 && bDate.length() > 0 && bDate != today && bLap > 0) {
-        dailyBestLapMs = 0;
-        dailyBestCarId = 0;
-        dailyBestDriver = "";
-        dailyBestCar = "";
-        dailyBestDate = today;
-        t["bestLap"] = 0;
-        t["bestCarId"] = 0;
-        t["bestDriver"] = "";
-        t["bestCar"] = "";
-        t["bestDate"] = today;
-      } else {
-        dailyBestLapMs = bLap;
-        dailyBestCarId = t["bestCarId"] | 0;
-        dailyBestDriver = t["bestDriver"] | "";
-        dailyBestCar = t["bestCar"] | "";
-        dailyBestDate = bDate;
-      }
+      bool dummy = false;
+      loadActiveTrackRecordsFromJsonObj(t, dummy);
       doc["active"] = activeTrackId;
-      File fWrite = LittleFS.open("/tracks.json", "w");
-      if (fWrite) {
-        serializeJson(doc, fWrite);
-        fWrite.close();
-      }
+      saveTracksToFS();
       resetAllLaps(false);
       return true;
     }
@@ -391,27 +750,8 @@ bool addOrSelectTrack(const String& rawName) {
       t["name"] = cleanName;
       activeTrackId = slug;
       activeTrackName = cleanName;
-      uint32_t bLap = t["bestLap"] | 0;
-      String bDate = t["bestDate"] | "";
-      String today = getCurrentLocalDateStr();
-      if (today.length() > 0 && bDate.length() > 0 && bDate != today && bLap > 0) {
-        dailyBestLapMs = 0;
-        dailyBestCarId = 0;
-        dailyBestDriver = "";
-        dailyBestCar = "";
-        dailyBestDate = today;
-        t["bestLap"] = 0;
-        t["bestCarId"] = 0;
-        t["bestDriver"] = "";
-        t["bestCar"] = "";
-        t["bestDate"] = today;
-      } else {
-        dailyBestLapMs = bLap;
-        dailyBestCarId = t["bestCarId"] | 0;
-        dailyBestDriver = t["bestDriver"] | "";
-        dailyBestCar = t["bestCar"] | "";
-        dailyBestDate = bDate;
-      }
+      bool dummy = false;
+      loadActiveTrackRecordsFromJsonObj(t, dummy);
       exists = true;
       break;
     }
@@ -420,31 +760,16 @@ bool addOrSelectTrack(const String& rawName) {
   if (!exists) {
     if (arr.size() >= 20) return false; // Schutz vor Überlauf
     String today = getCurrentLocalDateStr();
-    JsonObject t = arr.add<JsonObject>();
-    t["id"] = slug;
-    t["name"] = cleanName;
-    t["bestLap"] = 0;
-    t["bestCarId"] = 0;
-    t["bestDriver"] = "";
-    t["bestCar"] = "";
-    t["bestDate"] = today;
     activeTrackId = slug;
     activeTrackName = cleanName;
-    dailyBestLapMs = 0;
-    dailyBestCarId = 0;
-    dailyBestDriver = "";
-    dailyBestCar = "";
+    clearRecordList(activeAllTimeRecords, activeAllTimeCount);
+    clearRecordList(activeDailyRecords, activeDailyCount);
     dailyBestDate = today;
+    syncTopRecordVars();
   }
 
-  doc["active"] = activeTrackId;
-  File fWrite = LittleFS.open("/tracks.json", "w");
-  if (fWrite) {
-    serializeJson(doc, fWrite);
-    fWrite.close();
-  }
+  saveTracksToFS();
   resetAllLaps(false);
-  updateFsUsageCache();
   return true;
 }
 
@@ -614,19 +939,17 @@ bool deleteTrackById(const String& trackId) {
     JsonObject def = arr.add<JsonObject>();
     def["id"] = "standard";
     def["name"] = "Standard-Strecke";
+    def["recordLap"] = 0;
     def["bestLap"] = 0;
-    def["bestCarId"] = 0;
-    def["bestDriver"] = "";
-    def["bestCar"] = "";
+    def["allTimeRecords"].to<JsonArray>();
+    def["dailyRecords"].to<JsonArray>();
   }
 
   JsonObject nextActive = arr[0];
   activeTrackId = nextActive["id"].as<String>();
   activeTrackName = nextActive["name"].as<String>();
-  dailyBestLapMs = nextActive["bestLap"] | 0;
-  dailyBestCarId = nextActive["bestCarId"] | 0;
-  dailyBestDriver = nextActive["bestDriver"] | "";
-  dailyBestCar = nextActive["bestCar"] | "";
+  bool dummy = false;
+  loadActiveTrackRecordsFromJsonObj(nextActive, dummy);
   doc["active"] = activeTrackId;
 
   File fWrite = LittleFS.open("/tracks.json", "w");
@@ -634,8 +957,8 @@ bool deleteTrackById(const String& trackId) {
     serializeJson(doc, fWrite);
     fWrite.close();
   }
+  saveTracksToFS();
   resetAllLaps(false);
-  updateFsUsageCache();
   return true;
 }
 
@@ -1189,12 +1512,32 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
   JsonArray laps = doc["laps"].as<JsonArray>();
   if (!laps) return;
 
+  uint32_t deletedLapTimeMs = 0;
   for (size_t i = 0; i < laps.size(); i++) {
     uint8_t cId = laps[i]["carId"] | 0;
     uint16_t lNum = laps[i]["lap"] | 0;
     if (cId == carId && lNum == lapNum) {
+      deletedLapTimeMs = laps[i]["time"] | 0;
       laps.remove(i);
       break;
+    }
+  }
+
+  String sessTrackId = doc["trackId"] | activeTrackId;
+
+  // Falls die gelöschte Runde in der Top-5 Rekordliste stand, auch dort automatisch korrigieren
+  if (deletedLapTimeMs > 0 && sessTrackId == activeTrackId) {
+    for (uint8_t i = 0; i < activeAllTimeCount; i++) {
+      if (activeAllTimeRecords[i].lapMs == deletedLapTimeMs && activeAllTimeRecords[i].carId == carId) {
+        deleteTrackRecordEntry(activeTrackId, false, (int8_t)i);
+        break;
+      }
+    }
+    for (uint8_t i = 0; i < activeDailyCount; i++) {
+      if (activeDailyRecords[i].lapMs == deletedLapTimeMs && activeDailyRecords[i].carId == carId) {
+        deleteTrackRecordEntry(activeTrackId, true, (int8_t)i);
+        break;
+      }
     }
   }
 
@@ -1237,7 +1580,7 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
   String updatedEntry = buildSessionEntryJson(
     sessionId,
     targetFile,
-    doc["trackId"] | activeTrackId,
+    sessTrackId,
     doc["trackName"] | activeTrackName,
     doc["mode"] | 0,
     doc["startTs"] | 0,
@@ -1253,7 +1596,6 @@ void deleteDriverHistory(uint8_t carId) {
   if (carId < 1 || carId > MAX_CARS) return;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
-  // Alle Session-IDs sammeln, an denen dieser Fahrer beteiligt war
   if (!LittleFS.exists("/sessions.json")) return;
   File f = LittleFS.open("/sessions.json", "r");
   if (!f) return;
@@ -1389,7 +1731,11 @@ void deleteAllHistory() {
     LittleFS.remove("/daily_best.json");
   }
 
-  // Streckenrekorde in /tracks.json zurücksetzen
+  // Streckenrekorde & Tagesbestzeiten in /tracks.json zurücksetzen
+  clearRecordList(activeAllTimeRecords, activeAllTimeCount);
+  clearRecordList(activeDailyRecords, activeDailyCount);
+  syncTopRecordVars();
+
   if (LittleFS.exists("/tracks.json")) {
     File f = LittleFS.open("/tracks.json", "r");
     if (f) {
@@ -1398,10 +1744,17 @@ void deleteAllHistory() {
         f.close();
         JsonArray arr = doc["tracks"].as<JsonArray>();
         for (JsonObject t : arr) {
+          t["recordLap"] = 0;
+          t["recordCarId"] = 0;
+          t["recordDriver"] = "";
+          t["recordCar"] = "";
+          t["recordDate"] = "";
           t["bestLap"] = 0;
           t["bestCarId"] = 0;
           t["bestDriver"] = "";
           t["bestCar"] = "";
+          t["allTimeRecords"].to<JsonArray>();
+          t["dailyRecords"].to<JsonArray>();
         }
         File fW = LittleFS.open("/tracks.json", "w");
         if (fW) { serializeJson(doc, fW); fW.close(); }
@@ -1410,11 +1763,6 @@ void deleteAllHistory() {
       }
     }
   }
-
-  dailyBestLapMs = 0;
-  dailyBestCarId = 0;
-  dailyBestDriver = "";
-  dailyBestCar = "";
 
   updateFsUsageCache();
 }

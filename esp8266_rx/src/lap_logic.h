@@ -76,7 +76,14 @@ extern bool readyForNextLap[MAX_CARS + 1];
 extern uint64_t baseUnixTimestampSec;
 extern uint32_t baseMillis;
 
-// TAGESBESTZEIT (Track Record - nur Rundenevents)
+// ALL-TIME STRECKENREKORD (P1 der aktiven Strecke)
+extern uint32_t allTimeBestLapMs;
+extern uint8_t allTimeBestCarId;
+extern String allTimeBestDriver;
+extern String allTimeBestCar;
+extern String allTimeBestDate;
+
+// TAGESBESTZEIT (P1 heute der aktiven Strecke)
 extern uint32_t dailyBestLapMs;
 extern uint8_t dailyBestCarId;
 extern String dailyBestDriver;

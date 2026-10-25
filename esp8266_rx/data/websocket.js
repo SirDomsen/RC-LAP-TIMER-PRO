@@ -214,5 +214,17 @@ function onSectorLiveEvent(msg) {
 }
 
 function onLapLiveEvent(msg) {
-  updateData();
+  if (typeof pendingRecordFlagsMap !== 'undefined' && msg && msg.carId) {
+    pendingRecordFlagsMap[msg.carId] = {
+      lapTime: msg.lapTime || 0,
+      isTrackRecord: !!msg.isTrackRecord,
+      isDailyRecord: !!msg.isDailyRecord
+    };
+  }
+  if (msg && (msg.isTrackRecord || msg.isDailyRecord)) {
+    if (typeof loadTracks === 'function') loadTracks();
+    updateData(true);
+  } else {
+    updateData();
+  }
 }
