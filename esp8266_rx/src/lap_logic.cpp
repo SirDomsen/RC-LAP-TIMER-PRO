@@ -20,7 +20,7 @@ bool checkpointMode = false;
 bool dragraceMode = false;
 bool sectorAudioFeedback = true;
 
-bool awaitingBaseCross[MAX_CARS + 1] = {false};
+bool awaitingBaseCross[MAX_CARS + 1] = {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true};
 bool finishedFinalLap[MAX_CARS + 1]  = {false};
 bool dragRunActive[MAX_CARS + 1]     = {false};
 bool dragTrackOccupied               = false;
@@ -333,7 +333,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   if (elapsedMs < 100 || elapsedMs > 600000) return;
 
   uint32_t avgLap = getAverageLapTimeMs(carId);
-  if (currentMode != MODE_DRAGRACE && avgLap > 0 && elapsedMs > (avgLap + (avgLap >> 1))) {
+  uint32_t szOutlapThresholdMs = (avgLap * 3 > 45000UL) ? (avgLap * 3) : 45000UL;
+  if (currentMode != MODE_DRAGRACE && avgLap > 0 && elapsedMs > szOutlapThresholdMs) {
     isOutLap[carId] = true;
   }
   bool isOutSector = isOutLap[carId];
@@ -715,7 +716,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     uint32_t avgLap = getAverageLapTimeMs(carId);
     bool currentLapIsOutLap = isOutLap[carId] || inPitOrPause[carId];
-    if (avgLap > 0 && currentLapTimeMs > (avgLap + (avgLap >> 1))) {
+    uint32_t outlapThresholdMs = (avgLap * 3 > 45000UL) ? (avgLap * 3) : 45000UL;
+    if (avgLap > 0 && currentLapTimeMs > outlapThresholdMs) {
       currentLapIsOutLap = true;
     }
 
@@ -898,7 +900,7 @@ void updateLapLogicTasks() {
         uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
         if (now > lapStartMs) {
           uint32_t currentElapsedMs = now - lapStartMs;
-          uint32_t thresholdMs = avgMs + (avgMs >> 1);
+          uint32_t thresholdMs = (avgMs * 3 > 45000UL) ? (avgMs * 3) : 45000UL;
           if (currentElapsedMs > thresholdMs) {
             inPitOrPause[i] = true;
           }

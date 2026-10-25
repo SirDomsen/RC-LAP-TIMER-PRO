@@ -33,6 +33,8 @@ function speak(text, cancelCurrent = false) {
   processSpeechQueue();
 }
 
+let speechWatchdogTimeout = null;
+
 function processSpeechQueue() {
   if (isSpeaking || speechQueue.length === 0) return;
 
@@ -42,15 +44,33 @@ function processSpeechQueue() {
   utterance.lang = 'de-DE';
   utterance.rate = 1.0;
 
+  let clearWatchdog = () => {
+    if (speechWatchdogTimeout) {
+      clearTimeout(speechWatchdogTimeout);
+      speechWatchdogTimeout = null;
+    }
+  };
+
   utterance.onend = function() {
+    clearWatchdog();
     isSpeaking = false;
     processSpeechQueue();
   };
 
   utterance.onerror = function() {
+    clearWatchdog();
     isSpeaking = false;
     processSpeechQueue();
   };
+
+  clearWatchdog();
+  speechWatchdogTimeout = setTimeout(() => {
+    if (isSpeaking) {
+      try { synth.cancel(); } catch (e) {}
+      isSpeaking = false;
+      processSpeechQueue();
+    }
+  }, 7000);
 
   synth.speak(utterance);
 }

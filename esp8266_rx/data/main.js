@@ -48,6 +48,8 @@ let timeExpiredAnnounced = false;
 let localSecondsLeft = -1;
 let localTimerInterval = null;
 let isUpdatingData = false; 
+let pendingUpdateRequested = false; 
+let pendingUpdateFullSync = false; 
 
 let currentSortColumn = 'default'; 
 let currentSortDir = 'asc';        
@@ -1436,7 +1438,11 @@ function startLocalTimerTicker() {
 }
 
 async function updateData(fullSync = false) {
-  if (isUpdatingData) return;
+  if (isUpdatingData) {
+    pendingUpdateRequested = true;
+    if (fullSync) pendingUpdateFullSync = true;
+    return;
+  }
   isUpdatingData = true;
 
   try {
@@ -1534,21 +1540,27 @@ async function updateData(fullSync = false) {
             else if (isPB) lastClass = 'lap-time-green';
           }
         } else {
-          if (statusCarsMap[row.id] === 'outlap' || row.state === 'outlap') {
-            lastDisplay = '<span class="outlap-badge">Outlap</span>';
-          } else if (statusCarsMap[row.id] === 'box' || row.state === 'box') {
-            lastDisplay = '<span class="pit-badge">Box</span>';
-          } else if (statusCarsMap[row.id] === 'pause' || row.state === 'pause') {
-            lastDisplay = '<span class="pause-badge">Pause</span>';
-          } else if (awaitingBaseCrossMap[row.id]) {
-            lastDisplay = '<span class="outlap-badge">Outlap</span>';
-          } else if (row.lastLap > 0) {
+          if (row.lastLap > 0) {
             lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
 
             if (isOverall && isPB) lastClass = 'lap-time-purple';
             else if (isPB) lastClass = 'lap-time-green';
+
+            if (statusCarsMap[row.id] === 'box' || row.state === 'box') {
+              lastDisplay += ' <span class="pit-badge">Box</span>';
+            } else if (statusCarsMap[row.id] === 'pause' || row.state === 'pause') {
+              lastDisplay += ' <span class="pause-badge">Pause</span>';
+            } else if (statusCarsMap[row.id] === 'outlap' || row.state === 'outlap' || awaitingBaseCrossMap[row.id]) {
+              lastDisplay += ' <span class="outlap-badge">Outlap</span>';
+            }
+          } else if (statusCarsMap[row.id] === 'outlap' || row.state === 'outlap' || awaitingBaseCrossMap[row.id]) {
+            lastDisplay = '<span class="outlap-badge">Outlap</span>';
+          } else if (statusCarsMap[row.id] === 'box' || row.state === 'box') {
+            lastDisplay = '<span class="pit-badge">Box</span>';
+          } else if (statusCarsMap[row.id] === 'pause' || row.state === 'pause') {
+            lastDisplay = '<span class="pause-badge">Pause</span>';
           }
         }
 
@@ -1665,6 +1677,12 @@ async function updateData(fullSync = false) {
   } finally {
     isUpdatingData = false;
     isInitialDataLoaded = true;
+    if (pendingUpdateRequested) {
+      pendingUpdateRequested = false;
+      let doFull = pendingUpdateFullSync;
+      pendingUpdateFullSync = false;
+      setTimeout(() => updateData(doFull), 50);
+    }
   }
 
   if (!fullSync) return;

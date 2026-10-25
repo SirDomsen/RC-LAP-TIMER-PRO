@@ -77,7 +77,7 @@ function handleLiveEvent(msg) {
     }
   } else if (msg.type === 'track_record') {
     if (typeof loadTracks === 'function') loadTracks();
-    if (typeof updateData === 'function') updateData(true);
+    // loadTracks will update tracks without blocking lap updates
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
