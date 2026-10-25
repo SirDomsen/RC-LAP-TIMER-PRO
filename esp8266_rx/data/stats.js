@@ -229,13 +229,13 @@ function switchStatsTab(tab) {
     { key: 'drivers', btn: 'tabDriversBtn', div: 'statsTabDrivers' },
     { key: 'training', btn: 'tabTrainingBtn', div: 'statsTabTraining' },
     { key: 'quali', btn: 'tabQualiBtn', div: 'statsTabQuali' },
-    { key: 'race_laps', btn: 'tabRaceLapsBtn', div: 'statsTabRace_laps' },
-    { key: 'race_time', btn: 'tabRaceTimeBtn', div: 'statsTabRace_time' },
+    { key: 'race_laps', btn: 'tabRace_lapsBtn', div: 'statsTabRace_laps' },
+    { key: 'race_time', btn: 'tabRace_timeBtn', div: 'statsTabRace_time' },
     { key: 'drag', btn: 'tabDragBtn', div: 'statsTabDrag' }
   ];
 
   tabs.forEach(t => {
-    let b = document.getElementById(t.btn);
+    let b = document.getElementById(t.btn) || document.getElementById(t.btn.replace('_', ''));
     if (b) b.classList.toggle('active', t.key === tab);
     let d = document.getElementById(t.div);
     if (d) d.style.display = (t.key === tab) ? 'block' : 'none';
@@ -245,7 +245,8 @@ function switchStatsTab(tab) {
     renderDriversOverview();
   } else {
     let mode = tabNameToMode(tab);
-    let targetDiv = 'statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    let activeTabObj = tabs.find(t => t.key === tab);
+    let targetDiv = activeTabObj ? activeTabObj.div : ('statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
     renderSessionsByMode(mode, targetDiv);
   }
 }
