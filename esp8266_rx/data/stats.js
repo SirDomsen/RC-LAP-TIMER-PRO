@@ -433,7 +433,11 @@ function renderSessionsByMode(mode, containerId) {
   sessions.sort((a, b) => (b.endTs || b.startTs || 0) - (a.endTs || a.startTs || 0));
 
   if (sessions.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:25px;">Keine gespeicherten Durchgänge für diese Auswahl vorhanden.</p>';
+    container.innerHTML = `
+      <div style="text-align:center; padding:30px 15px; color:var(--text-muted);">
+        <p style="font-size:14px; margin-bottom:12px;">Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.</p>
+        <button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">🔄 Index aus Dateisystem neu aufbauen</button>
+      </div>`;
     return;
   }
 
@@ -1570,5 +1574,58 @@ async function handleRestoreBackup(event) {
   event.target.value = '';
 }
 
-  event.target.value = '';
+async function rebuildSessionsIndexUI() {
+  let ok = await showConfirm({
+    title: "🔄 INDEX NEU AUFBAUEN",
+    theme: "cyan",
+    boxLabel: "Aktion:",
+    boxContent: "LittleFS Session-Scan & /sessions.json Rebuild",
+    message: "Möchtest du das Dateisystem nach gespeicherten Sessions durchsuchen und die Index-Datei (<code>/sessions.json</code>) komplett neu generieren lassen?<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">💡 Nützlich, wenn Runden zwar auf dem Speicher liegen, aber in der Liste fehlen.</span>",
+    confirmText: "INDEX AUFBAUEN 🔄",
+    cancelText: "ABBRECHEN"
+  });
+
+  if (!ok) return;
+
+  let btn = document.getElementById('rebuildIndexBtn');
+  let origText = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "⏳ Indiziere...";
+  }
+
+  try {
+    let res = await fetch('/api/rebuild_sessions', { method: 'POST' });
+    let data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      await showAlert({
+        title: "✅ INDEX ERFOLGREICH REPARIERT",
+        theme: "success",
+        message: `Es wurden <strong>${data.count || 0} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!`
+      });
+      sessionFileCache = {};
+      openSessionsMap = {};
+      openDriverDetailsMap = {};
+      await fetchSessionsAndStorageInfo();
+      switchStatsTab(currentTab);
+    } else {
+      let errMsg = data.error || ("HTTP-Status " + res.status);
+      await showAlert({
+        title: "❌ FEHLER BEIM REBUILD",
+        theme: "danger",
+        message: `Der Index konnte nicht neu aufgebaut werden:<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">${errMsg}</span>`
+      });
+    }
+  } catch (err) {
+    await showAlert({
+      title: "❌ NETZWERKFEHLER",
+      theme: "danger",
+      message: "Verbindung zur Basisstation fehlgeschlagen: " + err.message
+    });
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
 }

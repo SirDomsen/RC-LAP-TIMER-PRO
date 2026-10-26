@@ -333,6 +333,22 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
   }
 }
 
+void handlePostRebuildSessions(AsyncWebServerRequest *request) {
+  if (isHeapCriticalForFileTransfer()) {
+    request->send(503, "application/json", "{\"success\":false,\"error\":\"Heap zu niedrig (<20 kB)\"}");
+    return;
+  }
+  uint16_t found = 0;
+  bool ok = rebuildSessionsIndex(found);
+  if (ok) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"success\":true,\"count\":%u}", (unsigned int)found);
+    request->send(200, "application/json", buf);
+  } else {
+    request->send(500, "application/json", "{\"success\":false,\"error\":\"Rebuild fehlgeschlagen\"}");
+  }
+}
+
 // --- STRECKEN-HANDLERS & TOP-5 REKORDVERWALTUNG ---
 void handleGetTracks(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();

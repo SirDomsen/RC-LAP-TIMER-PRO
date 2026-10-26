@@ -20,7 +20,7 @@
 * `ir_decoder.cpp`: Interrupt an D2, strikte Flanken- & Timingprüfung (Leader 1.8–4.2 ms, Bitgrenze 950 µs) mit kompromisslosem Reset bei Störsignalen.
 * `lap_logic.cpp`: Live-Zeitmessung für 5 Rennmodi (0=Training, 1=Quali, 2=Rundenrennen, 3=Zeitrennen, 4=Dragrace). Erfasst Sektorzeiten SZ1–SZ4, PBs und Purple Sectors. 2-Frame-Validierungsfilter (85 ms), einstellbare Deadtime (Standard 2 s), dynamische Boxen-/Outlap-Erkennung (Schwellenwert 250% von AvgLap).
 * `esp_now_base.cpp`: Empfängt Zwischenzeiten von Sektorstationen via **ESP-NOW**. Sendet periodische Beacons (Stratum 0) für Mikrosekunden-Zeitsynchronisation und Remote-OTA-Befehle.
-* `storage.cpp`: `LittleFS`-Dateisystem (`/tracks.json` mit Top 5 Rekorden, `/sessions.json`, `/wifi.json`, `/names.json`). Session-Dateien unter `/<track>/<mode>/<timestamp>.json`. RAM-Puffer (`lapQueue[30]`) gegen Schreibblockaden, EEPROM-Speicherung, 95%-Flash-Schreibschutz.
+* `storage.cpp`: `LittleFS`-Dateisystem (`/tracks.json` mit Top 5 Rekorden, `/sessions.json`, `/wifi.json`, `/names.json`). Session-Dateien unter `/<track>/<mode>/<timestamp>.json`. RAM-Puffer (`lapQueue[30]`) gegen Schreibblockaden, EEPROM-Speicherung, 95%-Flash-Schreibschutz. On-Demand-Rebuild des Session-Index (`rebuildSessionsIndex`) zur Selbstheilung.
 * `web_server.cpp` / `web_handlers.cpp`: Asynchroner Webserver & WebSockets (`/ws`), REST-APIs, dynamischer Heap-Schutz (HTTP 503 Busy Guard / WS-Code 1013 bei <20 kB Heap oder >47% Fragmentierung). Dreistufige WLAN-Kaskade (Heim ➔ Hotspot ➔ AP), Geister-WLAN (`LT_<SSID>-<IP>`), SoftAP auf 802.11n mit gelernter IP (dynamisches Gateway = Basis-IP für nahtlose Handy-Anbindung) und ChipID-Suffix (`RC-LapTimer-XXXX`).
 
 ### 📡 Backend Sektorstationen (`esp8266_rx/src_sz/`)
@@ -38,7 +38,7 @@
 * `admin.html`: Rennleiter-Interface (Session-Steuerung, Streckenauswahl, Fahrerumbenennung, Sensor-Debug).
 * `main.js`: WebSocket-Anbindung, Live-Tabelle, Delta-Zeiten, Leaderboard-Sortierung, universelles modulares Dialog-System (`showConfirm`/`showAlert` im Cyberpunk-Look mit dynamischen Farb-Themes, ersetzt alle nativen Browser-Popups im gesamten Frontend).
 * `modes.js`: Rennabläufe, automatischer 3-2-1-Los Sprachcountdown, Rennabbruch.
-* `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore.
+* `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore, On-Demand Index-Rebuild.
 * `config.js`: Modals für WLAN-Kaskade, Transponder-Namen, Sensorparameter (Deadtime, 2-Frame-Filter), SZ-OTA-Trigger.
 * `tts.js`: Web Speech API Sprachausgabe (`de-DE`), Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto"), iOS-Audio-Unlock.
 * `update.html` & `debug.html`: LittleFS-Dateimanager (Ordneransicht, ZIP-Download), Firmware-OTA-Upload, universelles Dialog-Modal für Datei-/Ordner-/Flash-Aktionen und Live-Paketmonitor.
@@ -51,3 +51,4 @@
 2. **UI Cache-Busting:** Bei Änderungen an `data/*.js` oder `data/*.css` **immer** die Versionsnummer `?v=X.X.X` in `admin.html` und `index.html` anheben (wird am Backend was geändert genauso bei `FIRMWARE_VERSION` in `config.h`). Kleine Änderungen letzte Ziffer, große Änderungen mittlere Ziffer, Milestones vordere Ziffer.
 3. **WLAN & Gelernte IP:** Die Basis merkt sich im Heim-WLAN ihre DHCP-IP (`learnedApIP`) und nutzt diese auch im AP-Modus, damit der Nutzer im Browser immer dieselbe Lesezeichen-IP nutzen kann. Das Gateway wird im AP-Modus immer dynamisch auf die eigene Basis-IP gesetzt, damit Mobiltelefone das Subnetz als valide anerkennen und nicht fälschlich auf Mobilfunk ausweichen.
 4. **Code-Integrität & Speicherschutz:** Bestehende Kernlogiken (Heap-Guard, 95%-Flash-Schutz, Sektor-Entprellung, ISR-Zeitschranken) niemals eigenmächtig löschen oder lockern. RAM auf dem ESP8266 stets schonen (keine dynamischen Riesen-Strings im Loop).
+5. **SZ-Erreichbarkeit & OTA-Lebensversicherung:** Bei Änderungen an den Sektorstationen (`src_sz/`) hat die Ausfallsicherheit für ESP-NOW und Fernwartung/OTA höchste Priorität. Ein Kontaktabriss durch Programmier- oder Logikfehler muss unter allen Umständen vermieden werden, da ein manuelles Neuflashen per seriellem FTDI-Adapter extrem aufwendig ist. Der Broadcast-Peer (`FF:FF:FF:FF:FF:FF`) für OTA-Trigger, Beacons und Notfall-Fallback muss immer aktiv und geschützt bleiben.

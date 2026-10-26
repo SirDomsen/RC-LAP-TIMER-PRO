@@ -4,7 +4,7 @@
   <title>RC Lap Timer Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
-  <link rel="stylesheet" href="style.css?v=4.2.5">
+  <link rel="stylesheet" href="style.css?v=4.2.6">
 </head>
 <body class="role-driver">
 
@@ -358,8 +358,9 @@
           <div>🏆 Streckenrekord: <strong id="statsAllTimeBestVal" style="color:var(--neon-gold);">--:--</strong></div>
           <div>⏱️ Tagesbestzeit: <strong id="statsDailyBestVal" style="color:var(--neon-green);">--:--</strong></div>
         </div>
-        <div style="font-size:12px; color:var(--text-muted);">
-          💾 Flash: <strong id="statsFsUsageText" style="color:var(--neon-cyan);">--%</strong>
+        <div style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+          <span>💾 Flash: <strong id="statsFsUsageText" style="color:var(--neon-cyan);">--%</strong></span>
+          <button id="rebuildIndexBtn" class="btn btn-purple" style="padding:3px 8px; font-size:11px; margin:0;" onclick="rebuildSessionsIndexUI()" title="Dateisystem durchsuchen und Sessions-Index reparieren">🔄 Index neu aufbauen</button>
         </div>
       </div>
 
@@ -425,14 +426,14 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.5</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.6</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.2.5"></script>
-  <script src="websocket.js?v=4.2.5"></script>
-  <script src="main.js?v=4.2.5"></script>
+  <script src="tts.js?v=4.2.6"></script>
+  <script src="websocket.js?v=4.2.6"></script>
+  <script src="main.js?v=4.2.6"></script>
 </body>
 </html>

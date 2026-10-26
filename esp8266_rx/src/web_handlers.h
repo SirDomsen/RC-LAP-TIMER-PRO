@@ -24,6 +24,7 @@ void handlePostDeleteLap(AsyncWebServerRequest *request);
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request);
 void handlePostDeleteAllStats(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);
+void handlePostRebuildSessions(AsyncWebServerRequest *request);
 
 // Strecken-Verwaltung & Top-5 Rekord-Management
 void handleGetTracks(AsyncWebServerRequest *request);

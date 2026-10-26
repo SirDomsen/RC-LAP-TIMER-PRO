@@ -1294,9 +1294,10 @@ void flushCurrentSessionToIndex() {
     f.close();
   } else {
     // Ende des Arrays ']' von hinten suchen
-    size_t searchStart = (fSize > 64) ? (fSize - 64) : 0;
+    size_t searchStart = fSize - ((fSize > 512) ? 512 : fSize);
     f.seek(searchStart, SeekSet);
     String tail = "";
+    tail.reserve(520);
     while (f.available()) {
       tail += (char)f.read();
     }
@@ -1330,6 +1331,132 @@ void flushCurrentSessionToIndex() {
   sessionIndexDirty = false;
   lastIndexFlushMs = millis();
   updateFsUsageCache();
+}
+
+static void collectSessionFilesRecursive(const String& basePath, std::vector<String>& files) {
+  Dir dir = LittleFS.openDir(basePath);
+  while (dir.next()) {
+    yield();
+    String entryName = dir.fileName();
+    String fullPath = (basePath == "/") ? ("/" + entryName) : (basePath + "/" + entryName);
+    if (dir.isDirectory()) {
+      collectSessionFilesRecursive(fullPath, files);
+    } else {
+      if (fullPath.endsWith(".json")) {
+        if (fullPath == "/tracks.json" || fullPath == "/sessions.json" || fullPath == "/wifi.json" ||
+            fullPath == "/names.json" || fullPath == "/daily_best.json" || fullPath == "/sessions.tmp") {
+          continue;
+        }
+        int firstSlash = fullPath.indexOf('/');
+        int secondSlash = fullPath.indexOf('/', firstSlash + 1);
+        if (secondSlash > 0) {
+          files.push_back(fullPath);
+        }
+      }
+    }
+  }
+}
+
+bool rebuildSessionsIndex(uint16_t& sessionsFound) {
+  sessionsFound = 0;
+  if (ESP.getFreeHeap() < 14000) return false;
+
+  std::vector<String> sessionFiles;
+  collectSessionFilesRecursive("/", sessionFiles);
+
+  File fOut = LittleFS.open("/sessions.tmp", "w");
+  if (!fOut) return false;
+
+  fOut.print("{\"sessions\":[");
+  bool firstWritten = false;
+
+  for (const String& fPath : sessionFiles) {
+    yield();
+    if (!LittleFS.exists(fPath)) continue;
+
+    File fIn = LittleFS.open(fPath, "r");
+    if (!fIn) continue;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, fIn);
+    fIn.close();
+    if (err) continue;
+
+    String sId = doc["id"] | "";
+    if (sId.length() == 0) {
+      int lastSlash = fPath.lastIndexOf('/');
+      if (lastSlash >= 0 && fPath.endsWith(".json")) {
+        sId = fPath.substring(lastSlash + 1, fPath.length() - 5);
+      }
+    }
+
+    String trkId = doc["trackId"] | "";
+    String trkName = doc["trackName"] | trkId;
+    uint8_t sMode = doc["mode"] | 0;
+    uint64_t startTs = doc["startTs"] | 0;
+    uint64_t endTs = startTs;
+
+    uint16_t cLaps[MAX_CARS + 1] = {0};
+    uint32_t cBest[MAX_CARS + 1] = {0};
+    uint16_t cValid[MAX_CARS + 1] = {0};
+    uint64_t cTimeSum[MAX_CARS + 1] = {0};
+    uint32_t cAvg[MAX_CARS + 1] = {0};
+
+    if (doc["laps"].is<JsonArray>()) {
+      JsonArray laps = doc["laps"].as<JsonArray>();
+      for (JsonObject l : laps) {
+        uint8_t c = l["carId"] | 0;
+        if (c >= 1 && c <= MAX_CARS) {
+          uint16_t lNum = l["lap"] | 0;
+          if (lNum > cLaps[c]) cLaps[c] = lNum;
+          else cLaps[c]++;
+
+          uint32_t tMs = l["time"] | 0;
+          bool outlap = (l["outlap"] | 0) != 0;
+          if (!outlap && tMs > 0) {
+            if (cBest[c] == 0 || tMs < cBest[c]) cBest[c] = tMs;
+            cValid[c]++;
+            cTimeSum[c] += tMs;
+            cAvg[c] = cTimeSum[c] / cValid[c];
+          }
+
+          uint64_t tsMs = l["ts"] | 0;
+          if (tsMs / 1000ULL > endTs) endTs = tsMs / 1000ULL;
+        }
+      }
+    }
+
+    String entryJson = buildSessionEntryJson(
+      sId,
+      fPath,
+      trkId,
+      trkName,
+      sMode,
+      startTs,
+      endTs,
+      cLaps,
+      cBest,
+      cAvg
+    );
+
+    if (firstWritten) fOut.print(",");
+    else firstWritten = true;
+
+    fOut.print(entryJson);
+    sessionsFound++;
+  }
+
+  fOut.print("]}                ");
+  fOut.close();
+
+  LittleFS.remove("/sessions.json");
+  LittleFS.rename("/sessions.tmp", "/sessions.json");
+
+  currentSessionIndexOffset = 0;
+  currentSessionIndexLen = 0;
+  sessionIndexDirty = false;
+  updateFsUsageCache();
+  return true;
 }
 
 void startNewSessionFrame(uint8_t mode) {
