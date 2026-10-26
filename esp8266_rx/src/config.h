@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.2.3"
+#define FIRMWARE_VERSION  "v4.2.4"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif
@@ -37,9 +37,11 @@
   #define LED_SIGNAL  D6          // GPIO12 - Gelbe Signal-LED 
   #define LED_ONBOARD LED_BUILTIN // GPIO2  - Interne ESP Status LED (Active LOW) 
 #endif
+
 // --- Renn- & EEPROM Parameter ---
 #define MAX_CARS            15
 #define DEFAULT_MIN_LAP_MS  2000    // Standard-Entprellung (2 Sekunden)
+#define PIT_PAUSE_FACTOR_PERCENT 250 // Schwellenwert für dynamische Boxen-/Pausen-/Outlap-Erkennung (250% von AvgLap)
 #define EEPROM_MAGIC        0xAC    // Magic Byte
 #define EEPROM_SIZE         1024
 #define NAME_LENGTH         20      // Max. Zeichen pro Fahrername
