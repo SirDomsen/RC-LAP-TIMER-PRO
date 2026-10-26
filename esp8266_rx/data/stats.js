@@ -1579,8 +1579,8 @@ async function rebuildSessionsIndexUI() {
     title: "🔄 INDEX NEU AUFBAUEN",
     theme: "cyan",
     boxLabel: "Aktion:",
-    boxContent: "LittleFS Session-Scan & /sessions.json Rebuild",
-    message: "Möchtest du das Dateisystem nach gespeicherten Sessions durchsuchen und die Index-Datei (<code>/sessions.json</code>) komplett neu generieren lassen?<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">💡 Nützlich, wenn Runden zwar auf dem Speicher liegen, aber in der Liste fehlen.</span>",
+    boxContent: "Browser-basierter Session-Scan & /sessions.json Rebuild",
+    message: "Das Endgerät durchsucht alle gespeicherten Session-Dateien im Speicher und baut die Index-Datei (<code>/sessions.json</code>) vollständig neu auf.<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">⚡ Schonend für den ESP8266-Prozessor & 100% crashsicher.</span>",
     confirmText: "INDEX AUFBAUEN 🔄",
     cancelText: "ABBRECHEN"
   });
@@ -1591,36 +1591,165 @@ async function rebuildSessionsIndexUI() {
   let origText = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
-    btn.innerText = "⏳ Indiziere...";
+    btn.innerText = "⏳ Lese Dateien...";
   }
 
   try {
-    let res = await fetch('/api/rebuild_sessions', { method: 'POST' });
-    let data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) {
+    // 1. Liste aller Dateien von der Basis abfragen
+    let res = await fetch('/api/files');
+    if (!res.ok) throw new Error("Fehler beim Abrufen der Dateiliste");
+    let fData = await res.json();
+    let files = fData.files || [];
+
+    // 2. Nur Session-Dateien herausfiltern (z.B. kirchhof/training/26-10-26_14-45-39.json)
+    let sessionFiles = files.filter(f => {
+      let n = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+      if (!n.endsWith('.json')) return false;
+      if (n === 'tracks.json' || n === 'sessions.json' || n === 'wifi.json' || n === 'names.json' || n === 'daily_best.json') return false;
+      return n.includes('/');
+    });
+
+    if (sessionFiles.length === 0) {
       await showAlert({
-        title: "✅ INDEX ERFOLGREICH REPARIERT",
-        theme: "success",
-        message: `Es wurden <strong>${data.count || 0} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!`
+        title: "ℹ️ KEINE SESSIONS",
+        theme: "cyan",
+        message: "Im Dateisystem wurden keine Session-Dateien gefunden."
       });
-      sessionFileCache = {};
-      openSessionsMap = {};
-      openDriverDetailsMap = {};
-      await fetchSessionsAndStorageInfo();
-      switchStatsTab(currentTab);
-    } else {
-      let errMsg = data.error || ("HTTP-Status " + res.status);
-      await showAlert({
-        title: "❌ FEHLER BEIM REBUILD",
-        theme: "danger",
-        message: `Der Index konnte nicht neu aufgebaut werden:<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">${errMsg}</span>`
-      });
+      return;
     }
+
+    if (btn) btn.innerText = `⏳ Verarbeite 0/${sessionFiles.length}...`;
+
+    // 3. Jede Session-Datei laden und Metadaten aggregieren
+    let builtSessions = [];
+    for (let i = 0; i < sessionFiles.length; i++) {
+      let sf = sessionFiles[i];
+      let rawName = sf.name.startsWith('/') ? sf.name : ('/' + sf.name);
+      if (btn) btn.innerText = `⏳ Lade ${i + 1}/${sessionFiles.length}...`;
+
+      try {
+        let sRes = await fetch('/api/sessionfile?file=' + encodeURIComponent(rawName));
+        if (!sRes.ok) continue;
+        let sData = await sRes.json();
+
+        let sId = sData.id;
+        if (!sId) {
+          let parts = rawName.split('/');
+          let fn = parts[parts.length - 1];
+          sId = fn.replace('.json', '');
+        }
+
+        let laps = sData.laps || [];
+        let carLapsMap = {};
+        let carBestMap = {};
+        let carTimeSumMap = {};
+        let carValidMap = {};
+        let carDriverNameMap = {};
+        let carCarNameMap = {};
+        let maxTs = sData.startTs || 0;
+
+        laps.forEach(l => {
+          let c = l.carId;
+          if (c >= 1 && c <= MAX_CARS) {
+            if (!carLapsMap[c]) {
+              carLapsMap[c] = 0;
+              carBestMap[c] = 0;
+              carTimeSumMap[c] = 0;
+              carValidMap[c] = 0;
+            }
+            if (l.driver) carDriverNameMap[c] = l.driver;
+            if (l.car) carCarNameMap[c] = l.car;
+
+            if (l.lap > carLapsMap[c]) carLapsMap[c] = l.lap;
+            else carLapsMap[c]++;
+
+            if (!l.outlap && l.time > 0) {
+              if (carBestMap[c] === 0 || l.time < carBestMap[c]) carBestMap[c] = l.time;
+              carValidMap[c]++;
+              carTimeSumMap[c] += l.time;
+            }
+            if (l.ts && Math.floor(l.ts / 1000) > maxTs) {
+              maxTs = Math.floor(l.ts / 1000);
+            }
+          }
+        });
+
+        let activeCarIds = Object.keys(carLapsMap).map(Number);
+        let mode = sData.mode !== undefined ? sData.mode : 0;
+        let sortByBest = (mode === 1 || mode === 4);
+
+        activeCarIds.sort((a, b) => {
+          if (sortByBest) {
+            let bA = carBestMap[a] > 0 ? carBestMap[a] : 99999999;
+            let bB = carBestMap[b] > 0 ? carBestMap[b] : 99999999;
+            return bA - bB;
+          } else {
+            if (carLapsMap[b] !== carLapsMap[a]) return carLapsMap[b] - carLapsMap[a];
+            let bA = carBestMap[a] > 0 ? carBestMap[a] : 99999999;
+            let bB = carBestMap[b] > 0 ? carBestMap[b] : 99999999;
+            return bA - bB;
+          }
+        });
+
+        let results = activeCarIds.map((c, idx) => {
+          let avg = (carValidMap[c] > 0) ? Math.round(carTimeSumMap[c] / carValidMap[c]) : 0;
+          return {
+            pos: idx + 1,
+            id: c,
+            driver: carDriverNameMap[c] || (carNamesMap[c]?.driver) || ("Fahrer " + c),
+            car: carCarNameMap[c] || (carNamesMap[c]?.car) || ("Auto " + c),
+            laps: carLapsMap[c] || 0,
+            bestLap: carBestMap[c] || 0,
+            avgLap: avg
+          };
+        });
+
+        let modeNames = ["Freies Training", "Qualifying", "Rennen (Runden)", "Rennen (Zeit)", "Dragrace"];
+        builtSessions.push({
+          id: sId,
+          file: rawName,
+          trackId: sData.trackId || "standard",
+          trackName: sData.trackName || sData.trackId || "Standard",
+          mode: mode,
+          modeName: sData.modeName || modeNames[mode] || "Freies Training",
+          startTs: sData.startTs || 0,
+          endTs: maxTs || sData.startTs || 0,
+          results: results
+        });
+      } catch (errFile) {
+        console.warn("Konnte Session-Datei nicht parsen:", rawName, errFile);
+      }
+    }
+
+    // 4. Sortieren nach Datum absteigend
+    builtSessions.sort((a, b) => (b.endTs || b.startTs || 0) - (a.endTs || a.startTs || 0));
+
+    if (btn) btn.innerText = "⏳ Speichere Index...";
+
+    // 5. Index als /sessions.json hochladen
+    let idxBlob = new Blob([JSON.stringify({ sessions: builtSessions }, null, 2)], { type: 'application/json' });
+    let fd = new FormData();
+    fd.append('data', idxBlob, '/sessions.json');
+    let upRes = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (!upRes.ok) throw new Error("Fehler beim Hochladen von /sessions.json");
+
+    await showAlert({
+      title: "✅ INDEX ERFOLGREICH REPARIERT",
+      theme: "success",
+      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!`
+    });
+
+    sessionFileCache = {};
+    openSessionsMap = {};
+    openDriverDetailsMap = {};
+    await fetchSessionsAndStorageInfo();
+    switchStatsTab(currentTab);
+
   } catch (err) {
     await showAlert({
-      title: "❌ NETZWERKFEHLER",
+      title: "❌ FEHLER BEIM REBUILD",
       theme: "danger",
-      message: "Verbindung zur Basisstation fehlgeschlagen: " + err.message
+      message: "Der Index konnte nicht neu aufgebaut werden: " + err.message
     });
   } finally {
     if (btn) {

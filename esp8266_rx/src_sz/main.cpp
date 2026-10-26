@@ -23,8 +23,16 @@ typedef uint8_t u8;
 #endif
 
 uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-uint8_t baseStationMac[6] = {0};
-bool baseMacKnown = false;
+
+// Smart-Parent Routing (Zero Heap: 7 Bytes RAM)
+uint8_t parentMac[6] = {0};
+bool hasParent = false;
+uint8_t parentStratum = 255;
+uint32_t lastParentSeenMs = 0;
+
+static SectorPacket pendingFallbackPkt;
+static bool hasPendingFallback = false;
+volatile bool lastTxFailed = false;
 
 // ==========================================
 // PAKETSTRUKTUREN
@@ -49,6 +57,7 @@ struct __attribute__((packed)) BeaconSyncPacket {
 struct __attribute__((packed)) AlivePacket {
   uint8_t stationId;
   uint8_t batteryLow;
+  uint8_t isUnicast;
 };
 
 // OTA Wartungsmodus-Trigger (101 Bytes)
@@ -197,11 +206,11 @@ void updateEspNowChannel(uint8_t ch) {
   }
   esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
 
-  if (baseMacKnown) {
-    if (esp_now_is_peer_exist(baseStationMac)) {
-      esp_now_del_peer(baseStationMac);
+  if (hasParent) {
+    if (esp_now_is_peer_exist(parentMac)) {
+      esp_now_del_peer(parentMac);
     }
-    esp_now_add_peer(baseStationMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
+    esp_now_add_peer(parentMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
   }
 }
 
@@ -210,14 +219,13 @@ void connectOtaNetwork() {
   digitalWrite(LED_SIGNAL, HIGH); 
   WiFi.disconnect(true);
   delay(50);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11B); // 802.11b für stabile Verbindung
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G); // 802.11g für zuverlässige Router-Verbindung
   WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   
   String targetSsid = otaTargetSsid;
   String targetPass = otaTargetPass;
 
-  // Wenn keine SSID mitkam, nehmen wir den Default
   if (targetSsid.length() == 0) {
     targetSsid = HOME_SSID;
     targetPass = HOME_PASS;
@@ -229,7 +237,7 @@ void connectOtaNetwork() {
   WiFi.begin(targetSsid.c_str(), targetPass.c_str());
 
   uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 12000)) { 
     delay(100); 
   }
   
@@ -241,26 +249,25 @@ void connectOtaNetwork() {
     WiFi.begin(targetSsid.c_str(), targetPass.c_str());
     
     startMs = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 6000)) { 
       delay(100); 
     }
   }
 
-  // Pre-OTA Timeout: Schlägt die Verbindung nach beiden Stufen fehl,
-  // bleibt die Station NICHT hängen, sondern rebootet sauber zurück in ESP-NOW!
+  // Stufe 3: Notfall-AP als Rettungsanker gegen Softbricks (öffnen und für OTA bereitstellen)
   if (WiFi.status() != WL_CONNECTED) {
-    for (int i = 0; i < 6; i++) {
-      digitalWrite(LED_SIGNAL, (i % 2 == 0) ? HIGH : LOW);
-      delay(80);
-    }
-    ESP.restart();
-    return;
+    WiFi.mode(WIFI_AP);
+    char rescueSsid[32];
+    snprintf(rescueSsid, sizeof(rescueSsid), "SZ-RESCUE-%d", STATION_ID);
+    WiFi.softAP(rescueSsid, "12345678");
+    wifiConnected = true; 
+  } else {
+    wifiConnected = true;
+    updateEspNowChannel(WiFi.channel());
   }
 
-  wifiConnected = true;
   otaStartTimeMs = millis();
   otaTransferInProgress = false;
-  updateEspNowChannel(WiFi.channel());
   digitalWrite(LED_SIGNAL, LOW); 
 }
 
@@ -268,9 +275,13 @@ void connectOtaNetwork() {
 // ESP-NOW CALLBACKS
 // ==========================================
 
-volatile bool lastTxAcked = true;
 void onDataSent(u8 *mac_addr, u8 sendStatus) {
-  lastTxAcked = (sendStatus == 0);
+  if (sendStatus != 0) {
+    lastTxFailed = true;
+  } else {
+    lastTxFailed = false;
+    hasPendingFallback = false; // Unicast erfolgreich per Hardware-ACK quittiert!
+  }
 }
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
@@ -287,15 +298,26 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
         updateEspNowChannel(sync.channel);
       }
 
-      // Basis-MAC automatisch aus Stratum-0 Beacon lernen & als Unicast-Peer registrieren
-      if (sync.stratum == 0 && mac != NULL) {
-        if (!baseMacKnown || memcmp(baseStationMac, mac, 6) != 0) {
-          if (baseMacKnown && esp_now_is_peer_exist(baseStationMac)) {
-            esp_now_del_peer(baseStationMac);
+      // Smart-Parent Auswahl: Bevorzuge niedrigeres Stratum (Hop-Count zur Basis)
+      // Hört SZ die Basis direkt (Stratum 0) -> sofort Parent = Basis.
+      // Hört SZ3 nur SZ2 (Stratum 1) -> Parent = SZ2.
+      // Wenn der bisherige Parent > 6 Sekunden stumm war, darf ein anderer übernehmen.
+      if (mac != NULL) {
+        bool isBetterStratum = (sync.stratum < parentStratum);
+        bool isCurrentParent = (hasParent && memcmp(parentMac, mac, 6) == 0);
+        bool parentTimedOut  = (hasParent && (millis() - lastParentSeenMs > 6000));
+
+        if (isBetterStratum || isCurrentParent || !hasParent || parentTimedOut) {
+          if (!hasParent || memcmp(parentMac, mac, 6) != 0) {
+            if (hasParent && esp_now_is_peer_exist(parentMac)) {
+              esp_now_del_peer(parentMac);
+            }
+            memcpy(parentMac, mac, 6);
+            esp_now_add_peer(parentMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
+            hasParent = true;
           }
-          memcpy(baseStationMac, mac, 6);
-          esp_now_add_peer(baseStationMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
-          baseMacKnown = true;
+          parentStratum = sync.stratum;
+          lastParentSeenMs = millis();
         }
       }
 
@@ -306,7 +328,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
         currentStratum = sync.stratum + 1;
         lastStratumResetMs = millis();
 
-        // JEDE Station leitet das Beacon weiter (Flood-Routing), kein Maulkorb mehr für SZ3!
+        // JEDE Station leitet das Beacon weiter (Flood-Routing)
         BeaconSyncPacket forwardSync;
         forwardSync.magicCode = BEACON_SYNC_MAGIC;
         forwardSync.baseTimeMs = getSynchronizedTimeMs();
@@ -347,8 +369,8 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
       static uint32_t lastRelayedAliveMs[4] = {0};
       if (millis() - lastRelayedAliveMs[alive.stationId] > 2000) {
         lastRelayedAliveMs[alive.stationId] = millis();
-        if (baseMacKnown) {
-          esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
+        if (hasParent) {
+          esp_now_send(parentMac, (uint8_t *)&alive, sizeof(alive));
         } else {
           esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
         }
@@ -362,12 +384,12 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     OtaTriggerPacket ota;
     memcpy(&ota, incomingData, sizeof(ota));
     if (ota.magicCode == OTA_MAGIC_CODE) {
-      // Arm-and-Confirm Bestätigung an die Basis
+      // Arm-and-Confirm Bestätigung an Parent und Broadcast
       OtaAckPacket ack;
       ack.magicCode = OTA_ACK_MAGIC;
       ack.stationId = STATION_ID;
-      if (baseMacKnown) {
-        esp_now_send(baseStationMac, (uint8_t *)&ack, sizeof(ack));
+      if (hasParent) {
+        esp_now_send(parentMac, (uint8_t *)&ack, sizeof(ack));
       }
       esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
 
@@ -376,7 +398,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
       otaTargetSsid = String(ota.ssid);
       otaTargetPass = String(ota.pass);
       
-      // Deduplizierung hinzugefügt, um Broadcast-Storms zu verhindern
       static uint32_t lastOtaTrigger = 0;
       if (millis() - lastOtaTrigger > 5000) {
         lastOtaTrigger = millis();
@@ -422,7 +443,7 @@ void setup() {
 
   WiFi.persistent(false);
   WiFi.disconnect(true);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11B); // 802.11b für maximale Reichweite & Empfindlichkeit (-98 dBm)
+  WiFi.setPhyMode(WIFI_PHY_MODE_11B); // 802.11b für maximale Reichweite & Empfindlichkeit (-98 dBm) im Rennbetrieb
   WiFi.mode(WIFI_STA);
   WiFi.setOutputPower(20.5); // Maximale Sendeleistung erzwingen
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
@@ -435,7 +456,10 @@ void setup() {
   }
 
   initIRDecoder();
-  ArduinoOTA.setHostname(("SZ-" + String(STATION_ID)).c_str());
+
+  static char otaHostname[16];
+  snprintf(otaHostname, sizeof(otaHostname), "SZ-%d", STATION_ID);
+  ArduinoOTA.setHostname(otaHostname);
   ArduinoOTA.onStart([]() {
     otaTransferInProgress = true;
   });
@@ -469,13 +493,20 @@ void loop() {
     }
   }
 
+  // --- 1b. FAILOVER CHECK: Falls Unicast fehlschlug (kein ACK), sofort Broadcast abfeuern ---
+  if (hasPendingFallback && lastTxFailed) {
+    hasPendingFallback = false;
+    lastTxFailed = false;
+    esp_now_send(broadcastMac, (uint8_t *)&pendingFallbackPkt, sizeof(SectorPacket));
+  }
+
   // --- 2. RELAY QUEUE ---
   if (relayQueueTail != relayQueueHead) {
     SectorPacket pktToRelay;
     memcpy(&pktToRelay, (void*)&relayQueue[relayQueueTail], sizeof(SectorPacket));
     relayQueueTail = (relayQueueTail + 1) % RELAY_QUEUE_SIZE;
-    if (baseMacKnown) {
-      esp_now_send(baseStationMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
+    if (hasParent) {
+      esp_now_send(parentMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
     } else {
       esp_now_send(broadcastMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
     }
@@ -487,8 +518,8 @@ void loop() {
     HotspotAckPacket ack;
     ack.magicCode = HOTSPOT_ACK_MAGIC;
     ack.stationId = STATION_ID;
-    if (baseMacKnown) {
-      esp_now_send(baseStationMac, (uint8_t *)&ack, sizeof(ack));
+    if (hasParent) {
+      esp_now_send(parentMac, (uint8_t *)&ack, sizeof(ack));
     } else {
       esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
     }
@@ -498,6 +529,7 @@ void loop() {
   if (triggerMaintenance && !maintenanceMode) {
     triggerMaintenance = false;
     maintenanceMode = true;
+    otaStartTimeMs = millis(); // Sofort Zeitstempel setzen gegen Frühauslösung!
     connectOtaNetwork(); 
     ArduinoOTA.begin();
   }
@@ -508,26 +540,23 @@ void loop() {
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
 
     // Totmannschaltung: Nach 120 Sekunden Inaktivität automatischer Neustart zurück in ESP-NOW
-    if (!otaTransferInProgress && (nowMs - otaStartTimeMs > 120000UL)) {
+    if (!otaTransferInProgress && otaStartTimeMs > 0 && (nowMs - otaStartTimeMs > 120000UL)) {
       ESP.restart();
     }
   }
 
   // --- 5. BATTERIE-STATUS & ALIVE HEARTBEAT ---
-  static uint32_t lastBatteryCheckMs = 0;
-  if (nowMs - lastBatteryCheckMs > 10000) {
-    lastBatteryCheckMs = nowMs;
-    batteryLow = (digitalRead(0) == HIGH);
-  }
-
   static uint32_t lastAliveMs = 0;
   if (!maintenanceMode && channelLocked && (nowMs - lastAliveMs > 3000)) {
     lastAliveMs = nowMs;
+    batteryLow = (digitalRead(0) == HIGH);
+
     AlivePacket alive;
     alive.stationId = STATION_ID;
     alive.batteryLow = batteryLow ? 1 : 0;
-    if (baseMacKnown) {
-      esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
+    alive.isUnicast = hasParent ? 1 : 0;
+    if (hasParent) {
+      esp_now_send(parentMac, (uint8_t *)&alive, sizeof(alive));
     } else {
       esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
     }
@@ -578,11 +607,14 @@ void loop() {
         uint32_t eventId = ((uint32_t)STATION_ID << 16) | pkt.seqNumber;
         isAlreadyRelayed(eventId); 
 
-        // Primär: Unicast an gelernte Basis-MAC (Hardware-ACK & bis zu 7 Retries!)
-        if (baseMacKnown) {
-          esp_now_send(baseStationMac, (uint8_t *)&pkt, sizeof(pkt));
+        // Primär: Unicast an den gewählten Parent (Hardware-ACK & bis zu 7 Retries)
+        if (hasParent) {
+          memcpy(&pendingFallbackPkt, &pkt, sizeof(SectorPacket));
+          hasPendingFallback = true;
+          lastTxFailed = false;
+          esp_now_send(parentMac, (uint8_t *)&pkt, sizeof(pkt));
         } else {
-          // Fallback: Broadcast
+          // Kein Parent bekannt: Broadcast
           esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
         }
       }

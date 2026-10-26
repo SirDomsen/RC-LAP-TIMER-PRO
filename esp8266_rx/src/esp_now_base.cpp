@@ -17,6 +17,10 @@ static bool sz1BatLow = false;
 static bool sz2BatLow = false;
 static bool sz3BatLow = false;
 
+static bool sz1Unicast = false;
+static bool sz2Unicast = false;
+static bool sz3Unicast = false;
+
 static bool debugModeEnabled = false;
 
 #define MAX_DEBUG_PACKETS 8
@@ -134,9 +138,9 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     memcpy(&packet, incomingData, sizeof(packet));
     
     unsigned long now = millis();
-    if (packet.stationId == 1) { sz1LastSeen = now; sz1BatLow = (packet.batteryLow != 0); }
-    if (packet.stationId == 2) { sz2LastSeen = now; sz2BatLow = (packet.batteryLow != 0); }
-    if (packet.stationId == 3) { sz3LastSeen = now; sz3BatLow = (packet.batteryLow != 0); }
+    if (packet.stationId == 1) { sz1LastSeen = now; sz1BatLow = (packet.batteryLow != 0); sz1Unicast = (packet.isUnicast != 0); }
+    if (packet.stationId == 2) { sz2LastSeen = now; sz2BatLow = (packet.batteryLow != 0); sz2Unicast = (packet.isUnicast != 0); }
+    if (packet.stationId == 3) { sz3LastSeen = now; sz3BatLow = (packet.batteryLow != 0); sz3Unicast = (packet.isUnicast != 0); }
 
     logDebugPacket(packet.stationId, 0, packet.batteryLow);
     return;
@@ -259,5 +263,13 @@ bool isStationBatteryLow(uint8_t stationId) {
   if (stationId == 1) return sz1BatLow;
   if (stationId == 2) return sz2BatLow;
   if (stationId == 3) return sz3BatLow;
+  return false;
+}
+
+bool isStationUnicast(uint8_t stationId) {
+  if (!isStationOnline(stationId)) return false;
+  if (stationId == 1) return sz1Unicast;
+  if (stationId == 2) return sz2Unicast;
+  if (stationId == 3) return sz3Unicast;
   return false;
 }

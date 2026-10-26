@@ -25,7 +25,7 @@
 
 ### 📡 Backend Sektorstationen (`esp8266_rx/src_sz/`)
 * **Hardware:** ESP-01S, TSOP4838 an **GPIO3 (RX)**, Akkumessung an **A0** (8k2/1k8 Teiler).
-* `main.cpp`: Kanal-Hopping bis zum Basis-Lock, Zeitsynchronisation mit ~1 ms Hop-Kompensation, Weiterleitung von Nachbarstationen (Relay-Queue & Cache), Akkuwarnung und Fern-Wartungsmodus für OTA.
+* `main.cpp`: Smart-Parent Routing (Zero-Heap Unicast an nächsten Hop mit HW-ACK & 7 Retries) mit sofortigem Broadcast-Failover, 802.11b PHY-Modus (-98 dBm Empfindlichkeit), beruhigtes Kanal-Handling (15s Timeout, 1200ms Verweildauer), Pre-OTA Timeout (16s), Totmannschaltung (120s Inaktivität) und Arm-and-Confirm Bestätigung.
 
 ### 🚗 Transponder (`attiny13_tx/`)
 * **Hardware:** ATtiny13A (9.6 MHz intern), IR-LED an **PB3** getrieben über **BC337-Transistor** (für hohe gepulste IR-Ströme), Spannungsversorgung stabilisiert mit Keramikkondensator (KerKo).

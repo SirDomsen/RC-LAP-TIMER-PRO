@@ -1,4 +1,4 @@
-#include "storage.h"
+﻿#include "storage.h"
 #include "lap_logic.h"
 #include "web_server.h"
 #include <EEPROM.h>
@@ -1333,132 +1333,6 @@ void flushCurrentSessionToIndex() {
   updateFsUsageCache();
 }
 
-static void collectSessionFilesRecursive(const String& basePath, std::vector<String>& files) {
-  Dir dir = LittleFS.openDir(basePath);
-  while (dir.next()) {
-    yield();
-    String entryName = dir.fileName();
-    String fullPath = (basePath == "/") ? ("/" + entryName) : (basePath + "/" + entryName);
-    if (dir.isDirectory()) {
-      collectSessionFilesRecursive(fullPath, files);
-    } else {
-      if (fullPath.endsWith(".json")) {
-        if (fullPath == "/tracks.json" || fullPath == "/sessions.json" || fullPath == "/wifi.json" ||
-            fullPath == "/names.json" || fullPath == "/daily_best.json" || fullPath == "/sessions.tmp") {
-          continue;
-        }
-        int firstSlash = fullPath.indexOf('/');
-        int secondSlash = fullPath.indexOf('/', firstSlash + 1);
-        if (secondSlash > 0) {
-          files.push_back(fullPath);
-        }
-      }
-    }
-  }
-}
-
-bool rebuildSessionsIndex(uint16_t& sessionsFound) {
-  sessionsFound = 0;
-  if (ESP.getFreeHeap() < 14000) return false;
-
-  std::vector<String> sessionFiles;
-  collectSessionFilesRecursive("/", sessionFiles);
-
-  File fOut = LittleFS.open("/sessions.tmp", "w");
-  if (!fOut) return false;
-
-  fOut.print("{\"sessions\":[");
-  bool firstWritten = false;
-
-  for (const String& fPath : sessionFiles) {
-    yield();
-    if (!LittleFS.exists(fPath)) continue;
-
-    File fIn = LittleFS.open(fPath, "r");
-    if (!fIn) continue;
-
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, fIn);
-    fIn.close();
-    if (err) continue;
-
-    String sId = doc["id"] | "";
-    if (sId.length() == 0) {
-      int lastSlash = fPath.lastIndexOf('/');
-      if (lastSlash >= 0 && fPath.endsWith(".json")) {
-        sId = fPath.substring(lastSlash + 1, fPath.length() - 5);
-      }
-    }
-
-    String trkId = doc["trackId"] | "";
-    String trkName = doc["trackName"] | trkId;
-    uint8_t sMode = doc["mode"] | 0;
-    uint64_t startTs = doc["startTs"] | 0;
-    uint64_t endTs = startTs;
-
-    uint16_t cLaps[MAX_CARS + 1] = {0};
-    uint32_t cBest[MAX_CARS + 1] = {0};
-    uint16_t cValid[MAX_CARS + 1] = {0};
-    uint64_t cTimeSum[MAX_CARS + 1] = {0};
-    uint32_t cAvg[MAX_CARS + 1] = {0};
-
-    if (doc["laps"].is<JsonArray>()) {
-      JsonArray laps = doc["laps"].as<JsonArray>();
-      for (JsonObject l : laps) {
-        uint8_t c = l["carId"] | 0;
-        if (c >= 1 && c <= MAX_CARS) {
-          uint16_t lNum = l["lap"] | 0;
-          if (lNum > cLaps[c]) cLaps[c] = lNum;
-          else cLaps[c]++;
-
-          uint32_t tMs = l["time"] | 0;
-          bool outlap = (l["outlap"] | 0) != 0;
-          if (!outlap && tMs > 0) {
-            if (cBest[c] == 0 || tMs < cBest[c]) cBest[c] = tMs;
-            cValid[c]++;
-            cTimeSum[c] += tMs;
-            cAvg[c] = cTimeSum[c] / cValid[c];
-          }
-
-          uint64_t tsMs = l["ts"] | 0;
-          if (tsMs / 1000ULL > endTs) endTs = tsMs / 1000ULL;
-        }
-      }
-    }
-
-    String entryJson = buildSessionEntryJson(
-      sId,
-      fPath,
-      trkId,
-      trkName,
-      sMode,
-      startTs,
-      endTs,
-      cLaps,
-      cBest,
-      cAvg
-    );
-
-    if (firstWritten) fOut.print(",");
-    else firstWritten = true;
-
-    fOut.print(entryJson);
-    sessionsFound++;
-  }
-
-  fOut.print("]}                ");
-  fOut.close();
-
-  LittleFS.remove("/sessions.json");
-  LittleFS.rename("/sessions.tmp", "/sessions.json");
-
-  currentSessionIndexOffset = 0;
-  currentSessionIndexLen = 0;
-  sessionIndexDirty = false;
-  updateFsUsageCache();
-  return true;
-}
-
 void startNewSessionFrame(uint8_t mode) {
   if (currentSessionActive && sessionIndexDirty) {
     flushCurrentSessionToIndex();
@@ -1577,14 +1451,17 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
 
   sessionLastEndSec = timestampMs / 1000ULL;
 
-  // 5. Runden-JSON formatieren & stromausfallsicher in die Session-Datei schreiben
-  String escDriver = escapeJsonStr(driverNames[carId]);
-  String escCar = escapeJsonStr(carNames[carId]);
-
-  char newLapJson[360];
-  snprintf(newLapJson, sizeof(newLapJson),
-           "{\"carId\":%u,\"driver\":\"%s\",\"car\":\"%s\",\"lap\":%u,\"time\":%lu,\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,\"pos\":%u,\"ts\":%llu,\"outlap\":%u}",
-           carId, escDriver.c_str(), escCar.c_str(), lapNum, lapTimeMs, sz1, sz2, sz3, sz4, position, timestampMs, isOutLap ? 1 : 0);
+  // 5. Runden-JSON formatieren & stromausfallsicher in die Session-Datei schreiben (Speicheroptimiert)
+  char newLapJson[220];
+  int len = snprintf(newLapJson, sizeof(newLapJson),
+                     "{\"carId\":%u,\"lap\":%u,\"time\":%lu,\"pos\":%u,\"ts\":%llu",
+                     carId, lapNum, lapTimeMs, position, timestampMs);
+  if (sz1 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz1\":%lu", (unsigned long)sz1);
+  if (sz2 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz2\":%lu", (unsigned long)sz2);
+  if (sz3 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz3\":%lu", (unsigned long)sz3);
+  if (sz4 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz4\":%lu", (unsigned long)sz4);
+  if (isOutLap) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"outlap\":1");
+  snprintf(newLapJson + len, sizeof(newLapJson) - len, "}");
 
   if (!LittleFS.exists(currentSessionFilePath)) {
     File f = LittleFS.open(currentSessionFilePath, "w");

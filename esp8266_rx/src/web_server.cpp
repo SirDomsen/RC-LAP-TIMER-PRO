@@ -457,7 +457,7 @@ void initNetworkAndServer() {
   server.on("/api/deletedriverstats", HTTP_POST, handlePostDeleteDriverStats);
   server.on("/api/deleteallstats", HTTP_POST, handlePostDeleteAllStats);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
-  server.on("/api/rebuild_sessions", HTTP_POST, handlePostRebuildSessions);
+
 
   server.on("/api/tracks", HTTP_GET, handleGetTracks);
   server.on("/api/tracks/select", HTTP_POST, handlePostSelectTrack);

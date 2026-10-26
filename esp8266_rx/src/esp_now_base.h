@@ -25,6 +25,7 @@ struct __attribute__((packed)) BeaconSyncPacket {
 struct __attribute__((packed)) AlivePacket {
   uint8_t stationId;
   uint8_t batteryLow; // 0 = OK, 1 = Akku leer
+  uint8_t isUnicast;  // 0 = Broadcast/Relay, 1 = Unicast Lock
 };
 
 // OTA Wartungsmodus-Trigger mit Ziel-Netzwerkdaten
@@ -66,6 +67,7 @@ void initESPNowBase();
 void handleTimeSyncBroadcast();
 bool isStationOnline(uint8_t stationId);
 bool isStationBatteryLow(uint8_t stationId);
+bool isStationUnicast(uint8_t stationId);
 
 // Sendet den OTA-Trigger mit den Ziel-WLAN-Daten an alle SZs
 void sendSZOtaTrigger(uint8_t targetMode, const char* ssid, const char* pass);

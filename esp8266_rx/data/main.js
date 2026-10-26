@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.2.6'; 
+window.UI_VERSION = '4.2.7'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -1918,15 +1918,26 @@ async function updateData(fullSync = false) {
       let sz2 = document.getElementById('sz2Status');
       let sz3 = document.getElementById('sz3Status');
       
-      let getStatusColor = (online, batLow) => {
+      let getStatusColor = (online, batLow, isUnicast) => {
         if (!online) return 'var(--neon-red)';
         if (batLow) return 'var(--neon-orange)';
+        if (isUnicast) return '#d946ef'; // Neon-Lila für Unicast-Lock mit Hardware-ACK
         return 'var(--neon-green)';
       };
 
-      if (sz1) sz1.style.color = getStatusColor(stations.sz1, stations.sz1Bat);
-      if (sz2) sz2.style.color = getStatusColor(stations.sz2, stations.sz2Bat);
-      if (sz3) sz3.style.color = getStatusColor(stations.sz3, stations.sz3Bat);
+      if (sz1) {
+        sz1.style.color = getStatusColor(stations.sz1, stations.sz1Bat, stations.sz1Uni);
+        sz1.title = !stations.sz1 ? 'Offline' : (stations.sz1Uni ? 'Unicast aktiv (Hardware-ACK)' : 'Broadcast/Relay');
+      }
+      if (sz2) {
+        sz2.style.color = getStatusColor(stations.sz2, stations.sz2Bat, stations.sz2Uni);
+        sz2.title = !stations.sz2 ? 'Offline' : (stations.sz2Uni ? 'Unicast aktiv (Hardware-ACK)' : 'Broadcast/Relay');
+      }
+      if (sz3) {
+        sz3.style.color = getStatusColor(stations.sz3, stations.sz3Bat, stations.sz3Uni);
+        sz3.title = !stations.sz3 ? 'Offline' : (stations.sz3Uni ? 'Unicast aktiv (Hardware-ACK)' : 'Broadcast/Relay');
+      }
+
     }
   } catch (err) {}
 

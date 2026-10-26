@@ -55,7 +55,10 @@ void handleGetStationsStatus(AsyncWebServerRequest *request) {
   json += "\"sz3\":" + String(isStationOnline(3) ? "true" : "false") + ",";
   json += "\"sz1Bat\":" + String(isStationBatteryLow(1) ? "true" : "false") + ",";
   json += "\"sz2Bat\":" + String(isStationBatteryLow(2) ? "true" : "false") + ",";
-  json += "\"sz3Bat\":" + String(isStationBatteryLow(3) ? "true" : "false");
+  json += "\"sz3Bat\":" + String(isStationBatteryLow(3) ? "true" : "false") + ",";
+  json += "\"sz1Uni\":" + String(isStationUnicast(1) ? "true" : "false") + ",";
+  json += "\"sz2Uni\":" + String(isStationUnicast(2) ? "true" : "false") + ",";
+  json += "\"sz3Uni\":" + String(isStationUnicast(3) ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
@@ -333,21 +336,6 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
   }
 }
 
-void handlePostRebuildSessions(AsyncWebServerRequest *request) {
-  if (isHeapCriticalForFileTransfer()) {
-    request->send(503, "application/json", "{\"success\":false,\"error\":\"Heap zu niedrig (<20 kB)\"}");
-    return;
-  }
-  uint16_t found = 0;
-  bool ok = rebuildSessionsIndex(found);
-  if (ok) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "{\"success\":true,\"count\":%u}", (unsigned int)found);
-    request->send(200, "application/json", buf);
-  } else {
-    request->send(500, "application/json", "{\"success\":false,\"error\":\"Rebuild fehlgeschlagen\"}");
-  }
-}
 
 // --- STRECKEN-HANDLERS & TOP-5 REKORDVERWALTUNG ---
 void handleGetTracks(AsyncWebServerRequest *request) {
