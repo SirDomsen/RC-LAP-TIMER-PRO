@@ -152,7 +152,7 @@ static void blinkGreenLED(int count) {
 
 static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
@@ -178,7 +178,7 @@ static void setupFallbackAP() {
   ghostWlanActive = false;
   WiFi.disconnect(true);
   delay(50);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
@@ -190,7 +190,7 @@ static void setupFallbackAP() {
       local_IP = parsed;
     }
   }
-  IPAddress gateway(192, 168, 0, 8);
+  IPAddress gateway = local_IP;
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(local_IP, gateway, subnet);
   
@@ -211,7 +211,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
-    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
@@ -240,7 +240,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
-    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
