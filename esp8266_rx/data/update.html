@@ -105,8 +105,10 @@
     .btn-cyan:hover { background: var(--neon-cyan); color: #000; }
     .btn-green { background: #00ff66; color: #000; }
     .btn-green:hover { background: #00cc52; }
-    .btn-red { background: rgba(255, 51, 102, 0.15); color: var(--neon-red); border-color: var(--neon-red); margin-top: 10px; }
-    .btn-red:hover { background: var(--neon-red); color: #fff; }
+    .btn-red { background: rgba(255, 51, 102, 0.15); color: var(--neon-red); border-color: var(--neon-red); }
+    .btn-red:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 15px rgba(255, 51, 102, 0.5); }
+    .btn-orange { background: rgba(255, 153, 0, 0.15); color: var(--neon-orange); border-color: var(--neon-orange); }
+    .btn-orange:hover { background: var(--neon-orange); color: #000; box-shadow: 0 0 15px rgba(255, 153, 0, 0.5); }
     .btn-purple { background: var(--neon-purple); color: #fff; border-color: var(--neon-purple); }
     .btn-purple:hover { background: #9900ff; box-shadow: 0 0 15px rgba(181, 50, 255, 0.6); }
     .modal {
@@ -131,8 +133,15 @@
       width: 100%;
       max-width: 460px;
       text-align: center;
-      border: 1px solid var(--neon-purple);
-      box-shadow: 0 0 35px rgba(181, 50, 255, 0.45);
+      border: 1px solid var(--card-border);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .modal-content.theme-purple { border-color: var(--neon-purple); box-shadow: 0 0 35px rgba(181, 50, 255, 0.45); }
+    .modal-content.theme-danger { border-color: var(--neon-red); box-shadow: 0 0 35px rgba(255, 51, 102, 0.45); }
+    .modal-content.theme-orange { border-color: var(--neon-orange); box-shadow: 0 0 35px rgba(255, 153, 0, 0.45); }
+    .modal-content.theme-cyan   { border-color: var(--neon-cyan); box-shadow: 0 0 35px rgba(0, 229, 255, 0.4); }
+    .modal-content.theme-green  { border-color: var(--neon-green); box-shadow: 0 0 35px rgba(0, 255, 102, 0.4); }
       box-sizing: border-box;
       animation: modalFadeIn 0.25s ease-out;
     }
@@ -346,7 +355,7 @@
       <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
         Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .
       </p>
-      <button class="btn btn-red" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
+      <button class="btn btn-red" style="margin-top:10px;" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
     </div>
 
     <!-- FIRMWARE OTA UPDATE CARD -->
@@ -372,28 +381,27 @@
     </div>
   </div>
 
-  <!-- MODAL: FIRMWARE CONFIRM -->
-  <div id="fwConfirmModal" class="modal">
-    <div class="modal-content">
-      <h3 style="color:var(--neon-purple); font-family:'Orbitron',sans-serif; margin-top:0; font-size:18px; letter-spacing:1px;">⚡ FIRMWARE OTA FLASHEN</h3>
+  <!-- UNIVERSELLES DIALOG-MODAL -->
+  <div id="universalModal" class="modal">
+    <div class="modal-content" id="universalModalContent">
+      <h3 id="universalModalTitle" style="font-family:'Orbitron',sans-serif; margin-top:0; font-size:18px; letter-spacing:1px;">DIALOG</h3>
       
-      <div style="background:rgba(0,0,0,0.5); padding:12px 15px; border-radius:8px; border:1px dashed var(--neon-purple); margin:15px 0; text-align:left;">
-        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Ausgewählte Datei:</div>
-        <div id="fwModalFileName" style="font-family:monospace; font-size:14px; color:#fff; font-weight:bold; word-break:break-all;">firmware.bin</div>
-        <div id="fwModalFileSize" style="font-size:12px; color:var(--neon-cyan); margin-top:4px;">--- KB</div>
+      <div id="universalModalBox" style="display:none; background:rgba(0,0,0,0.5); padding:12px 15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin:15px 0; text-align:left;">
+        <div id="universalModalBoxLabel" style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Details:</div>
+        <div id="universalModalBoxContent" style="font-family:monospace; font-size:13px; color:#fff; font-weight:bold; word-break:break-all;"></div>
+        <div id="universalModalBoxSub" style="font-size:12px; color:var(--neon-cyan); margin-top:4px;"></div>
       </div>
 
-      <p style="font-size:14px; color:var(--text-main); margin-bottom:20px; line-height:1.4;">
-        Soll die Firmware jetzt per Funk (OTA) geflasht werden?<br>
-        <span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Verbindung während der Übertragung nicht trennen! Der ESP8266 startet nach dem Flash automatisch neu.</span>
-      </p>
+      <p id="universalModalMessage" style="font-size:14px; color:var(--text-main); margin-bottom:20px; line-height:1.4;"></p>
 
-      <div style="display:flex; gap:10px;">
-        <button class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold;" onclick="closeFwConfirmModal()">ABBRECHEN</button>
-        <button class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmFirmwareUpload()">FLASHEN ⚡</button>
+      <div id="universalModalButtons" style="display:flex; gap:10px;">
+        <button id="universalModalCancelBtn" class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold; margin-top:0;" onclick="closeUniversalDialog(false)">ABBRECHEN</button>
+        <button id="universalModalConfirmBtn" class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold; margin-top:0;" onclick="closeUniversalDialog(true)">BESTÄTIGEN</button>
       </div>
     </div>
   </div>
+
+
 
   <script>
     let selectedFiles = [];
@@ -557,24 +565,110 @@
       }
     }
 
-    function startFirmwareUpload() {
-      if (!selectedFirmwareFile) return;
-      let nameElem = document.getElementById('fwModalFileName');
-      let sizeElem = document.getElementById('fwModalFileSize');
-      if (nameElem) nameElem.innerText = selectedFirmwareFile.name;
-      if (sizeElem) sizeElem.innerText = (selectedFirmwareFile.size / 1024).toFixed(1) + " KB";
-      let modal = document.getElementById('fwConfirmModal');
-      if (modal) modal.style.display = 'block';
+    // --- UNIVERSELLES DIALOG-SYSTEM (Vorbild Firmware-OTA) ---
+    let _dialogResolver = null;
+
+    function showUniversalDialog(opts) {
+      return new Promise((resolve) => {
+        _dialogResolver = resolve;
+        const modal = document.getElementById('universalModal');
+        const content = document.getElementById('universalModalContent');
+        const title = document.getElementById('universalModalTitle');
+        const box = document.getElementById('universalModalBox');
+        const boxLabel = document.getElementById('universalModalBoxLabel');
+        const boxContent = document.getElementById('universalModalBoxContent');
+        const boxSub = document.getElementById('universalModalBoxSub');
+        const msg = document.getElementById('universalModalMessage');
+        const cancelBtn = document.getElementById('universalModalCancelBtn');
+        const confirmBtn = document.getElementById('universalModalConfirmBtn');
+
+        // Theme festlegen
+        const theme = opts.theme || 'info';
+        const cleanTheme = (theme === 'red') ? 'danger' : theme;
+        content.className = 'modal-content theme-' + cleanTheme;
+
+        const themeColors = {
+          purple: 'var(--neon-purple)',
+          danger: 'var(--neon-red)',
+          orange: 'var(--neon-orange)',
+          cyan: 'var(--neon-cyan)',
+          info: 'var(--neon-cyan)',
+          green: 'var(--neon-green)',
+          success: 'var(--neon-green)'
+        };
+        const activeColor = themeColors[cleanTheme] || 'var(--neon-cyan)';
+        title.style.color = activeColor;
+        title.innerHTML = opts.title || 'HINWEIS';
+
+        // Details-Box (optional)
+        if (opts.boxContent) {
+          box.style.display = 'block';
+          box.style.borderColor = activeColor;
+          boxLabel.innerText = opts.boxLabel || 'Details:';
+          boxContent.innerText = opts.boxContent;
+          if (opts.boxSub) {
+            boxSub.style.display = 'block';
+            boxSub.innerText = opts.boxSub;
+          } else {
+            boxSub.style.display = 'none';
+          }
+        } else {
+          box.style.display = 'none';
+        }
+
+        // Nachricht
+        msg.innerHTML = opts.message || '';
+
+        // Buttons
+        if (opts.isAlert) {
+          cancelBtn.style.display = 'none';
+          confirmBtn.innerText = opts.confirmText || 'VERSTANDEN';
+          confirmBtn.className = 'btn ' + (cleanTheme === 'purple' ? 'btn-purple' : cleanTheme === 'danger' ? 'btn-red' : cleanTheme === 'orange' ? 'btn-orange' : cleanTheme === 'green' || cleanTheme === 'success' ? 'btn-green' : 'btn-cyan');
+          confirmBtn.style.flex = '1';
+        } else {
+          cancelBtn.style.display = 'block';
+          cancelBtn.innerText = opts.cancelText || 'ABBRECHEN';
+          confirmBtn.innerText = opts.confirmText || 'BESTÄTIGEN';
+          confirmBtn.className = 'btn ' + (cleanTheme === 'purple' ? 'btn-purple' : cleanTheme === 'danger' ? 'btn-red' : cleanTheme === 'orange' ? 'btn-orange' : cleanTheme === 'green' || cleanTheme === 'success' ? 'btn-green' : 'btn-cyan');
+        }
+
+        modal.style.display = 'block';
+      });
     }
 
-    function closeFwConfirmModal() {
-      let modal = document.getElementById('fwConfirmModal');
+    function closeUniversalDialog(result) {
+      const modal = document.getElementById('universalModal');
       if (modal) modal.style.display = 'none';
+      if (_dialogResolver) {
+        let res = _dialogResolver;
+        _dialogResolver = null;
+        res(result);
+      }
     }
 
-    function confirmFirmwareUpload() {
-      closeFwConfirmModal();
-      executeFirmwareFlash();
+    function showConfirm(opts) {
+      return showUniversalDialog(Object.assign({}, opts, { isAlert: false }));
+    }
+
+    function showAlert(opts) {
+      return showUniversalDialog(Object.assign({}, opts, { isAlert: true }));
+    }
+
+    async function startFirmwareUpload() {
+      if (!selectedFirmwareFile) return;
+      let ok = await showConfirm({
+        title: "⚡ FIRMWARE OTA FLASHEN",
+        theme: "purple",
+        boxLabel: "Ausgewählte Datei:",
+        boxContent: selectedFirmwareFile.name,
+        boxSub: (selectedFirmwareFile.size / 1024).toFixed(1) + " KB",
+        message: 'Soll die Firmware jetzt per Funk (OTA) geflasht werden?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Verbindung während der Übertragung nicht trennen! Der ESP8266 startet nach dem Flash automatisch neu.</span>',
+        confirmText: "FLASHEN ⚡",
+        cancelText: "ABBRECHEN"
+      });
+      if (ok) {
+        executeFirmwareFlash();
+      }
     }
 
     function executeFirmwareFlash() {
@@ -703,13 +797,25 @@
       });
 
       if (filesToDelete.length === 0) {
-        alert("Keine Dateien im Ordner gefunden.");
+        await showAlert({
+          title: "ℹ️ HINWEIS",
+          theme: "orange",
+          message: "Keine Dateien im Ordner gefunden."
+        });
         return;
       }
 
-      if (!confirm(`Möchtest du den Ordner "${cleanFolder}" und alle darin enthaltenen ${filesToDelete.length} Dateien wirklich unwiderruflich löschen?`)) {
-        return;
-      }
+      let ok = await showConfirm({
+        title: "📁 ORDNER LÖSCHEN",
+        theme: "danger",
+        boxLabel: "Zu löschender Ordner:",
+        boxContent: "/" + cleanFolder,
+        boxSub: `${filesToDelete.length} Datei(en) im Ordner`,
+        message: `Möchtest du den Ordner <strong>"${cleanFolder}"</strong> und alle darin enthaltenen <strong>${filesToDelete.length} Dateien</strong> wirklich unwiderruflich löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:8px;">⚠️ Alle Dateien in diesem Verzeichnis werden dauerhaft entfernt!</span>`,
+        confirmText: "ORDNER LÖSCHEN 🗑️",
+        cancelText: "ABBRECHEN"
+      });
+      if (!ok) return;
 
       let prog = document.getElementById('backupProgressText');
       if (prog) {
@@ -748,7 +854,11 @@
       });
 
       if (filesForFolder.length === 0) {
-        alert("Keine Dateien im Ordner gefunden.");
+        await showAlert({
+          title: "ℹ️ HINWEIS",
+          theme: "orange",
+          message: "Keine Dateien im Ordner gefunden."
+        });
         return;
       }
 
@@ -810,7 +920,11 @@
           prog.style.color = 'var(--neon-red)';
           prog.innerText = `❌ Fehler beim Download: ${err.message}`;
         } else {
-          alert("Fehler: " + err.message);
+          await showAlert({
+            title: "❌ DOWNLOAD FEHLER",
+            theme: "danger",
+            message: "Fehler beim Download: " + err.message
+          });
         }
       }
     }
@@ -1044,17 +1158,38 @@
     }
 
     async function deleteFile(name) {
-      if (!confirm(`Datei "${name}" wirklich dauerhaft aus dem Flash löschen?`)) return;
+      let ok = await showConfirm({
+        title: "🗑️ DATEI LÖSCHEN",
+        theme: "danger",
+        boxLabel: "Zu löschende Datei:",
+        boxContent: name,
+        message: `Möchtest du die Datei <strong>"${name}"</strong> wirklich dauerhaft aus dem Flash-Speicher löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:8px;">⚠️ Dieser Vorgang kann nicht rückgängig gemacht werden!</span>`,
+        confirmText: "LÖSCHEN 🗑️",
+        cancelText: "ABBRECHEN"
+      });
+      if (!ok) return;
+
       try {
         await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
         loadFilesList();
       } catch(e) {
-        alert("Fehler beim Löschen: " + e.message);
+        await showAlert({
+          title: "❌ FEHLER BEIM LÖSCHEN",
+          theme: "danger",
+          message: "Fehler beim Löschen: " + e.message
+        });
       }
     }
 
     async function triggerRestart() {
-      if (!confirm("ESP8266 jetzt neu starten, um den Arbeitsspeicher zu defragmentieren?")) return;
+      let ok = await showConfirm({
+        title: "⚡ ESP8266 NEUSTART",
+        theme: "orange",
+        message: `ESP8266 jetzt neu starten, um den Arbeitsspeicher zu defragmentieren?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:8px;">ℹ️ Die Web-Verbindung wird kurzzeitig unterbrochen.</span>`,
+        confirmText: "NEU STARTEN ⚡",
+        cancelText: "ABBRECHEN"
+      });
+      if (!ok) return;
 
       let status = document.getElementById('statusText');
       status.style.color = 'var(--neon-orange)';
@@ -1105,7 +1240,11 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch (err) {
-        alert("Fehler beim Herunterladen von " + cleanName + ": " + err.message);
+        await showAlert({
+          title: "❌ DOWNLOAD FEHLER",
+          theme: "danger",
+          message: `Fehler beim Herunterladen von "${cleanName}": ${err.message}`
+        });
       }
     }
 
@@ -1213,7 +1352,11 @@
 
     async function downloadAllFilesZip() {
       if (!cachedFiles || cachedFiles.length === 0) {
-        alert("Keine Dateien im Flash vorhanden!");
+        await showAlert({
+          title: "ℹ️ HINWEIS",
+          theme: "orange",
+          message: "Keine Dateien im Flash-Speicher vorhanden!"
+        });
         return;
       }
 
@@ -1277,7 +1420,11 @@
           prog.style.color = 'var(--neon-red)';
           prog.innerText = `❌ Backup fehlgeschlagen: ${err.message}`;
         } else {
-          alert("Fehler beim Erstellen des Backups: " + err.message);
+          await showAlert({
+            title: "❌ BACKUP FEHLER",
+            theme: "danger",
+            message: "Fehler beim Erstellen des Backups: " + err.message
+          });
         }
       } finally {
         if (btn) btn.disabled = false;
@@ -1285,12 +1432,12 @@
     }
 
     window.onclick = function(event) {
-      let modal = document.getElementById('fwConfirmModal');
-      if (event.target === modal) closeFwConfirmModal();
+      let modal = document.getElementById('universalModal');
+      if (event.target === modal) closeUniversalDialog(false);
     };
 
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') closeFwConfirmModal();
+      if (e.key === 'Escape') closeUniversalDialog(false);
     });
 
     document.addEventListener('DOMContentLoaded', () => {
