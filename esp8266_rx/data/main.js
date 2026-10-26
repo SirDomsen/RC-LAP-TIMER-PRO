@@ -2243,11 +2243,11 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
           lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
         } else if (isRaceMode && !announceLapTimesInRace) {
           if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
-          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persÃ¶nliche Bestzeit! " + timeSec;
+          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
           else lapAnnouncement = driverName + posText;
         } else {
           if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
-          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persÃ¶nliche Bestzeit! " + timeSec;
+          else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
           else lapAnnouncement = driverName + posText + timeSec;
         }
         speak(lapAnnouncement);

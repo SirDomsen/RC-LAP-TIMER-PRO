@@ -108,12 +108,22 @@ bool isDuplicateEvent(uint32_t eventId) {
 }
 
 void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  // 1. Hotspot ACK abfangen
+  // 1a. Hotspot ACK abfangen
   if (len == sizeof(HotspotAckPacket)) {
     HotspotAckPacket ack;
     memcpy(&ack, incomingData, sizeof(ack));
     if (ack.magicCode == HOTSPOT_ACK_MAGIC) {
       
+    }
+    return;
+  }
+
+  // 1b. OTA ACK (Arm-and-Confirm) abfangen
+  if (len == sizeof(OtaAckPacket)) {
+    OtaAckPacket oAck;
+    memcpy(&oAck, incomingData, sizeof(oAck));
+    if (oAck.magicCode == OTA_ACK_MAGIC) {
+      logDebugPacket(oAck.stationId, 0, 0x07A);
     }
     return;
   }
@@ -157,7 +167,6 @@ void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
 
 void initESPNowBase() {
   if (esp_now_init() != 0) {
-    
     return;
   }
 
@@ -171,13 +180,12 @@ void initESPNowBase() {
   if (!esp_now_is_peer_exist(broadcastAddress)) {
     esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, currentCh, NULL, 0);
   }
-  
-  
 }
 
 void handleTimeSyncBroadcast() {
   static uint32_t lastSyncTime = 0;
-  if (millis() - lastSyncTime >= 1000UL) {
+  // Beacon-Frequenz auf 500 ms verdoppelt für blitzschnellen Kanal-Lock & Ausfallsicherheit
+  if (millis() - lastSyncTime >= 500UL) {
     lastSyncTime = millis();
     
     uint8_t currentCh = WiFi.channel();

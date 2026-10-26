@@ -36,6 +36,12 @@ struct __attribute__((packed)) OtaTriggerPacket {
   char     pass[64];
 };
 
+#define OTA_ACK_MAGIC 0x07A1235
+struct __attribute__((packed)) OtaAckPacket {
+  uint32_t magicCode;
+  uint8_t  stationId;
+};
+
 // Hotspot Synchronisation
 #define HOTSPOT_SYNC_MAGIC 0x08B2345
 struct __attribute__((packed)) HotspotSyncPacket {
