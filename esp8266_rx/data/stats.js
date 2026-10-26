@@ -835,7 +835,16 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
 }
 
 async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum) {
-  if (!confirm(`Runde ${lapNum} wirklich aus dieser Session löschen?`)) return;
+  let ok = await showConfirm({
+    title: "🗑️ RUNDE LÖSCHEN",
+    theme: "danger",
+    boxLabel: "Ausgewählte Runde:",
+    boxContent: `Runde ${lapNum} (Auto ${carId})`,
+    message: `Möchtest du Runde ${lapNum} wirklich dauerhaft aus dieser Session löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Die Rundenzeit wird unwiderruflich entfernt!</span>`,
+    confirmText: "LÖSCHEN 🗑️",
+    cancelText: "ABBRECHEN"
+  });
+  if (!ok) return;
   try {
     await fetch(`/api/deletelap?sessionId=${encodeURIComponent(sessionId)}&id=${carId}&lap=${lapNum}`, { method: 'POST' });
     delete sessionFileCache[sessionFile];
@@ -865,7 +874,16 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
 }
 
 async function deleteSession(sessionId) {
-  if (!confirm("Möchtest du diesen Durchgang inklusive seiner Session-Datei wirklich löschen?")) return;
+  let ok = await showConfirm({
+    title: "🗑️ SESSION LÖSCHEN",
+    theme: "danger",
+    boxLabel: "Durchgang:",
+    boxContent: sessionId,
+    message: "Möchtest du diesen Durchgang inklusive aller gespeicherten Rundenzeiten wirklich unwiderruflich löschen?<br><span style=\"color:var(--neon-red); font-size:12px; display:block; margin-top:6px;\">⚠️ Die Datei wird dauerhaft aus dem Flash-Speicher entfernt!</span>",
+    confirmText: "LÖSCHEN 🗑️",
+    cancelText: "ABBRECHEN"
+  });
+  if (!ok) return;
   try {
     await fetch('/api/deletesession?id=' + encodeURIComponent(sessionId), { method: 'POST' });
     sessionFileCache = {};
@@ -1351,7 +1369,16 @@ function formatTimestamp(ts) {
 async function confirmDeleteDriverStats() {
   if (!activeStatsCarId) return;
   let driverName = carNamesMap[activeStatsCarId]?.driver || ("Fahrer " + activeStatsCarId);
-  if (!confirm(`Wirklich ALLE gespeicherten Einträge von ${driverName} aus allen Sessions dauerhaft löschen?`)) return;
+  let ok = await showConfirm({
+    title: "🗑️ FAHRER-DATEN LÖSCHEN",
+    theme: "danger",
+    boxLabel: "Fahrer:",
+    boxContent: `${driverName} (Auto ${activeStatsCarId})`,
+    message: `Möchtest du wirklich <strong>ALLE gespeicherten Einträge</strong> von <strong>${driverName}</strong> aus allen Sessions dauerhaft löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Diese Aktion kann nicht rückgängig gemacht werden!</span>`,
+    confirmText: "LÖSCHEN 🗑️",
+    cancelText: "ABBRECHEN"
+  });
+  if (!ok) return;
   try {
     await fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' });
     sessionFileCache = {};
@@ -1364,7 +1391,16 @@ async function confirmDeleteDriverStats() {
 }
 
 async function confirmDeleteAllStats() {
-  if (!confirm("WARNUNG: Möchtest du wirklich ALLE Sessions und Streckenrekorde unwiderruflich löschen?")) return;
+  let ok = await showConfirm({
+    title: "🛑 ALLE STATISTIKEN LÖSCHEN",
+    theme: "danger",
+    boxLabel: "Aktion:",
+    boxContent: "Komplett-Löschung aller Sessions & Streckenrekorde",
+    message: "WARNUNG: Möchtest du wirklich <strong>ALLE Sessions und Streckenrekorde</strong> unwiderruflich löschen?<br><span style=\"color:var(--neon-red); font-size:12px; display:block; margin-top:8px;\">⚠️ Sämtliche Runden- und Renndaten aller Strecken werden dauerhaft vernichtet!</span>",
+    confirmText: "ALLES LÖSCHEN 🛑",
+    cancelText: "ABBRECHEN"
+  });
+  if (!ok) return;
   try {
     await fetch('/api/deleteallstats', { method: 'POST' });
     sessionFileCache = {};
@@ -1372,7 +1408,11 @@ async function confirmDeleteAllStats() {
     openDriverDetailsMap = {};
     await fetchSessionsAndStorageInfo();
     if (typeof loadTracks === 'function') await loadTracks();
-    alert("Alle Statistiken wurden gelöscht.");
+    await showAlert({
+      title: "✅ GELÖSCHT",
+      theme: "success",
+      message: "Alle Statistiken und Session-Dateien wurden erfolgreich gelöscht."
+    });
     closeStatsOverviewModal();
   } catch (err) {
     console.error(err);
@@ -1427,7 +1467,11 @@ async function downloadStatsBackup() {
     downloadAnchor.click();
     downloadAnchor.remove();
   } catch (e) {
-    alert("Fehler beim Erstellen des Backups: " + e.message);
+    await showAlert({
+      title: "❌ BACKUP FEHLER",
+      theme: "danger",
+      message: "Fehler beim Erstellen des Backups: " + e.message
+    });
   } finally {
     if (btn) {
       btn.innerText = originalText;
@@ -1445,7 +1489,18 @@ async function handleRestoreBackup(event) {
   let file = event.target.files[0];
   if (!file) return;
 
-  if (!confirm("Soll das Backup wiederhergestellt werden?")) {
+  let ok = await showConfirm({
+    title: "📦 BACKUP WIEDERHERSTELLEN",
+    theme: "orange",
+    boxLabel: "Ausgewählte Backup-Datei:",
+    boxContent: file.name,
+    boxSub: (file.size / 1024).toFixed(1) + " KB",
+    message: "Soll dieses Backup jetzt auf dem ESP8266 wiederhergestellt werden?<br><span style=\"color:var(--neon-orange); font-size:12px; display:block; margin-top:6px;\">⚠️ Vorhandene Statistiken werden mit den Backup-Daten überschrieben.</span>",
+    confirmText: "WIEDERHERSTELLEN 📦",
+    cancelText: "ABBRECHEN"
+  });
+
+  if (!ok) {
     event.target.value = '';
     return;
   }
@@ -1476,7 +1531,11 @@ async function handleRestoreBackup(event) {
       fdIdx.append('data', idxBlob, '/sessions.json');
       await fetch('/api/upload', { method: 'POST', body: fdIdx });
 
-      alert("Backup erfolgreich wiederhergestellt!");
+      await showAlert({
+        title: "✅ ERFOLG",
+        theme: "success",
+        message: "Backup erfolgreich wiederhergestellt!"
+      });
       sessionFileCache = {};
       openSessionsMap = {};
       openDriverDetailsMap = {};
@@ -1486,15 +1545,30 @@ async function handleRestoreBackup(event) {
       formData.append('data', file, 'backup.json');
       let res = await fetch('/api/upload', { method: 'POST', body: formData });
       if (res.ok) {
-        alert("Backup erfolgreich hochgeladen!");
+        await showAlert({
+          title: "✅ ERFOLG",
+          theme: "success",
+          message: "Backup erfolgreich hochgeladen!"
+        });
         await openStatsOverviewModal();
       } else {
-        alert("Fehler beim Hochladen des Backups.");
+        await showAlert({
+          title: "❌ FEHLER",
+          theme: "danger",
+          message: "Fehler beim Hochladen des Backups."
+        });
       }
     }
   } catch (err) {
-    alert("Fehler beim Einlesen: " + err.message);
+    await showAlert({
+      title: "❌ FEHLER",
+      theme: "danger",
+      message: "Fehler beim Einlesen: " + err.message
+    });
   }
+
+  event.target.value = '';
+}
 
   event.target.value = '';
 }

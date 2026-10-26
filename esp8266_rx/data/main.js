@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.2.2'; 
+window.UI_VERSION = '4.2.4'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -109,6 +109,116 @@ async function forceCleanReload() {
   }
 
   window.location.replace(window.location.href.split('?')[0] + '?v=' + Date.now());
+}
+
+// --- UNIVERSELLES DIALOG-SYSTEM (Vorbild Firmware-OTA) ---
+let _dialogResolver = null;
+
+function showUniversalDialog(opts) {
+  return new Promise((resolve) => {
+    _dialogResolver = resolve;
+    const modal = document.getElementById('universalModal');
+    if (!modal) {
+      if (opts.isAlert) {
+        alert(opts.message ? opts.message.replace(/<[^>]*>/g, '') : opts.title);
+        resolve(true);
+      } else {
+        resolve(confirm(opts.message ? opts.message.replace(/<[^>]*>/g, '') : opts.title));
+      }
+      return;
+    }
+    const content = document.getElementById('universalModalContent');
+    const title = document.getElementById('universalModalTitle');
+    const box = document.getElementById('universalModalBox');
+    const boxLabel = document.getElementById('universalModalBoxLabel');
+    const boxContent = document.getElementById('universalModalBoxContent');
+    const boxSub = document.getElementById('universalModalBoxSub');
+    const msg = document.getElementById('universalModalMessage');
+    const cancelBtn = document.getElementById('universalModalCancelBtn');
+    const confirmBtn = document.getElementById('universalModalConfirmBtn');
+
+    // Theme festlegen
+    const theme = opts.theme || 'info';
+    const cleanTheme = (theme === 'red') ? 'danger' : theme;
+    if (content) content.className = 'modal-content theme-' + cleanTheme;
+
+    const themeColors = {
+      purple: 'var(--neon-purple)',
+      danger: 'var(--neon-red)',
+      orange: 'var(--neon-orange)',
+      cyan: 'var(--neon-cyan)',
+      info: 'var(--neon-cyan)',
+      green: 'var(--neon-green)',
+      success: 'var(--neon-green)'
+    };
+    const activeColor = themeColors[cleanTheme] || 'var(--neon-cyan)';
+    if (title) {
+      title.style.color = activeColor;
+      title.innerHTML = opts.title || 'HINWEIS';
+    }
+
+    // Details-Box (optional)
+    if (box) {
+      if (opts.boxContent) {
+        box.style.display = 'block';
+        box.style.borderColor = activeColor;
+        if (boxLabel) boxLabel.innerText = opts.boxLabel || 'Details:';
+        if (boxContent) boxContent.innerText = opts.boxContent;
+        if (boxSub) {
+          if (opts.boxSub) {
+            boxSub.style.display = 'block';
+            boxSub.innerText = opts.boxSub;
+          } else {
+            boxSub.style.display = 'none';
+          }
+        }
+      } else {
+        box.style.display = 'none';
+      }
+    }
+
+    // Nachricht
+    if (msg) msg.innerHTML = opts.message || '';
+
+    // Buttons
+    if (opts.isAlert) {
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      if (confirmBtn) {
+        confirmBtn.innerText = opts.confirmText || 'VERSTANDEN';
+        confirmBtn.className = 'btn ' + (cleanTheme === 'purple' ? 'btn-purple' : cleanTheme === 'danger' ? 'btn-red' : cleanTheme === 'orange' ? 'btn-orange' : cleanTheme === 'green' || cleanTheme === 'success' ? 'btn-green' : 'btn-cyan');
+        confirmBtn.style.flex = '1';
+      }
+    } else {
+      if (cancelBtn) {
+        cancelBtn.style.display = 'block';
+        cancelBtn.innerText = opts.cancelText || 'ABBRECHEN';
+      }
+      if (confirmBtn) {
+        confirmBtn.innerText = opts.confirmText || 'BESTÄTIGEN';
+        confirmBtn.className = 'btn ' + (cleanTheme === 'purple' ? 'btn-purple' : cleanTheme === 'danger' ? 'btn-red' : cleanTheme === 'orange' ? 'btn-orange' : cleanTheme === 'green' || cleanTheme === 'success' ? 'btn-green' : 'btn-cyan');
+      }
+    }
+
+    modal.style.display = 'block';
+  });
+}
+
+function closeUniversalDialog(result) {
+  const modal = document.getElementById('universalModal');
+  if (modal) modal.style.display = 'none';
+  if (_dialogResolver) {
+    let res = _dialogResolver;
+    _dialogResolver = null;
+    res(result);
+  }
+}
+
+function showConfirm(opts) {
+  return showUniversalDialog(Object.assign({}, opts, { isAlert: false }));
+}
+
+function showAlert(opts) {
+  return showUniversalDialog(Object.assign({}, opts, { isAlert: true }));
 }
 
 // --- ADMIN CONFIRMATION MODAL ---
@@ -250,7 +360,11 @@ async function openStatsOverviewModal() {
     s.onerror = () => {
       statsLoading = false;
       if (btn) btn.innerText = orig;
-      alert("Fehler beim Laden der Statistiken.");
+      showAlert({
+        title: "❌ FEHLER",
+        theme: "danger",
+        message: "Fehler beim Laden der Statistiken."
+      });
     };
     document.body.appendChild(s);
   } else {
@@ -1008,17 +1122,31 @@ function renderTrackRecordsModalContent(trackId) {
 }
 
 async function deleteTrackRecordEntryUI(trackId, type, index) {
-  let msg = '';
+  let title = (type === 'daily') ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
+  let desc = '';
+  let boxInfo = '';
   if (index < 0) {
-    msg = (type === 'daily')
-      ? 'Wirklich ALLE heutigen Tagesbestzeiten dieser Strecke löschen?'
-      : 'Wirklich ALLE All-Time Streckenrekorde dieser Strecke löschen?';
+    desc = (type === 'daily')
+      ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?'
+      : 'Wirklich <strong>ALLE All-Time Streckenrekorde</strong> dieser Strecke löschen?';
+    boxInfo = (type === 'daily') ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
   } else {
-    msg = (type === 'daily')
-      ? `Platz ${index + 1} der Tagesbestzeit löschen? (Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt)`
-      : `Platz ${index + 1} des Streckenrekords löschen? (Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt)`;
+    desc = (type === 'daily')
+      ? `Platz ${index + 1} der Tagesbestzeit löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`
+      : `Platz ${index + 1} des Streckenrekords löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
+    boxInfo = `Platz ${index + 1}`;
   }
-  if (!confirm(msg)) return;
+
+  let ok = await showConfirm({
+    title: title,
+    theme: "danger",
+    boxLabel: "Eintrag:",
+    boxContent: boxInfo,
+    message: desc + '<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Vorgang kann nicht rückgängig gemacht werden!</span>',
+    confirmText: "LÖSCHEN 🗑️",
+    cancelText: "ABBRECHEN"
+  });
+  if (!ok) return;
 
   try {
     let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(trackId)}&type=${encodeURIComponent(type)}&index=${index}`;
@@ -1028,7 +1156,11 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
       await updateData(true);
       renderTrackRecordsModalContent(trackId);
     } else {
-      alert("Eintrag konnte nicht gelöscht werden.");
+      await showAlert({
+        title: "❌ FEHLER",
+        theme: "danger",
+        message: "Eintrag konnte nicht gelöscht werden."
+      });
     }
   } catch (e) {
     console.error("Fehler beim Löschen des Rekord-Eintrags:", e);
@@ -1071,7 +1203,11 @@ async function submitNewTrack() {
   if (!inp) return;
   let name = inp.value.trim();
   if (!name) {
-    alert("Bitte einen Streckennamen eingeben.");
+    await showAlert({
+      title: "ℹ️ HINWEIS",
+      theme: "orange",
+      message: "Bitte einen Streckennamen eingeben."
+    });
     return;
   }
   try {
@@ -1084,18 +1220,44 @@ async function submitNewTrack() {
       lastAnnouncedLapMap = {};
       updateData(true);
     } else {
-      alert("Strecke konnte nicht angelegt werden (max. 20 Strecken).");
+      await showAlert({
+        title: "❌ FEHLER",
+        theme: "danger",
+        message: "Strecke konnte nicht angelegt werden (max. 20 Strecken erlaubt)."
+      });
     }
   } catch (e) {
-    alert("Netzwerkfehler beim Anlegen der Strecke.");
+    await showAlert({
+      title: "❌ NETZWERKFEHLER",
+      theme: "danger",
+      message: "Netzwerkfehler beim Anlegen der Strecke: " + e.message
+    });
   }
 }
 
 async function confirmDeleteActiveTrack() {
   if (allTracksList.length <= 1 && activeTrackId === 'standard') {
-    if (!confirm(`Möchtest du alle Sessions und den Rekord der Strecke "${activeTrackName}" löschen?`)) return;
+    let ok = await showConfirm({
+      title: "🗑️ STANDARD-STRECKE ZURÜCKSETZEN",
+      theme: "danger",
+      boxLabel: "Strecke:",
+      boxContent: activeTrackName,
+      message: `Möchtest du alle Sessions und den Rekord der Strecke <strong>"${activeTrackName}"</strong> wirklich zurücksetzen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:8px;">⚠️ Alle gefahrenen Durchgänge dieser Strecke werden gelöscht!</span>`,
+      confirmText: "ZURÜCKSETZEN 🗑️",
+      cancelText: "ABBRECHEN"
+    });
+    if (!ok) return;
   } else {
-    if (!confirm(`Möchtest du die Strecke "${activeTrackName}" inklusive aller auf ihr gefahrenen Sessions wirklich unwiderruflich löschen?`)) return;
+    let ok = await showConfirm({
+      title: "🗑️ STRECKE LÖSCHEN",
+      theme: "danger",
+      boxLabel: "Zu löschende Strecke:",
+      boxContent: activeTrackName,
+      message: `Möchtest du die Strecke <strong>"${activeTrackName}"</strong> inklusive aller auf ihr gefahrenen Sessions wirklich unwiderruflich löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:8px;">⚠️ Das gesamte Verzeichnis und alle Statistiken werden gelöscht!</span>`,
+      confirmText: "STRECKE LÖSCHEN 🗑️",
+      cancelText: "ABBRECHEN"
+    });
+    if (!ok) return;
   }
   try {
     let res = await fetch('/api/tracks/delete?id=' + encodeURIComponent(activeTrackId), { method: 'POST' });
@@ -2123,6 +2285,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.onclick = function(event) {
+  if (event.target === document.getElementById('universalModal')) closeUniversalDialog(false);
   if (event.target === document.getElementById('adminConfirmModal')) closeAdminConfirmModal();
   if (event.target === document.getElementById('configModal')) closeConfigModal();
   if (event.target === document.getElementById('driverConfigModal')) closeDriverConfigModal();
@@ -2142,6 +2305,7 @@ window.onclick = function(event) {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    closeUniversalDialog(false);
     closeAdminConfirmModal();
     closeConfigModal();
     closeDriverConfigModal();

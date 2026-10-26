@@ -406,16 +406,36 @@
     </div>
   </div>
 
+  <!-- UNIVERSELLES DIALOG-MODAL -->
+  <div id="universalModal" class="modal" style="z-index: 10010;">
+    <div class="modal-content" id="universalModalContent" style="max-width:460px; text-align:center;">
+      <h3 id="universalModalTitle" style="font-family:var(--font-display); margin-top:0; font-size:18px; letter-spacing:1px;">DIALOG</h3>
+      
+      <div id="universalModalBox" style="display:none; background:rgba(0,0,0,0.5); padding:12px 15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin:15px 0; text-align:left;">
+        <div id="universalModalBoxLabel" style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Details:</div>
+        <div id="universalModalBoxContent" style="font-family:monospace; font-size:13px; color:#fff; font-weight:bold; word-break:break-all;"></div>
+        <div id="universalModalBoxSub" style="font-size:12px; color:var(--neon-cyan); margin-top:4px;"></div>
+      </div>
+
+      <p id="universalModalMessage" style="font-size:14px; color:var(--text-main); margin-bottom:20px; line-height:1.4;"></p>
+
+      <div id="universalModalButtons" style="display:flex; gap:10px;">
+        <button id="universalModalCancelBtn" class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold; margin:0;" onclick="closeUniversalDialog(false)">ABBRECHEN</button>
+        <button id="universalModalConfirmBtn" class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold; margin:0;" onclick="closeUniversalDialog(true)">BESTÄTIGEN</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.2</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.2.4</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.2.3"></script>
-  <script src="websocket.js?v=4.2.3"></script>
-  <script src="main.js?v=4.2.3"></script>
+  <script src="tts.js?v=4.2.4"></script>
+  <script src="websocket.js?v=4.2.4"></script>
+  <script src="main.js?v=4.2.4"></script>
 </body>
 </html>

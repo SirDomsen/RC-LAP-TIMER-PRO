@@ -760,6 +760,15 @@ body.role-admin .driver-only {
 .btn-ios { color: #e040fb; border-color: #e040fb; }
 .btn-ios:hover { background: #e040fb; color: #fff; }
 
+.btn-cyan { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+.btn-cyan:hover { background: var(--neon-cyan); color: #000; box-shadow: 0 0 10px var(--neon-cyan); }
+.btn-red { color: var(--neon-red); border-color: var(--neon-red); }
+.btn-red:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 10px var(--neon-red); }
+.btn-orange { color: var(--neon-orange); border-color: var(--neon-orange); }
+.btn-orange:hover { background: var(--neon-orange); color: #000; box-shadow: 0 0 10px var(--neon-orange); }
+.btn-green { color: var(--neon-green); border-color: var(--neon-green); }
+.btn-green:hover { background: var(--neon-green); color: #000; box-shadow: 0 0 10px var(--neon-green); }
+
 .btn-icon { background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 2px 5px; color: var(--text-muted); }
 .btn-icon:hover { color: var(--neon-red); }
 
@@ -910,6 +919,11 @@ tr.my-selected-car-row {
 
 .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); overflow-y: auto; padding: 10px; }
 .modal-content { background: #161b22; margin: 5vh auto; padding: 20px; border-radius: 12px; width: 100%; max-width: 780px; max-height: 85vh; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--card-border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+.modal-content.theme-purple { border-color: var(--neon-purple) !important; box-shadow: 0 0 35px rgba(181, 50, 255, 0.45) !important; }
+.modal-content.theme-danger { border-color: var(--neon-red) !important; box-shadow: 0 0 35px rgba(255, 51, 102, 0.45) !important; }
+.modal-content.theme-orange { border-color: var(--neon-orange) !important; box-shadow: 0 0 35px rgba(255, 153, 0, 0.45) !important; }
+.modal-content.theme-cyan   { border-color: var(--neon-cyan) !important; box-shadow: 0 0 35px rgba(0, 229, 255, 0.4) !important; }
+.modal-content.theme-green  { border-color: var(--neon-green) !important; box-shadow: 0 0 35px rgba(0, 255, 102, 0.4) !important; }
 .modal-body { overflow-y: auto; padding-right: 5px; flex-grow: 1; }
 .modal-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 5px; flex-wrap: wrap; }
 

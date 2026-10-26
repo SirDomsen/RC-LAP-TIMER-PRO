@@ -204,7 +204,11 @@ async function saveConfig() {
       let cacheVal = cacheCb.checked;
       if (initialCacheState !== null && cacheVal !== initialCacheState) {
         await fetch('/api/setcacheconfig?cache=' + (cacheVal ? "1" : "0"), { method: 'POST' });
-        alert("Info: Die Änderung des Web-Caches wird erst nach einem Neustart des ESP8266 aktiv.");
+        await showAlert({
+          title: "ℹ️ WEB-CACHE HINWEIS",
+          theme: "orange",
+          message: "Die Änderung des Web-Caches wird erst nach einem Neustart des ESP8266 aktiv."
+        });
       }
     }
 
@@ -263,7 +267,11 @@ async function forceWifiMode(mode) {
   let apPassVal = document.getElementById('cfg_ap_pass')?.value || 'Rennstrecke123';
 
   if (mode === 2 && !hsSsid) {
-    alert("Bitte erst eine Hotspot SSID eintragen!");
+    await showAlert({
+      title: "⚠️ FEHLENDE EINGABE",
+      theme: "orange",
+      message: "Bitte erst eine Hotspot-SSID in den WLAN-Einstellungen eintragen!"
+    });
     return;
   }
 
