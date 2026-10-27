@@ -190,8 +190,8 @@ function updateStatsModalDailyBest() {
 async function fetchSessionsAndStorageInfo() {
   try {
     let [sRes, tRes] = await Promise.all([
-      fetch('/api/sessions'),
-      fetch('/api/timeleft')
+      fetch('/api/sessions?_t=' + Date.now(), { cache: 'no-store' }),
+      fetch('/api/timeleft?_t=' + Date.now(), { cache: 'no-store' })
     ]);
     if (sRes.ok) {
       let sData = await sRes.json();
@@ -605,7 +605,7 @@ function toggleSessionDetails(safeId, forceOpen = null) {
 async function fetchSessionFileData(filePath) {
   if (!filePath) return null;
   if (sessionFileCache[filePath]) return sessionFileCache[filePath];
-  let res = await fetch('/api/sessionfile?file=' + encodeURIComponent(filePath));
+  let res = await fetch('/api/sessionfile?file=' + encodeURIComponent(filePath) + '&_t=' + Date.now(), { cache: 'no-store' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let data = await res.json();
   if (data && Array.isArray(data.laps)) {
@@ -900,6 +900,9 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
 }
 
 async function deleteSession(sessionId) {
+  let sObj = allSessionsCache.find(s => s.id === sessionId);
+  let sessionFile = sObj ? sObj.file : '';
+
   let ok = await showConfirm({
     title: "🗑️ SESSION LÖSCHEN",
     theme: "danger",
@@ -911,15 +914,31 @@ async function deleteSession(sessionId) {
   });
   if (!ok) return;
   try {
-    await fetch('/api/deletesession?id=' + encodeURIComponent(sessionId), { method: 'POST' });
-    sessionFileCache = {};
+    // 1. Physische Session-Datei im LittleFS löschen
+    if (sessionFile) {
+      let fd = new FormData();
+      fd.append('file', sessionFile);
+      await fetch('/api/deletefile', { method: 'POST', body: fd }).catch(() => {});
+    }
+    await fetch('/api/deletesession?id=' + encodeURIComponent(sessionId), { method: 'POST' }).catch(() => {});
+
+    // 2. Client-Cache sofort aktualisieren
+    allSessionsCache = allSessionsCache.filter(s => s.id !== sessionId);
+
+    // 3. Bereinigte /sessions.json kompakt hochladen
+    let idxBlob = new Blob([JSON.stringify({ sessions: allSessionsCache })], { type: 'application/json' });
+    let upFd = new FormData();
+    upFd.append('data', idxBlob, '/sessions.json');
+    await fetch('/api/upload', { method: 'POST', body: upFd }).catch(() => {});
+
+    delete sessionFileCache[sessionFile];
     let safeId = sanitizeDomId(sessionId);
     delete openSessionsMap[safeId];
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
     switchStatsTab(currentTab);
   } catch (e) {
-    console.error(e);
+    console.error("Fehler beim Löschen der Session:", e);
   }
 }
 
@@ -1785,8 +1804,8 @@ async function rebuildSessionsIndexUI() {
 
     if (btn) btn.innerText = "⏳ Speichere Index...";
 
-    // 5. Index als /sessions.json hochladen
-    let idxBlob = new Blob([JSON.stringify({ sessions: builtSessions }, null, 2)], { type: 'application/json' });
+    // 5. Index als /sessions.json hochladen (kompakt)
+    let idxBlob = new Blob([JSON.stringify({ sessions: builtSessions })], { type: 'application/json' });
     let fd = new FormData();
     fd.append('data', idxBlob, '/sessions.json');
     let upRes = await fetch('/api/upload', { method: 'POST', body: fd });

@@ -38,7 +38,7 @@
 * `admin.html`: Rennleiter-Interface (Session-Steuerung, Streckenauswahl, Fahrerumbenennung, Sensor-Debug).
 * `main.js`: WebSocket-Anbindung, Live-Tabelle, Delta-Zeiten, Leaderboard-Sortierung, universelles modulares Dialog-System (`showConfirm`/`showAlert` im Cyberpunk-Look mit dynamischen Farb-Themes, ersetzt alle nativen Browser-Popups im gesamten Frontend).
 * `modes.js`: Rennabläufe, automatischer 3-2-1-Los Sprachcountdown, Rennabbruch.
-* `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore, transparenter `normalizeLap()`-Parser für alte und neue Formate, Client-seitiger Session-Index-Rebuild mit automatischer Flash-Komprimierung alter Session-Dateien.
+* `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore, transparenter `normalizeLap()`-Parser für alte und neue Formate, Client-seitiger Session-Index-Rebuild mit automatischer Flash-Komprimierung alter Session-Dateien, browser-gesteuertes Session-Löschen mit No-Cache-Headers.
 * `config.js`: Modals für WLAN-Kaskade, Transponder-Namen, Sensorparameter (Deadtime, 2-Frame-Filter), SZ-OTA-Trigger.
 * `tts.js`: Web Speech API Sprachausgabe (`de-DE`), Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto"), iOS-Audio-Unlock.
 * `update.html` & `debug.html`: LittleFS-Dateimanager (Ordneransicht, ZIP-Download), Firmware-OTA-Upload, universelles Dialog-Modal für Datei-/Ordner-/Flash-Aktionen und Live-Paketmonitor.

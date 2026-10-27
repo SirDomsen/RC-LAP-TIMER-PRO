@@ -277,10 +277,21 @@ void handleGetSessions(AsyncWebServerRequest *request) {
   flushCurrentSessionToIndex();
   updateFsUsageCache();
   String filepath = "/sessions.json";
+  if (!LittleFS.exists(filepath) && LittleFS.exists("/sessions.tmp")) {
+    filepath = "/sessions.tmp";
+  }
   if (LittleFS.exists(filepath)) {
-    request->send(LittleFS, filepath, "application/json");
+    AsyncWebServerResponse *response = request->beginResponse(LittleFS, filepath, "application/json");
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+    request->send(response);
   } else {
-    request->send(200, "application/json", "{\"sessions\":[]}");
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"sessions\":[]}");
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+    request->send(response);
   }
 }
 
@@ -292,11 +303,17 @@ void handleGetSessionFile(AsyncWebServerRequest *request) {
     fn.replace("%2f", "/");
     if (!fn.startsWith("/")) fn = "/" + fn;
     if (fn.indexOf("..") < 0 && LittleFS.exists(fn)) {
-      request->send(LittleFS, fn, "application/json");
+      AsyncWebServerResponse *response = request->beginResponse(LittleFS, fn, "application/json");
+      response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      response->addHeader("Pragma", "no-cache");
+      response->addHeader("Expires", "0");
+      request->send(response);
       return;
     }
   }
-  request->send(404, "application/json", "{\"laps\":[]}");
+  AsyncWebServerResponse *response = request->beginResponse(404, "application/json", "{\"laps\":[]}");
+  response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  request->send(response);
 }
 
 void handlePostDeleteLap(AsyncWebServerRequest *request) {
