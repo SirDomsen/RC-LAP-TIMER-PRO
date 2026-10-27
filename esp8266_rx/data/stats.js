@@ -13,6 +13,25 @@ let embeddedLapsState = {};
 let driverProfileSessionSort = { col: 'ts', dir: 'desc' };
 let driverProfileAllLapsState = null;
 
+// Dechiffriert / normalisiert Runden gem. schema.json (abwärtskompatibel zu alten Keys)
+function normalizeLap(l) {
+  if (!l) return null;
+  return {
+    carId: l.c !== undefined ? l.c : (l.carId || 0),
+    lap: l.l !== undefined ? l.l : (l.lap || 0),
+    time: l.t !== undefined ? l.t : (l.time || 0),
+    pos: l.p !== undefined ? l.p : (l.pos || 0),
+    ts: l.s !== undefined ? l.s : (l.ts || 0),
+    sz1: l.s1 !== undefined ? l.s1 : (l.sz1 || 0),
+    sz2: l.s2 !== undefined ? l.s2 : (l.sz2 || 0),
+    sz3: l.s3 !== undefined ? l.s3 : (l.sz3 || 0),
+    sz4: l.s4 !== undefined ? l.s4 : (l.sz4 || 0),
+    outlap: l.o !== undefined ? Boolean(l.o) : Boolean(l.outlap),
+    driver: l.driver,
+    car: l.car
+  };
+}
+
 function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -589,6 +608,9 @@ async function fetchSessionFileData(filePath) {
   let res = await fetch('/api/sessionfile?file=' + encodeURIComponent(filePath));
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let data = await res.json();
+  if (data && Array.isArray(data.laps)) {
+    data.laps = data.laps.map(normalizeLap);
+  }
   sessionFileCache[filePath] = data;
   return data;
 }
@@ -1576,12 +1598,12 @@ async function handleRestoreBackup(event) {
 
 async function rebuildSessionsIndexUI() {
   let ok = await showConfirm({
-    title: "🔄 INDEX NEU AUFBAUEN",
+    title: "🔄 INDEX NEU AUFBAUEN & BEREINIGEN",
     theme: "cyan",
     boxLabel: "Aktion:",
-    boxContent: "Browser-basierter Session-Scan & /sessions.json Rebuild",
-    message: "Das Endgerät durchsucht alle gespeicherten Session-Dateien im Speicher und baut die Index-Datei (<code>/sessions.json</code>) vollständig neu auf.<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">⚡ Schonend für den ESP8266-Prozessor & 100% crashsicher.</span>",
-    confirmText: "INDEX AUFBAUEN 🔄",
+    boxContent: "Session-Scan, Rebuild & Telemetrie-Optimierung",
+    message: "Das Endgerät durchsucht alle Session-Dateien im Speicher, generiert die Index-Datei (<code>/sessions.json</code>) neu und optimiert alte Dateien automatisch auf das kompakte Minimal-Format.<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">⚡ 100% crashsicher & spart dauerhaft Speicherplatz auf der Basisstation.</span>",
+    confirmText: "INDEX AUFBAUEN & OPTIMIEREN 🔄",
     cancelText: "ABBRECHEN"
   });
 
@@ -1620,8 +1642,9 @@ async function rebuildSessionsIndexUI() {
 
     if (btn) btn.innerText = `⏳ Verarbeite 0/${sessionFiles.length}...`;
 
-    // 3. Jede Session-Datei laden und Metadaten aggregieren
+    // 3. Jede Session-Datei laden und Metadaten aggregieren (und ggf. auf Kompakt-Schema schrumpfen)
     let builtSessions = [];
+    let compressedCount = 0;
     for (let i = 0; i < sessionFiles.length; i++) {
       let sf = sessionFiles[i];
       let rawName = sf.name.startsWith('/') ? sf.name : ('/' + sf.name);
@@ -1640,6 +1663,7 @@ async function rebuildSessionsIndexUI() {
         }
 
         let laps = sData.laps || [];
+        let normalizedLaps = laps.map(normalizeLap);
         let carLapsMap = {};
         let carBestMap = {};
         let carTimeSumMap = {};
@@ -1648,7 +1672,8 @@ async function rebuildSessionsIndexUI() {
         let carCarNameMap = {};
         let maxTs = sData.startTs || 0;
 
-        laps.forEach(l => {
+        normalizedLaps.forEach((l, idx) => {
+          let origL = laps[idx] || {};
           let c = l.carId;
           if (c >= 1 && c <= MAX_CARS) {
             if (!carLapsMap[c]) {
@@ -1657,8 +1682,8 @@ async function rebuildSessionsIndexUI() {
               carTimeSumMap[c] = 0;
               carValidMap[c] = 0;
             }
-            if (l.driver) carDriverNameMap[c] = l.driver;
-            if (l.car) carCarNameMap[c] = l.car;
+            if (origL.driver) carDriverNameMap[c] = origL.driver;
+            if (origL.car) carCarNameMap[c] = origL.car;
 
             if (l.lap > carLapsMap[c]) carLapsMap[c] = l.lap;
             else carLapsMap[c]++;
@@ -1716,6 +1741,40 @@ async function rebuildSessionsIndexUI() {
           endTs: maxTs || sData.startTs || 0,
           results: results
         });
+
+        // 3b. Telemetrie-Optimierung (Alte Session-Dateien auf kompaktes Min-Schema schrumpfen)
+        let needsCompression = laps.some(l => l.driver !== undefined || l.car !== undefined || l.sz1 !== undefined || l.time !== undefined || (l.outlap !== undefined && l.o === undefined));
+        if (needsCompression && normalizedLaps.length > 0) {
+          if (btn) btn.innerText = `⏳ Optimiere ${i + 1}/${sessionFiles.length}...`;
+          let minLaps = normalizedLaps.map(nl => {
+            let cl = { c: nl.carId, l: nl.lap, t: nl.time, p: nl.pos, s: nl.ts };
+            if (nl.sz1 > 0) cl.s1 = nl.sz1;
+            if (nl.sz2 > 0) cl.s2 = nl.sz2;
+            if (nl.sz3 > 0) cl.s3 = nl.sz3;
+            if (nl.sz4 > 0) cl.s4 = nl.sz4;
+            if (nl.outlap) cl.o = 1;
+            return cl;
+          });
+          let minSession = {
+            id: sData.id || sId,
+            trackId: sData.trackId || "standard",
+            trackName: sData.trackName || "Standard",
+            mode: mode,
+            modeName: sData.modeName || modeNames[mode] || "Freies Training",
+            startTs: sData.startTs || 0,
+            laps: minLaps
+          };
+          try {
+            let compBlob = new Blob([JSON.stringify(minSession)], { type: 'application/json' });
+            let compFd = new FormData();
+            compFd.append('data', compBlob, rawName);
+            let cUpRes = await fetch('/api/upload', { method: 'POST', body: compFd });
+            if (cUpRes.ok) compressedCount++;
+            await new Promise(r => setTimeout(r, 60)); // ESP8266 Pause
+          } catch (compErr) {
+            console.warn("Konnte Datei nicht optimieren:", rawName, compErr);
+          }
+        }
       } catch (errFile) {
         console.warn("Konnte Session-Datei nicht parsen:", rawName, errFile);
       }
@@ -1736,7 +1795,7 @@ async function rebuildSessionsIndexUI() {
     await showAlert({
       title: "✅ INDEX ERFOLGREICH REPARIERT",
       theme: "success",
-      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!`
+      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!${compressedCount > 0 ? `<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✨ <strong>${compressedCount} alte Session-Dateien</strong> auf das kompakte Telemetrie-Format geschrumpft (Flash freigegeben).</span>` : ''}`
     });
 
     sessionFileCache = {};

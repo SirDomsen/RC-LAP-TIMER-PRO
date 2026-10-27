@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RC Lap Timer Pro - Session Telemetry Data Schema",
+  "version": 1,
+  "description": "Definition und Dechiffrierung der kompakten Session- und Telemetriedaten des RC Lap Timer Pro.",
+  "sessionHeader": {
+    "id": { "type": "string", "description": "Eindeutige Session-ID (z. B. 26-10-26_14-45-39)" },
+    "trackId": { "type": "string", "description": "Strecken-ID (z. B. kirchhof)" },
+    "trackName": { "type": "string", "description": "Streckenname (z. B. Kirchhof GP)" },
+    "mode": { "type": "integer", "description": "Rennmodus: 0=Freies Training, 1=Qualifying, 2=Rennen (Runden), 3=Rennen (Zeit), 4=Dragrace" },
+    "modeName": { "type": "string", "description": "Lesbarer Modusname" },
+    "startTs": { "type": "integer", "description": "Startzeitpunkt der Session in Unix-Sekunden" },
+    "laps": { "type": "array", "description": "Array von Runden-Telemetrie-Objekten" }
+  },
+  "lapKeys": {
+    "c": {
+      "legacyKey": "carId",
+      "type": "integer",
+      "range": [1, 15],
+      "required": true,
+      "description": "Fahrzeug- / Transponder-ID"
+    },
+    "l": {
+      "legacyKey": "lap",
+      "type": "integer",
+      "required": true,
+      "description": "Rundennummer des Fahrzeugs (ab 1)"
+    },
+    "t": {
+      "legacyKey": "time",
+      "type": "integer",
+      "unit": "ms",
+      "required": true,
+      "description": "Rundenzeit in Millisekunden"
+    },
+    "p": {
+      "legacyKey": "pos",
+      "type": "integer",
+      "required": true,
+      "description": "Platzierung beim Zieldurchgang"
+    },
+    "s": {
+      "legacyKey": "ts",
+      "type": "integer",
+      "unit": "ms",
+      "required": true,
+      "description": "Zeitstempel des Zieldurchgangs in Millisekunden"
+    },
+    "s1": {
+      "legacyKey": "sz1",
+      "type": "integer",
+      "unit": "ms",
+      "required": false,
+      "description": "Sektorzeit 1 in Millisekunden (wird nur geschrieben wenn > 0)"
+    },
+    "s2": {
+      "legacyKey": "sz2",
+      "type": "integer",
+      "unit": "ms",
+      "required": false,
+      "description": "Sektorzeit 2 in Millisekunden (wird nur geschrieben wenn > 0)"
+    },
+    "s3": {
+      "legacyKey": "sz3",
+      "type": "integer",
+      "unit": "ms",
+      "required": false,
+      "description": "Sektorzeit 3 in Millisekunden (wird nur geschrieben wenn > 0)"
+    },
+    "s4": {
+      "legacyKey": "sz4",
+      "type": "integer",
+      "unit": "ms",
+      "required": false,
+      "description": "Sektorzeit 4 in Millisekunden (wird nur geschrieben wenn > 0)"
+    },
+    "o": {
+      "legacyKey": "outlap",
+      "type": "integer",
+      "values": [0, 1],
+      "required": false,
+      "description": "Outlap-Kennzeichnung (1 = Boxenausfahrt / Outlap, wird nur geschrieben wenn 1)"
+    }
+  }
+}

@@ -1452,15 +1452,15 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
   sessionLastEndSec = timestampMs / 1000ULL;
 
   // 5. Runden-JSON formatieren & stromausfallsicher in die Session-Datei schreiben (Speicheroptimiert)
-  char newLapJson[220];
+  char newLapJson[160];
   int len = snprintf(newLapJson, sizeof(newLapJson),
-                     "{\"carId\":%u,\"lap\":%u,\"time\":%lu,\"pos\":%u,\"ts\":%llu",
+                     "{\"c\":%u,\"l\":%u,\"t\":%lu,\"p\":%u,\"s\":%llu",
                      carId, lapNum, lapTimeMs, position, timestampMs);
-  if (sz1 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz1\":%lu", (unsigned long)sz1);
-  if (sz2 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz2\":%lu", (unsigned long)sz2);
-  if (sz3 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz3\":%lu", (unsigned long)sz3);
-  if (sz4 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"sz4\":%lu", (unsigned long)sz4);
-  if (isOutLap) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"outlap\":1");
+  if (sz1 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s1\":%lu", (unsigned long)sz1);
+  if (sz2 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s2\":%lu", (unsigned long)sz2);
+  if (sz3 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s3\":%lu", (unsigned long)sz3);
+  if (sz4 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s4\":%lu", (unsigned long)sz4);
+  if (isOutLap) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"o\":1");
   snprintf(newLapJson + len, sizeof(newLapJson) - len, "}");
 
   if (!LittleFS.exists(currentSessionFilePath)) {
@@ -1566,10 +1566,10 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
 
   uint32_t deletedLapTimeMs = 0;
   for (size_t i = 0; i < laps.size(); i++) {
-    uint8_t cId = laps[i]["carId"] | 0;
-    uint16_t lNum = laps[i]["lap"] | 0;
+    uint8_t cId = laps[i]["c"] | (laps[i]["carId"] | 0);
+    uint16_t lNum = laps[i]["l"] | (laps[i]["lap"] | 0);
     if (cId == carId && lNum == lapNum) {
-      deletedLapTimeMs = laps[i]["time"] | 0;
+      deletedLapTimeMs = laps[i]["t"] | (laps[i]["time"] | 0);
       laps.remove(i);
       break;
     }
@@ -1604,9 +1604,9 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
   uint64_t maxTsSec = doc["startTs"] | 0;
 
   for (JsonObject l : laps) {
-    uint8_t c = l["carId"] | 0;
-    uint32_t tMs = l["time"] | 0;
-    uint64_t tsMs = l["ts"] | 0;
+    uint8_t c = l["c"] | (l["carId"] | 0);
+    uint32_t tMs = l["t"] | (l["time"] | 0);
+    uint64_t tsMs = l["s"] | (l["ts"] | 0);
     if (c >= 1 && c <= MAX_CARS) {
       calcLaps[c]++;
       if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) {
@@ -1713,7 +1713,8 @@ void deleteDriverHistory(uint8_t carId) {
     if (!laps) continue;
 
     for (int i = (int)laps.size() - 1; i >= 0; i--) {
-      if ((laps[i]["carId"] | 0) == carId) {
+      uint8_t c = laps[i]["c"] | (laps[i]["carId"] | 0);
+      if (c == carId) {
         laps.remove(i);
       }
     }
@@ -1725,9 +1726,9 @@ void deleteDriverHistory(uint8_t carId) {
       uint32_t calcBest[MAX_CARS + 1] = {0};
       uint64_t maxTsSec = doc["startTs"] | 0;
       for (JsonObject l : laps) {
-        uint8_t c = l["carId"] | 0;
-        uint32_t tMs = l["time"] | 0;
-        uint64_t tsMs = l["ts"] | 0;
+        uint8_t c = l["c"] | (l["carId"] | 0);
+        uint32_t tMs = l["t"] | (l["time"] | 0);
+        uint64_t tsMs = l["s"] | (l["ts"] | 0);
         if (c >= 1 && c <= MAX_CARS) {
           calcLaps[c]++;
           if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) calcBest[c] = tMs;
