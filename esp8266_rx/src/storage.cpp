@@ -1,4 +1,4 @@
-﻿#include "storage.h"
+#include "storage.h"
 #include "lap_logic.h"
 #include "web_server.h"
 #include <EEPROM.h>
@@ -16,7 +16,7 @@ String homeSSID = HOME_SSID;
 String homePass = HOME_PASS;
 String hotspotSSID = "";
 String hotspotPass = "";
-String apSSID = AP_SSID;
+String apSSID = "";
 String apPass = AP_PASS;
 String learnedApIP = "";
 uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
@@ -1006,7 +1006,7 @@ void loadWifiConfigFromFS() {
       }
     }
   }
-  if (apSSID.length() == 0 || apSSID == AP_SSID) {
+  if (apSSID.length() == 0) {
     apSSID = getDefaultApSSID();
   }
 }

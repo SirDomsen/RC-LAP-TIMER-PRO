@@ -598,7 +598,7 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
     strncpy(syncPkt.pass, homePass.c_str(), sizeof(syncPkt.pass) - 1);
     syncPkt.pass[sizeof(syncPkt.pass) - 1] = '\0';
   } else {
-    String activeApName = (apSSID.length() > 0 && apSSID != AP_SSID) ? apSSID : getDefaultApSSID();
+    String activeApName = (apSSID.length() > 0) ? apSSID : getDefaultApSSID();
     const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
     strncpy(syncPkt.ssid, activeApName.c_str(), sizeof(syncPkt.ssid) - 1);
     syncPkt.ssid[sizeof(syncPkt.ssid) - 1] = '\0';
@@ -612,7 +612,7 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
   }
   delay(100);
 
-  uint8_t targetMode = (activeWifiMode == 1) ? 1 : 0;
+  uint8_t targetMode = 1; // Immer 1 senden, damit die SZ auch Stufe 2 (feste Notfall-IP 192.168.0.11-13) bei Bedarf ausführt
   sendSZOtaTrigger(targetMode, syncPkt.ssid, syncPkt.pass);
 
   request->send(200, "text/plain", "SZ OTA Trigger (Legacy & Neu) gesendet");

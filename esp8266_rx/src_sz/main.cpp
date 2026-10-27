@@ -30,10 +30,6 @@ bool hasParent = false;
 uint8_t parentStratum = 255;
 uint32_t lastParentSeenMs = 0;
 
-static SectorPacket pendingFallbackPkt;
-static bool hasPendingFallback = false;
-volatile bool lastTxFailed = false;
-
 // ==========================================
 // PAKETSTRUKTUREN
 // ==========================================
@@ -45,6 +41,10 @@ struct __attribute__((packed)) SectorPacket {
   uint16_t seqNumber;
   uint8_t  ttl;
 };
+
+static SectorPacket pendingFallbackPkt;
+static bool hasPendingFallback = false;
+volatile bool lastTxFailed = false;
 
 #define BEACON_SYNC_MAGIC 0x53594E43 // "SYNC"
 struct __attribute__((packed)) BeaconSyncPacket {
