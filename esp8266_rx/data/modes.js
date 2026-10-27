@@ -90,6 +90,9 @@ function sendSession(mode, duration, laps, speakText) {
   announced30 = false;
   announced10 = false;
   timeExpiredAnnounced = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
 
   fetch(`/api/session?mode=${mode}&duration=${duration}&laps=${laps}`, { method: 'POST' })
     .then(() => {
@@ -109,6 +112,9 @@ function stopSession() {
   isSessionFinished = false;
   qualiFinishedHold = false;
   timeExpiredAnnounced = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
   currentLeaderId = null;
 
   fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' })
@@ -140,6 +146,9 @@ function confirmResetModal() {
   hidePoleBanner();
   qualiFinishedHold = false;
   timeExpiredAnnounced = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
   isSessionFinished = false;
   isSessionActive = false;
   currentMode = 0;
@@ -160,6 +169,9 @@ function resetLapsDataSilent() {
     currentLeaderId = null;
     sessionBestLap = 0;
     timeExpiredAnnounced = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
     updateData(true);
   }).catch(err => console.error(err));
 }
@@ -180,6 +192,9 @@ function resetLapsData(hardReset = true) {
     currentLeaderId = null;
     sessionBestLap = 0;
     timeExpiredAnnounced = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
     window.sessionStartTs = Math.floor(Date.now() / 1000);
     let leaderDisp = document.getElementById('leaderLapDisplay');
     if (leaderDisp) leaderDisp.innerText = "0";

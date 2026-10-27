@@ -183,7 +183,13 @@ static void setupFallbackAP() {
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   
-  IPAddress local_IP(192, 168, 0, 1);
+  IPAddress local_IP(192, 168, 0, 8);
+  if (learnedApIP.length() > 0) {
+    IPAddress parsed;
+    if (parsed.fromString(learnedApIP) && parsed[0] != 0) {
+      local_IP = parsed;
+    }
+  }
   IPAddress gateway = local_IP;
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(local_IP, gateway, subnet);

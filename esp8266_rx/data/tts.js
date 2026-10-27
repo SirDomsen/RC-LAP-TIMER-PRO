@@ -24,9 +24,14 @@ function speak(text, cancelCurrent = false) {
   if (!ttsEnabled || !('speechSynthesis' in window)) return;
   
   if (cancelCurrent) {
-    synth.cancel();
+    try { synth.cancel(); } catch (e) {}
     speechQueue = [];
     isSpeaking = false;
+    setTimeout(() => {
+      speechQueue.push(text);
+      processSpeechQueue();
+    }, 50);
+    return;
   }
   
   speechQueue.push(text);

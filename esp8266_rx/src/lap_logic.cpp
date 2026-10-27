@@ -136,11 +136,11 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
   broadcastWebSocket(buffer);
 }
 
-void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest, bool isTrackRecord, bool isDailyRecord, bool isOutLap) {
-  char buffer[240];
+void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t pos, bool isPB, bool isOverallBest, bool isTrackRecord, bool isDailyRecord, bool isOutLap) {
+  char buffer[256];
   snprintf(buffer, sizeof(buffer), 
-    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
-    carId, driverNames[carId].c_str(), lapNum, lapTimeMs, 
+    "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"pos\":%d,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
+    carId, driverNames[carId].c_str(), lapNum, lapTimeMs, pos, 
     isPB ? "true" : "false", isOverallBest ? "true" : "false",
     isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false",
     isOutLap ? "true" : "false");
@@ -452,7 +452,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
         carId, driverNames[carId].c_str(), elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
       broadcastWebSocket(finishJson);
 
-      broadcastLapEvent(carId, completedRun, elapsedMs, isPB, isOverall, false, false);
+      broadcastLapEvent(carId, completedRun, elapsedMs, 1, isPB, isOverall, false, false, false);
       return;
     }
 
@@ -843,7 +843,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs, currentLapIsOutLap);
 
-    broadcastLapEvent(carId, completedLap, currentLapTimeMs, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
+    broadcastLapEvent(carId, completedLap, currentLapTimeMs, pos, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
   }
 
   if (lapCounted) {

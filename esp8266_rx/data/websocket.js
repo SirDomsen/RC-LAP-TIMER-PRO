@@ -77,7 +77,6 @@ function handleLiveEvent(msg) {
     }
   } else if (msg.type === 'track_record') {
     if (typeof loadTracks === 'function') loadTracks();
-    // loadTracks will update tracks without blocking lap updates
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
@@ -89,6 +88,13 @@ function handleLiveEvent(msg) {
       if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
       if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
       if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
+      announcedLaps5 = false;
+      announcedLaps3 = false;
+      announcedLaps1 = false;
+      announced60 = false;
+      announced30 = false;
+      announced10 = false;
+      timeExpiredAnnounced = false;
       if (typeof loadTracks === 'function') loadTracks();
       updateData(true);
     }
@@ -215,14 +221,105 @@ function onSectorLiveEvent(msg) {
 }
 
 function onLapLiveEvent(msg) {
-  if (typeof pendingRecordFlagsMap !== 'undefined' && msg && msg.carId) {
-    pendingRecordFlagsMap[msg.carId] = {
+  if (!msg || !msg.carId) return;
+
+  let carId = msg.carId;
+  let driverName = msg.driver || (typeof carNamesMap !== 'undefined' && carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  let completedLapNum = msg.lap || 1;
+  let position = msg.pos || 1;
+  let isOutLapDone = !!msg.isOutLap;
+  let isNewTrackRecord = !!msg.isTrackRecord;
+  let isNewDailyRecord = !!msg.isDailyRecord;
+  let isPersonalBest = !!msg.isPB;
+  let isAbsoluteBest = !!msg.isOverallBest;
+
+  if (typeof pendingRecordFlagsMap !== 'undefined') {
+    pendingRecordFlagsMap[carId] = {
       lapTime: msg.lapTime || 0,
-      isTrackRecord: !!msg.isTrackRecord,
-      isDailyRecord: !!msg.isDailyRecord,
-      isOutLap: !!msg.isOutLap
+      isTrackRecord: isNewTrackRecord,
+      isDailyRecord: isNewDailyRecord,
+      isOutLap: isOutLapDone
     };
   }
+
+  // 1. Rundenrennen (Modus 2): Vorrang-Ansagen für verbleibende Runden basierend auf dem Führenden
+  let raceFinishedByLeader = false;
+  if (currentMode === 2 && targetLaps > 0 && !isSessionFinished) {
+    if (position === 1) {
+      let remainingLaps = targetLaps - completedLapNum;
+      if (remainingLaps === 5 && !announcedLaps5) {
+        announcedLaps5 = true;
+        speak("Noch 5 Runden!", true);
+      } else if (remainingLaps === 3 && !announcedLaps3) {
+        announcedLaps3 = true;
+        speak("Noch 3 Runden!", true);
+      } else if (remainingLaps === 1 && !announcedLaps1) {
+        announcedLaps1 = true;
+        speak("Letzte Runde!", true);
+      } else if (remainingLaps <= 0) {
+        raceFinishedByLeader = true;
+        isSessionFinished = true;
+        isSessionActive = false;
+        if (typeof announceRaceResults === 'function') {
+          announceRaceResults();
+        }
+      }
+    }
+  }
+
+  // 2. Führungswechsel (Modus 2 & 3)
+  let leadChangeOccurred = false;
+  if (!raceFinishedByLeader && currentMode >= 2 && isSessionActive && !isSessionFinished) {
+    if (currentLeaderId !== null && currentLeaderId !== carId && position === 1) {
+      let oldLeaderId = currentLeaderId;
+      currentLeaderId = carId;
+      if (isCarAllowedForTTS(carId) || isCarAllowedForTTS(oldLeaderId)) {
+        leadChangeOccurred = true;
+        speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", false);
+      }
+    } else if (currentLeaderId === null && position === 1 && completedLapNum > 0) {
+      currentLeaderId = carId;
+    }
+  }
+
+  // 3. Rundenzeiten- & Outlap-Ansage (Echtzeit über WebSocket!)
+  if (!raceFinishedByLeader && !isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
+    if (isOutLapDone) {
+      speak(driverName + ", Outlap beendet!");
+    } else if (msg.lapTime > 0) {
+      let timeSec = (msg.lapTime / 1000).toFixed(2).replace('.', ',');
+      let posText = ", ";
+      if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
+
+      let lapAnnouncement = "";
+      let isRaceMode = (currentMode >= 2);
+
+      if (isNewTrackRecord) {
+        lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
+      } else if (isNewDailyRecord) {
+        lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
+      } else if (isRaceMode && !announceLapTimesInRace) {
+        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+        else lapAnnouncement = driverName + posText;
+      } else {
+        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+        else lapAnnouncement = driverName + posText + timeSec;
+      }
+      speak(lapAnnouncement);
+    }
+  }
+
+  // Runden-Markierung setzen, damit der spätere HTTP-Tabellen-Update nichts doppelt ansagt
+  if (typeof lastAnnouncedLapMap !== 'undefined') {
+    lastAnnouncedLapMap[carId] = completedLapNum;
+  }
+  if (typeof previousLaps !== 'undefined') {
+    previousLaps[carId] = completedLapNum;
+  }
+
+  // 4. UI-Datenaktualisierung im Hintergrund (durch Drossel geschützt)
   if (msg && (msg.isTrackRecord || msg.isDailyRecord)) {
     if (typeof loadTracks === 'function') loadTracks();
     updateData(true);

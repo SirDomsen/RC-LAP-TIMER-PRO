@@ -115,6 +115,8 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += millis();
   json += ",\"allFinished\":";
   json += (areAllActiveCarsFinished() ? "true" : "false");
+  json += ",\"targetLaps\":";
+  json += targetRounds;
   json += ",\"dragOccupied\":";
   json += (dragTrackOccupied ? "true" : "false");
   json += ",\"activeDragCar\":";
@@ -556,7 +558,7 @@ void handleGetWifiConfig(AsyncWebServerRequest *request) {
   doc["hotspotPass"] = hotspotPass;
   doc["apSSID"] = apSSID;
   doc["apPass"] = apPass;
-  doc["currentIP"] = WiFi.localIP().toString();
+  doc["currentIP"] = (currentRuntimeWifiMode == 0) ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
   doc["learnedApIP"] = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
   doc["defaultApSSID"] = getDefaultApSSID();
 

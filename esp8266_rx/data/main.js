@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.3.0'; 
+window.UI_VERSION = '4.3.1'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -44,6 +44,9 @@ let announced60 = false;
 let announced30 = false;
 let announced10 = false;
 let timeExpiredAnnounced = false;
+let announcedLaps5 = false;
+let announcedLaps3 = false;
+let announcedLaps1 = false;
 
 let localSecondsLeft = -1;
 let localTimerInterval = null;
@@ -1603,13 +1606,13 @@ function startLocalTimerTicker() {
       localSecondsLeft--;
       updateTimerDisplayString(localSecondsLeft);
 
-      if (localSecondsLeft === 60 && !announced60) {
+      if (localSecondsLeft <= 60 && localSecondsLeft > 50 && !announced60) {
         announced60 = true;
         speak("Noch eine Minute!", true);
-      } else if (localSecondsLeft === 30 && !announced30) {
+      } else if (localSecondsLeft <= 30 && localSecondsLeft > 20 && !announced30) {
         announced30 = true;
         speak("Noch 30 Sekunden!", true);
-      } else if (localSecondsLeft === 10 && !announced10) {
+      } else if (localSecondsLeft <= 10 && localSecondsLeft > 0 && !announced10) {
         announced10 = true;
         speak("Noch 10 Sekunden!", true);
       } else if (localSecondsLeft === 0) {
@@ -1907,6 +1910,9 @@ async function updateData(fullSync = false) {
 
       currentMode = info.mode;
       serverMillisOffset = info.serverMillis || 0;
+      if (info.targetLaps !== undefined && info.targetLaps > 0) {
+        targetLaps = info.targetLaps;
+      }
       updateTrackRecordBar(info);
 
       let modeText = "Freies Training";
@@ -2217,7 +2223,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
           currentLeaderId = carId;
           if (isCarAllowedForTTS(carId) || isCarAllowedForTTS(oldLeaderId)) {
             leadChangeOccurred = true;
-            speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", false);
+            // Sprachausgabe erfolgt live in Echtzeit über WebSocket
           }
         }
       }
@@ -2271,7 +2277,9 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       };
     }
 
-    if (!isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
+    // Sprachausgabe für Rundenzeiten & Outlaps erfolgt zu 100% in Echtzeit über WebSocket
+    if (false) {
+
       if (isOutLapDone) {
         speak(driverName + ", Outlap beendet!");
       } else if (car.lastLap > 0) {

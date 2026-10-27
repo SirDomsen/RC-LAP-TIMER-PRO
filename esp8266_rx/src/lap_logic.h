@@ -100,7 +100,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros);
 void updateLapLogicTasks(); 
 void updateLEDs();
-void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, bool isPB, bool isOverallBest, bool isTrackRecord = false, bool isDailyRecord = false, bool isOutLap = false);
+void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t pos = 1, bool isPB = false, bool isOverallBest = false, bool isTrackRecord = false, bool isDailyRecord = false, bool isOutLap = false);
 
 // resetAllLaps erlaubt einen "Hard Reset", der auch die Tagesbestzeit löscht
 void resetAllLaps(bool isHardReset = false);

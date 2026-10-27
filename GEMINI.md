@@ -40,7 +40,7 @@
 * `modes.js`: Rennabläufe, automatischer 3-2-1-Los Sprachcountdown, Rennabbruch.
 * `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore, transparenter `normalizeLap()`-Parser für alte und neue Formate, Client-seitiger Session-Index-Rebuild mit automatischer Flash-Komprimierung alter Session-Dateien, browser-gesteuertes Session-Löschen mit No-Cache-Headers.
 * `config.js`: Modals für WLAN-Kaskade, Transponder-Namen, Sensorparameter (Deadtime, 2-Frame-Filter), SZ-OTA-Trigger.
-* `tts.js`: Web Speech API Sprachausgabe (`de-DE`), Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto"), iOS-Audio-Unlock.
+* `tts.js` / `websocket.js`: Web Speech API Sprachausgabe (`de-DE`) mit 100% Echtzeit-WebSocket-Anbindung (<15 ms Latenz bei Zieldurchfahrt), Vorrang-Ansagen ("Noch 1 Minute/30s/10s" und Runden-Countdown "Noch 5/3 Runden, letzte Runde"), 50 ms Audio-Puffer-Entprellung, Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto") und iOS-Audio-Unlock.
 * `update.html` & `debug.html`: LittleFS-Dateimanager (Ordneransicht, ZIP-Download), Firmware-OTA-Upload, universelles Dialog-Modal für Datei-/Ordner-/Flash-Aktionen und Live-Paketmonitor.
 
 ---
