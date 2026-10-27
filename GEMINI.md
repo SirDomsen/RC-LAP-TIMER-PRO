@@ -12,7 +12,7 @@
 ## 🏗️ 2. Architektur & Roadmap: Wo wird was gemacht?
 
 ### ⚙️ PlatformIO Build-Environments (`platformio.ini`)
-* `basisstation`: NodeMCU V2 (`nodemcuv2`, 160 MHz, LittleFS, LWIP2 High Bandwidth), AsyncWebServer, ArduinoJson 7.
+* `basisstation`: NodeMCU V2 (`nodemcuv2`, 160 MHz, LittleFS, LWIP2 Low Memory), AsyncWebServer, ArduinoJson 7.
 * `sz1`, `sz2`, `sz3`: ESP-01S (`esp01_1m`, 160 MHz), Flags `-DSECTOR_STATION -DSTATION_ID=1/2/3`.
 
 ### 🔧 Backend Basisstation (`esp8266_rx/src/`)
@@ -21,7 +21,7 @@
 * `lap_logic.cpp`: Live-Zeitmessung für 5 Rennmodi (0=Training, 1=Quali, 2=Rundenrennen, 3=Zeitrennen, 4=Dragrace). Erfasst Sektorzeiten SZ1–SZ4, PBs und Purple Sectors. 2-Frame-Validierungsfilter (85 ms), einstellbare Deadtime (Standard 2 s), dynamische Boxen-/Outlap-Erkennung (Schwellenwert 250% von AvgLap).
 * `esp_now_base.cpp`: Empfängt Zwischenzeiten von Sektorstationen via **ESP-NOW**. Sendet periodische Beacons (Stratum 0) für Mikrosekunden-Zeitsynchronisation und Remote-OTA-Befehle.
 * `storage.cpp`: `LittleFS`-Dateisystem (`/tracks.json` mit Top 5 Rekorden, `/sessions.json`, `/wifi.json`, `/names.json`, `/schema.json`). Session-Dateien unter `/<track>/<mode>/<timestamp>.json` mit ultrakompakten 1-Buchstaben-Keys gem. Telemetrie-Schema (`c, l, t, p, s, s1..s4, o`). RAM-Puffer (`lapQueue[30]`) gegen Schreibblockaden, EEPROM-Speicherung, 95%-Flash-Schreibschutz.
-* `web_server.cpp` / `web_handlers.cpp`: Asynchroner Webserver & WebSockets (`/ws`), REST-APIs, dynamischer Heap-Schutz (HTTP 503 Busy Guard / WS-Code 1013 bei <20 kB Heap oder >47% Fragmentierung). Dreistufige WLAN-Kaskade (Heim ➔ Hotspot ➔ AP), Geister-WLAN (`LT_<SSID>-<IP>`), SoftAP auf 802.11n mit gelernter IP (dynamisches Gateway = Basis-IP für nahtlose Handy-Anbindung) und ChipID-Suffix (`RC-LapTimer-XXXX`).
+* `web_server.cpp` / `web_handlers.cpp`: Asynchroner Webserver & WebSockets (`/ws`), REST-APIs, dynamischer Heap-Schutz (HTTP 503 Busy Guard / WS-Code 1013 bei <16 kB Heap, >55% Fragmentierung oder <3 kB freiem Block). Dreistufige WLAN-Kaskade (Heim ➔ Hotspot ➔ AP), Geister-WLAN (`LT_<SSID>-<IP>`), SoftAP auf 802.11n mit gelernter IP (dynamisches Gateway = Basis-IP für nahtlose Handy-Anbindung) und ChipID-Suffix (`RC-LapTimer-XXXX`).
 
 ### 📡 Backend Sektorstationen (`esp8266_rx/src_sz/`)
 * **Hardware:** ESP-01S, TSOP4838 an **GPIO3 (RX)**, Akkumessung an **A0** (8k2/1k8 Teiler).
@@ -33,7 +33,7 @@
 * LFSR-Pseudozufallspause (15–30 ms) verhindert Signalüberlagerung im Pulk.
 
 ### 🖥️ Frontend Web-App (`esp8266_rx/data/`) – HTML5 / Vanilla JS (LittleFS)
-* Autarkes Offline-Design ohne externe CDNs/Fonts/Bilder für sofortiges Laden im AP-Modus ohne Internet. Dateien werden beim Upload über die Web-Oberfläche (`update.html`) automatisch im Browser gezippt (`.gz`).
+* Autarkes Offline-Design ohne externe CDNs/Fonts/Bilder für sofortiges Laden im AP-Modus ohne Internet. Dateien werden beim Upload über die Web-Oberfläche (`update.html`) automatisch im Browser gezippt (`.gz`), sodass LittleFS die Web-Assets hochkomprimiert ausliefert. Gestaffelter initialer API-Ladevorgang und intelligentes Request-Throttling (mind. 750 ms Mindestabstand bei Runden-Updates) schützen den ESP8266 vor TCP-Pufferstau und Socket-Überlastung.
 * `index.html`: Fahrer-Dashboard mit zuschaltbarem **OLED-Dimmer-Modus** (stromsparende Großanzeige für Handys).
 * `admin.html`: Rennleiter-Interface (Session-Steuerung, Streckenauswahl, Fahrerumbenennung, Sensor-Debug).
 * `main.js`: WebSocket-Anbindung, Live-Tabelle, Delta-Zeiten, Leaderboard-Sortierung, universelles modulares Dialog-System (`showConfirm`/`showAlert` im Cyberpunk-Look mit dynamischen Farb-Themes, ersetzt alle nativen Browser-Popups im gesamten Frontend).

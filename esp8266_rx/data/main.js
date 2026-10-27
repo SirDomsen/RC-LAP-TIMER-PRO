@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.2.9'; 
+window.UI_VERSION = '4.3.0'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -904,12 +904,14 @@ function onDriverQuickSelectChange(val) {
   }
 }
 
-function syncTimeWithServerOnce() {
+async function syncTimeWithServerOnce() {
   let nowSec = Math.floor(Date.now() / 1000);
   let tzOffsetSec = -(new Date().getTimezoneOffset() * 60);
-  fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { 
-    method: 'POST'
-  }).catch(e => console.error("Einmaliger Zeit-Sync fehlgeschlagen:", e));
+  try {
+    await fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { method: 'POST' });
+  } catch (e) {
+    console.error("Einmaliger Zeit-Sync fehlgeschlagen:", e);
+  }
 }
 
 // --- STRECKEN-VERWALTUNG & SPEICHERPLATZ-SCHUTZ ---
@@ -1613,13 +1615,29 @@ function startLocalTimerTicker() {
   }, 1000);
 }
 
+let lastUpdateDataTime = 0;
+const MIN_UPDATE_INTERVAL_MS = 750;
+let updateDataTimer = null;
+
 async function updateData(fullSync = false) {
-  if (isUpdatingData) {
+  let now = Date.now();
+  if (isUpdatingData || (now - lastUpdateDataTime < MIN_UPDATE_INTERVAL_MS)) {
     pendingUpdateRequested = true;
     if (fullSync) pendingUpdateFullSync = true;
+    if (!updateDataTimer && !isUpdatingData) {
+      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime));
+      updateDataTimer = setTimeout(() => {
+        updateDataTimer = null;
+        let doFull = pendingUpdateFullSync;
+        pendingUpdateRequested = false;
+        pendingUpdateFullSync = false;
+        updateData(doFull);
+      }, delay);
+    }
     return;
   }
   isUpdatingData = true;
+  lastUpdateDataTime = now;
 
   try {
     let response = await fetch('/api/laps');
@@ -1857,10 +1875,14 @@ async function updateData(fullSync = false) {
     isUpdatingData = false;
     isInitialDataLoaded = true;
     if (pendingUpdateRequested) {
-      pendingUpdateRequested = false;
       let doFull = pendingUpdateFullSync;
+      pendingUpdateRequested = false;
       pendingUpdateFullSync = false;
-      setTimeout(() => updateData(doFull), 50);
+      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (Date.now() - lastUpdateDataTime));
+      updateDataTimer = setTimeout(() => {
+        updateDataTimer = null;
+        updateData(doFull);
+      }, delay);
     }
   }
 
@@ -2069,7 +2091,7 @@ async function pollData() {
     isPolling = false;
     clearTimeout(pollTimeout);
     let wsConnected = (socket && socket.readyState === WebSocket.OPEN);
-    let baseInterval = wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 4000;
+    let baseInterval = wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 6000;
     let jitter = Math.floor(Math.random() * 3500); 
     pollTimeout = setTimeout(pollData, baseInterval + jitter);
   }
@@ -2267,7 +2289,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   window.sessionStartTs = Math.floor(Date.now() / 1000);
 
   // Rolle verbindlich anhand der aufgerufenen Seite festlegen
@@ -2276,23 +2298,35 @@ window.addEventListener('DOMContentLoaded', () => {
   localStorage.setItem('rctl_user_role', userRole);
   applyUserRoleUI(userRole);
 
-  loadVersion();
-  syncTimeWithServerOnce();
-  loadTracks();
+  startLocalTimerTicker();
 
-  // Zufälliger Jitter (0 - 800ms) beim Start, um WebSocket-Stürme auf die ESP-CPU zu brechen
-  setTimeout(() => {
-    initWebSocket();
-  }, Math.floor(Math.random() * 800));
-
-  loadSectorConfigInitial();
-  loadCarNames().then(() => {
+  // Entzerrter Ladevorgang verhindert TCP-Pufferstau und Heap-Kollaps beim Seitenaufruf
+  try {
+    await loadVersion();
+    await new Promise(r => setTimeout(r, 50));
+    await syncTimeWithServerOnce();
+    await loadTracks();
+    await new Promise(r => setTimeout(r, 50));
+    await loadSectorConfigInitial();
+    await new Promise(r => setTimeout(r, 50));
+    await loadCarNames();
     updateTTSFilterDisplay();
     populateDriverQuickSelect();
-  });
-  loadWifiStatus();
-  startLocalTimerTicker();
-  pollData();
+    await new Promise(r => setTimeout(r, 50));
+    await loadWifiStatus();
+  } catch (e) {
+    console.warn("[Init] Gestaffelter Ladevorgang:", e);
+  }
+
+  // WebSocket starten, sobald Basisdaten bereitstehen (mit Jitter 200-600ms)
+  setTimeout(() => {
+    initWebSocket();
+  }, 200 + Math.floor(Math.random() * 400));
+
+  // Erstes Polling erst nach 800ms starten
+  setTimeout(() => {
+    pollData();
+  }, 800);
 });
 
 window.onclick = function(event) {

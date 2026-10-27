@@ -39,18 +39,18 @@ static uint32_t ghostWlanOffTimer = 0;
 static String cacheHeaderStr; 
 
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 18500;
-const uint8_t HEAP_CRITICAL_MAX_FRAG = 47;
-const size_t HEAP_CRITICAL_MIN_BLOCK = 4096;
+const size_t HEAP_CRITICAL_MIN_BYTES = 16000;
+const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
+const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
 
 static const char BUSY_HTML_PROGMEM[] PROGMEM = 
   "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-  "<meta http-equiv='refresh' content='2'>"
+  "<meta http-equiv='refresh' content='4'>"
   "<title>RC Lap Timer - Warteschlange</title>"
   "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
   ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
   "</style></head><body><div class='box'><h3>⏳ Verbindungs-Warteschlange</h3>"
-  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in 2 Sekunden...</p></div></body></html>";
+  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
   return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
@@ -83,12 +83,12 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
       AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
-      res->addHeader("Retry-After", "2");
+      res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
     } else {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
-      res->addHeader("Retry-After", "2");
+      res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
     }
@@ -152,7 +152,7 @@ static void blinkGreenLED(int count) {
 
 static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
-  WiFi.setPhyMode(WIFI_PHY_MODE_11B); 
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
@@ -178,7 +178,7 @@ static void setupFallbackAP() {
   ghostWlanActive = false;
   WiFi.disconnect(true);
   delay(50);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11B); 
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
