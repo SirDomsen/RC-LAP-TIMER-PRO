@@ -341,38 +341,50 @@ function sortLapData(data) {
 
 // --- LAZY-LOADING DER STATISTIKEN ---
 let statsLoading = false;
-async function openStatsOverviewModal() {
-  if (typeof switchStatsTab !== 'function') {
-    if (statsLoading) return;
-    statsLoading = true;
-    let btn = document.getElementById('statsOverviewBtn');
-    let orig = btn ? btn.innerText : '';
-    if (btn) btn.innerText = "⏳ Lade...";
-    let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '3.7.0');
-    s.onload = async () => {
-      statsLoading = false;
-      if (btn) btn.innerText = orig;
-      if (typeof openStatsOverviewModal === 'function') {
-        openStatsOverviewModal();
+if (typeof openStatsOverviewModal !== 'function') {
+  window.openStatsOverviewModal = async function() {
+    if (typeof switchStatsTab !== 'function') {
+      if (statsLoading) return;
+      statsLoading = true;
+      let btn = document.getElementById('statsOverviewBtn');
+      let orig = btn ? btn.innerText : '';
+      if (btn) btn.innerText = "⏳ Lade...";
+      let s = document.createElement('script');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.3.0');
+      s.onload = async () => {
+        statsLoading = false;
+        if (btn) btn.innerText = orig;
+        if (typeof openStatsOverviewModal === 'function') {
+          openStatsOverviewModal();
+        }
+      };
+      s.onerror = () => {
+        statsLoading = false;
+        if (btn) btn.innerText = orig;
+        if (typeof showAlert === 'function') {
+          showAlert({
+            title: "❌ FEHLER",
+            theme: "danger",
+            message: "Fehler beim Laden der Statistiken."
+          });
+        }
+      };
+      document.body.appendChild(s);
+    } else {
+      let m = document.getElementById('statsOverviewModal');
+      if (m) m.style.display = 'block';
+      if (typeof sessionFileCache !== 'undefined') sessionFileCache = {};
+      await Promise.all([
+        typeof loadCarNames === 'function' ? loadCarNames() : Promise.resolve(),
+        typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
+        typeof fetchSessionsAndStorageInfo === 'function' ? fetchSessionsAndStorageInfo() : Promise.resolve()
+      ]);
+      if (typeof updateStatsModalDailyBest === 'function') updateStatsModalDailyBest();
+      if (typeof switchStatsTab === 'function') {
+        switchStatsTab(typeof currentTab !== 'undefined' ? currentTab : 'training');
       }
-    };
-    s.onerror = () => {
-      statsLoading = false;
-      if (btn) btn.innerText = orig;
-      showAlert({
-        title: "❌ FEHLER",
-        theme: "danger",
-        message: "Fehler beim Laden der Statistiken."
-      });
-    };
-    document.body.appendChild(s);
-  } else {
-    let m = document.getElementById('statsOverviewModal');
-    if (m) m.style.display = 'block';
-    await loadCarNames();
-    switchStatsTab(currentTab);
-  }
+    }
+  };
 }
 
 function closeStatsOverviewModal() {
