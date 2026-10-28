@@ -3,148 +3,171 @@ let pendingWifiMode = 0;
 let lastLearnedApIp = '192.168.0.8';
 let defaultApSSID = 'RC-LapTimer';
 
+function renderDriverAndTtsInputs() {
+  let container = document.getElementById('configRows');
+  let ttsContainer = document.getElementById('ttsFilterContainer');
+  if (!container || !ttsContainer) return;
+
+  container.innerHTML = '';
+  ttsContainer.innerHTML = '';
+
+  for (let i = 1; i <= MAX_CARS; i++) {
+    let driver = carNamesMap[i]?.driver || ('Fahrer ' + i);
+    let car = carNamesMap[i]?.car || ('Auto ' + i);
+    
+    container.innerHTML += `<div class="modal-row">
+      <span>ID <strong>${i}</strong>:</span>
+      <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer" style="width:30%;">
+      <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto" style="width:30%;">
+    </div>`;
+
+    let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
+    ttsContainer.innerHTML += `<div class="tts-filter-item">
+      <input type="checkbox" class="tts-car-cb" id="cb_tts_${i}" value="${i}" ${isChecked}>
+      <label for="cb_tts_${i}"><strong>${driver}</strong></label>
+    </div>`;
+  }
+  updateTTSFilterDisplay();
+}
+
 function openConfigModal() {
   let modal = document.getElementById('configModal');
   if (modal) modal.style.display = 'block';
 
-  let container = document.getElementById('configRows');
-  let ttsContainer = document.getElementById('ttsFilterContainer');
-
   let lapTimeCb = document.getElementById('cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
-  
-  if (container) container.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
-  if (ttsContainer) ttsContainer.innerHTML = '<p style="color:var(--text-muted);">Lade Daten...</p>';
 
-  fetch('/api/wificonfig').then(r => r.json()).then(data => {
-    let homeS = document.getElementById('cfg_home_ssid');
-    let homeP = document.getElementById('cfg_home_pass');
-    let hotS = document.getElementById('cfg_hotspot_ssid');
-    let hotP = document.getElementById('cfg_hotspot_pass');
-    let apS = document.getElementById('cfg_ap_ssid');
-    let apP = document.getElementById('cfg_ap_pass');
-    
-    if (homeS) homeS.value = data.homeSSID || '';
-    if (homeP) homeP.value = data.homePass || '';
-    if (hotS) hotS.value = data.hotspotSSID || '';
-    if (hotP) hotP.value = data.hotspotPass || '';
-    if (apS) apS.value = data.apSSID || '';
-    if (apP) apP.value = data.apPass || '';
-    if (data.defaultApSSID) {
-      defaultApSSID = data.defaultApSSID;
-      if (apS) apS.placeholder = data.defaultApSSID;
-    }
-    if (data.learnedApIP) lastLearnedApIp = data.learnedApIP;
+  // Sofortige Darstellung aus dem Speicher (0ms Latenz)
+  renderDriverAndTtsInputs();
 
-    let badge = document.getElementById('activeWifiBadge');
-    if (badge) {
-      let configured = data.mode;
-      let actual = data.runtimeMode !== undefined ? data.runtimeMode : data.mode;
-      let isFallback = (configured !== actual);
-
-      let txt = "";
-      let color = "";
-      let bg = "";
-
-      if (actual === 1) { 
-        txt = "🏠 Heim-WLAN"; 
-        color = "var(--neon-green)"; 
-        bg = "rgba(0,255,102,0.1)"; 
-      }
-      else if (actual === 2) { 
-        txt = "📱 Hotspot"; 
-        color = "var(--neon-orange)"; 
-        bg = "rgba(255,153,0,0.1)"; 
-      }
-      else { 
-        txt = "📡 AP-Modus"; 
-        color = "var(--neon-purple)"; 
-        bg = "rgba(181,50,255,0.1)"; 
-      }
-
-      if (isFallback) {
-        let source = configured === 1 ? "Heim-WLAN" : (configured === 2 ? "Hotspot" : "unbekannt");
-        txt += ` (Fallback von ${source})`;
-        color = "var(--neon-red)";
-        bg = "rgba(255,51,102,0.15)";
-      }
-
-      badge.innerText = txt + " aktiv";
-      badge.style.borderColor = color;
-      badge.style.color = color;
-      badge.style.background = bg;
-    }
-  }).catch(e => console.error(e));
-
-  fetch('/api/deadtime').then(r => r.json()).then(data => {
-    let dtElem = document.getElementById('cfg_deadtime');
-    if (dtElem && data.ms) dtElem.value = (data.ms / 1000).toFixed(1);
-  }).catch(e => console.error(e));
-
-  fetch('/api/filter').then(r => r.json()).then(data => {
-    let cb = document.getElementById('cfg_two_frames');
-    if (cb) cb.checked = data.enabled;
-  }).catch(e => console.error(e));
-
-  fetch('/api/cacheconfig').then(r => r.json()).then(data => {
-    let cb = document.getElementById('cfg_web_cache');
-    if (cb) {
-      cb.checked = data.cache;
-      initialCacheState = data.cache;
-    }
-  }).catch(e => console.error(e));
-
-  fetch('/api/sectorconfig').then(r => r.json()).then(data => {
-    let sz1 = document.getElementById('cfg_use_sz1');
-    let sz2 = document.getElementById('cfg_use_sz2');
-    let sz3 = document.getElementById('cfg_use_sz3');
-    let cp = document.getElementById('cfg_checkpoint_mode');
-    let dr = document.getElementById('cfg_dragrace_mode');
-    let audio = document.getElementById('cfg_sector_audio');
-
-    if (sz1) sz1.checked = data.useSz1;
-    if (sz2) sz2.checked = data.useSz2;
-    if (sz3) sz3.checked = data.useSz3;
-    if (cp) cp.checked = data.checkpointMode;
-    if (dr) dr.checked = data.dragraceMode;
-
-    if (typeof activeUseSz1 !== 'undefined') activeUseSz1 = data.useSz1;
-    if (typeof activeUseSz2 !== 'undefined') activeUseSz2 = data.useSz2;
-    if (typeof activeUseSz3 !== 'undefined') activeUseSz3 = data.useSz3;
-
-    if (data.sectorAudio !== undefined) {
-      sectorAudioEnabled = data.sectorAudio;
-      localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
-    }
-    if (audio) audio.checked = sectorAudioEnabled;
-  }).catch(e => console.error(e));
-
-  fetch('/api/names').then(r => r.json()).then(names => {
-    if (!container || !ttsContainer) return;
-    container.innerHTML = '';
-    ttsContainer.innerHTML = '';
-
-    for (let i = 1; i <= MAX_CARS; i++) {
-      let driver = names[i]?.driver || ('Fahrer ' + i);
-      let car = names[i]?.car || ('Auto ' + i);
-      carNamesMap[i] = { driver: driver, car: car };
+  // Konsolidierter Einzel-Abruf aller Einstellungen über genau 1 TCP-Verbindung
+  fetch('/api/allconfig').then(r => r.json()).then(all => {
+    // 1. WLAN
+    if (all.wifi) {
+      let data = all.wifi;
+      let homeS = document.getElementById('cfg_home_ssid');
+      let homeP = document.getElementById('cfg_home_pass');
+      let hotS = document.getElementById('cfg_hotspot_ssid');
+      let hotP = document.getElementById('cfg_hotspot_pass');
+      let apS = document.getElementById('cfg_ap_ssid');
+      let apP = document.getElementById('cfg_ap_pass');
       
-      container.innerHTML += `<div class="modal-row">
-        <span>ID <strong>${i}</strong>:</span>
-        <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer" style="width:30%;">
-        <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto" style="width:30%;">
-      </div>`;
+      if (homeS) homeS.value = data.homeSSID || '';
+      if (homeP) homeP.value = data.homePass || '';
+      if (hotS) hotS.value = data.hotspotSSID || '';
+      if (hotP) hotP.value = data.hotspotPass || '';
+      if (apS) apS.value = data.apSSID || '';
+      if (apP) apP.value = data.apPass || '';
+      if (data.defaultApSSID) {
+        defaultApSSID = data.defaultApSSID;
+        if (apS) apS.placeholder = data.defaultApSSID;
+      }
+      if (data.learnedApIP) lastLearnedApIp = data.learnedApIP;
 
-      let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
-      ttsContainer.innerHTML += `<div class="tts-filter-item">
-        <input type="checkbox" class="tts-car-cb" id="cb_tts_${i}" value="${i}" ${isChecked}>
-        <label for="cb_tts_${i}"><strong>${driver}</strong></label>
-      </div>`;
+      let badge = document.getElementById('activeWifiBadge');
+      if (badge) {
+        let configured = data.mode;
+        let actual = data.runtimeMode !== undefined ? data.runtimeMode : data.mode;
+        let isFallback = (configured !== actual);
+
+        let txt = "";
+        let color = "";
+        let bg = "";
+
+        if (actual === 1) { 
+          txt = "🏠 Heim-WLAN"; 
+          color = "var(--neon-green)"; 
+          bg = "rgba(0,255,102,0.1)"; 
+        }
+        else if (actual === 2) { 
+          txt = "📱 Hotspot"; 
+          color = "var(--neon-orange)"; 
+          bg = "rgba(255,153,0,0.1)"; 
+        }
+        else { 
+          txt = "📡 AP-Modus"; 
+          color = "var(--neon-purple)"; 
+          bg = "rgba(181,50,255,0.1)"; 
+        }
+
+        if (isFallback) {
+          let source = configured === 1 ? "Heim-WLAN" : (configured === 2 ? "Hotspot" : "unbekannt");
+          txt += ` (Fallback von ${source})`;
+          color = "var(--neon-red)";
+          bg = "rgba(255,51,102,0.15)";
+        }
+
+        badge.innerText = txt + " aktiv";
+        badge.style.borderColor = color;
+        badge.style.color = color;
+        badge.style.background = bg;
+      }
     }
-    updateTTSFilterDisplay();
+
+    // 2. Deadtime
+    if (all.deadtime && all.deadtime.ms) {
+      let dtElem = document.getElementById('cfg_deadtime');
+      if (dtElem) dtElem.value = (all.deadtime.ms / 1000).toFixed(1);
+    }
+
+    // 3. Filter
+    if (all.filter) {
+      let cb = document.getElementById('cfg_two_frames');
+      if (cb) cb.checked = all.filter.enabled;
+    }
+
+    // 4. Cache
+    if (all.cache) {
+      let cb = document.getElementById('cfg_web_cache');
+      if (cb) {
+        cb.checked = all.cache.cache;
+        initialCacheState = all.cache.cache;
+      }
+    }
+
+    // 5. Sector
+    if (all.sector) {
+      let sz1 = document.getElementById('cfg_use_sz1');
+      let sz2 = document.getElementById('cfg_use_sz2');
+      let sz3 = document.getElementById('cfg_use_sz3');
+      let cp = document.getElementById('cfg_checkpoint_mode');
+      let dr = document.getElementById('cfg_dragrace_mode');
+      let audio = document.getElementById('cfg_sector_audio');
+
+      if (sz1) sz1.checked = all.sector.useSz1;
+      if (sz2) sz2.checked = all.sector.useSz2;
+      if (sz3) sz3.checked = all.sector.useSz3;
+      if (cp) cp.checked = all.sector.checkpointMode;
+      if (dr) dr.checked = all.sector.dragraceMode;
+
+      if (typeof activeUseSz1 !== 'undefined') activeUseSz1 = all.sector.useSz1;
+      if (typeof activeUseSz2 !== 'undefined') activeUseSz2 = all.sector.useSz2;
+      if (typeof activeUseSz3 !== 'undefined') activeUseSz3 = all.sector.useSz3;
+
+      if (all.sector.sectorAudio !== undefined) {
+        sectorAudioEnabled = all.sector.sectorAudio;
+        localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
+      }
+      if (audio) audio.checked = sectorAudioEnabled;
+    }
+
+    // 6. Names (falls serverseitig anders als im lokalen Cache)
+    if (all.names) {
+      let changed = false;
+      for (let i = 1; i <= MAX_CARS; i++) {
+        let serverDriver = all.names[i]?.driver || ('Fahrer ' + i);
+        let serverCar = all.names[i]?.car || ('Auto ' + i);
+        if (!carNamesMap[i] || carNamesMap[i].driver !== serverDriver || carNamesMap[i].car !== serverCar) {
+          carNamesMap[i] = { driver: serverDriver, car: serverCar };
+          changed = true;
+        }
+      }
+      if (changed) {
+        renderDriverAndTtsInputs();
+      }
+    }
   }).catch(e => {
-    console.error(e);
-    if (container) container.innerHTML = '<p style="color:var(--neon-red);">Fehler beim Laden der Namen</p>';
+    console.error("Fehler beim Laden von /api/allconfig:", e);
   });
 }
 

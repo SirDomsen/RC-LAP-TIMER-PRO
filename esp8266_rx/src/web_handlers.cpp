@@ -548,6 +548,49 @@ void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "OK");
 }
 
+void handleGetAllConfig(AsyncWebServerRequest *request) {
+  checkDailyBestDateRollover();
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+  response->print("{\"wifi\":{");
+  response->printf("\"runtimeMode\":%d,", currentRuntimeWifiMode);
+  response->printf("\"mode\":%d,", activeWifiMode);
+  response->printf("\"homeSSID\":\"%s\",", homeSSID.c_str());
+  response->printf("\"homePass\":\"%s\",", homePass.c_str());
+  response->printf("\"hotspotSSID\":\"%s\",", hotspotSSID.c_str());
+  response->printf("\"hotspotPass\":\"%s\",", hotspotPass.c_str());
+  response->printf("\"apSSID\":\"%s\",", apSSID.c_str());
+  response->printf("\"apPass\":\"%s\",", apPass.c_str());
+  String curIP = (currentRuntimeWifiMode == 0) ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+  String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+  response->printf("\"currentIP\":\"%s\",", curIP.c_str());
+  response->printf("\"learnedApIP\":\"%s\",", lIP.c_str());
+  response->printf("\"defaultApSSID\":\"%s\"", getDefaultApSSID().c_str());
+  response->print("},");
+
+  response->printf("\"deadtime\":{\"ms\":%u},", minLapTimeMs);
+  response->printf("\"filter\":{\"enabled\":%s},", requireTwoFrames ? "true" : "false");
+  response->printf("\"cache\":{\"cache\":%s},", webCacheEnabled ? "true" : "false");
+
+  response->print("\"sector\":{");
+  response->printf("\"useSz1\":%s,", useSz1 ? "true" : "false");
+  response->printf("\"useSz2\":%s,", useSz2 ? "true" : "false");
+  response->printf("\"useSz3\":%s,", useSz3 ? "true" : "false");
+  response->printf("\"checkpointMode\":%s,", checkpointMode ? "true" : "false");
+  response->printf("\"dragraceMode\":%s,", dragraceMode ? "true" : "false");
+  response->printf("\"sectorAudio\":%s", sectorAudioFeedback ? "true" : "false");
+  response->print("},");
+
+  response->print("\"names\":{");
+  for (uint8_t i = 1; i <= MAX_CARS; i++) {
+    if (i > 1) response->print(",");
+    response->printf("\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}", i, driverNames[i].c_str(), carNames[i].c_str());
+  }
+  response->print("}}");
+
+  request->send(response);
+}
+
 void handleGetWifiConfig(AsyncWebServerRequest *request) {
   JsonDocument doc;
   doc["runtimeMode"] = currentRuntimeWifiMode;

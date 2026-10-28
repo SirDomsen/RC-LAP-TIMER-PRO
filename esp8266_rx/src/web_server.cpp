@@ -416,6 +416,7 @@ void initNetworkAndServer() {
     request->send(200, "application/json", json);
   });
 
+  server.on("/api/allconfig", HTTP_GET, handleGetAllConfig);
   server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
   server.on("/api/setwificonfig", HTTP_POST, handlePostSetWifiConfig);
   server.on("/api/switchwifi", HTTP_POST, handlePostSwitchWifi);
