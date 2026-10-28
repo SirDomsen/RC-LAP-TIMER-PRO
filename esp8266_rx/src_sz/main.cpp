@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
-#include <EEPROM.h>
 #include "config.h"
 #include "ir_decoder.h"
+#include "secrets.h"
 
 extern "C" {
   #include <espnow.h>
@@ -13,13 +13,17 @@ extern "C" {
 typedef uint8_t u8;
 #endif
 
-// --- Feste IP-Adressen für OTA/Wartung ---
-#if STATION_ID == 1
-  IPAddress local_IP(192, 168, 0, 11);
-#elif STATION_ID == 2
-  IPAddress local_IP(192, 168, 0, 12);
-#elif STATION_ID == 3
-  IPAddress local_IP(192, 168, 0, 13);
+#ifndef WIFI_SSID
+  #define WIFI_SSID ""
+#endif
+#ifndef WIFI_PASSWORD
+  #define WIFI_PASSWORD ""
+#endif
+#ifndef BASE_AP_SSID
+  #define BASE_AP_SSID "LapTimer-Base"
+#endif
+#ifndef BASE_AP_PASS
+  #define BASE_AP_PASS "12345678"
 #endif
 
 uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -49,9 +53,9 @@ struct __attribute__((packed)) BeaconSyncPacket {
 struct __attribute__((packed)) AlivePacket {
   uint8_t stationId;
   uint8_t batteryLow;
+  uint8_t isUnicast;
 };
 
-// OTA Wartungsmodus-Trigger (101 Bytes)
 #define OTA_MAGIC_CODE 0x07A1234
 struct __attribute__((packed)) OtaTriggerPacket {
   uint32_t magicCode;
@@ -66,21 +70,8 @@ struct __attribute__((packed)) OtaAckPacket {
   uint8_t  stationId;
 };
 
-#define HOTSPOT_SYNC_MAGIC 0x08B2345
-struct __attribute__((packed)) HotspotSyncPacket {
-  uint32_t magicCode;
-  char ssid[32];
-  char pass[64];
-};
-
-#define HOTSPOT_ACK_MAGIC 0x08B2346
-struct __attribute__((packed)) HotspotAckPacket {
-  uint32_t magicCode;
-  uint8_t stationId;
-};
-
 // ==========================================
-// GLOBALE STATUSVARIABLEN & EINSTELLUNGEN
+// GLOBALE STATUSVARIABLEN
 // ==========================================
 
 const uint32_t ESPNOW_HOP_LATENCY_MS = 1; 
@@ -97,24 +88,16 @@ uint8_t currentChannel = 1;
 uint32_t lastChannelHopMs = 0;
 bool channelLocked = false;
 
-bool wifiConnected = false;
 bool batteryLow = false;
 bool maintenanceMode = false;
 static uint32_t otaStartTimeMs = 0;
 static bool otaTransferInProgress = false;
 
-// Sichere Flags für den Loop (Verhindert Interrupt-Crashes!)
 volatile bool triggerMaintenance = false;
 volatile bool pendingOtaAck = false; 
 volatile uint8_t otaTargetMode = 1;
-String otaTargetSsid = "";
-String otaTargetPass = "";
-
-String dynamicSsid = "";
-String dynamicPass = "";
-volatile bool pendingHotspotAck = false;
-
-#define EEPROM_MAGIC_HOTSPOT 0x5B
+char otaTargetSsid[33] = {0};
+char otaTargetPass[65] = {0};
 
 static uint32_t ledPulseEndMs = 0;
 static bool ledPulseActive = false;
@@ -136,35 +119,6 @@ static uint8_t relayCacheIndex = 0;
 // ==========================================
 // HILFSFUNKTIONEN
 // ==========================================
-
-void loadHotspotFromEEPROM() {
-  EEPROM.begin(512);
-  if (EEPROM.read(0) == EEPROM_MAGIC_HOTSPOT) {
-    uint8_t ssidLen = EEPROM.read(1);
-    if (ssidLen <= 32) {
-      char s[33] = {0};
-      for (int i = 0; i < ssidLen; i++) s[i] = EEPROM.read(2 + i);
-      dynamicSsid = String(s);
-    }
-    uint8_t passLen = EEPROM.read(34);
-    if (passLen <= 64) {
-      char p[65] = {0};
-      for (int i = 0; i < passLen; i++) p[i] = EEPROM.read(35 + i);
-      dynamicPass = String(p);
-    }
-  }
-}
-
-void saveHotspotToEEPROM(String s, String p) {
-  EEPROM.write(0, EEPROM_MAGIC_HOTSPOT);
-  EEPROM.write(1, s.length());
-  for (unsigned int i = 0; i < s.length(); i++) EEPROM.write(2 + i, s[i]);
-  EEPROM.write(34, p.length());
-  for (unsigned int i = 0; i < p.length(); i++) EEPROM.write(35 + i, p[i]);
-  EEPROM.commit();
-  dynamicSsid = s;
-  dynamicPass = p;
-}
 
 bool isAlreadyRelayed(uint32_t eventId) {
   if (eventId == 0) return false;
@@ -197,60 +151,141 @@ void updateEspNowChannel(uint8_t ch) {
   }
 }
 
-// Sichere OTA Netzwerk-Verbindung (Keine festen Zugangsdaten, Eindeutiger AP!)
-void connectOtaNetwork() {
-  digitalWrite(LED_SIGNAL, HIGH); 
-  WiFi.disconnect(true);
-  delay(50);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G); // Zurück auf den sicheren 11G Standard
+// Watchdog-sicherer Verbindungsversuch mit detaillierter Ausgabe
+bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
+  if (!ssid || strlen(ssid) == 0) {
+    Serial.println("[WIFI] Uebersprungen: Leere SSID");
+    return false;
+  }
+
+  Serial.printf("[WIFI] Verbindungsversuch zu: '%s' (Timeout: %u ms)...\n", ssid, timeoutMs);
+  WiFi.mode(WIFI_OFF);
+  delay(60);
+  yield();
+
   WiFi.mode(WIFI_STA);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setOutputPower(20.5);
+  WiFi.hostname("SZ-" + String(STATION_ID));
+  WiFi.begin(ssid, pass);
+
+  uint32_t startMs = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < timeoutMs)) {
+    delay(100);
+    yield();
+    ESP.wdtFeed();
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[WIFI] Erfolgreich verbunden! IP: %s | RSSI: %d dBm\n", 
+                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    return true;
+  }
+
+  Serial.printf("[WIFI] Fehlgeschlagen! Status: %d\n", (int)WiFi.status());
+  return false;
+}
+
+// ==========================================
+// 4-STUFEN-FAILSAFE WARTUNGSMODUS
+// ==========================================
+
+void startMaintenanceNetwork() {
+  Serial.println("\n=================================");
+  Serial.println("[OTA] Starte Wartungs-Netzwerk...");
+  Serial.println("=================================");
+
+  digitalWrite(LED_SIGNAL, HIGH);
   
-  String targetSsid = otaTargetSsid;
-  String targetPass = otaTargetPass;
+  Serial.println("[OTA] Trenne ESP-NOW...");
+  esp_now_deinit();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  yield();
 
-  // Nur wenn die Basis uns eine SSID geschickt hat, versuchen wir Stufe 1 & 2
-  if (targetSsid.length() > 0) {
-    // Stufe 1: Dynamisch per DHCP
-    WiFi.config(0u, 0u, 0u);
-    WiFi.hostname(String("SZ-") + String(STATION_ID));
-    WiFi.begin(targetSsid.c_str(), targetPass.c_str());
+  bool connected = false;
 
-    uint32_t startMs = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
-      delay(100); 
-    }
-    
-    // Stufe 2: Fallback auf feste IP
-    if (WiFi.status() != WL_CONNECTED && otaTargetMode == 1) {
-      IPAddress gateway(192, 168, 0, 1);
-      IPAddress subnet(255, 255, 255, 0);
-      WiFi.config(local_IP, gateway, subnet);
-      WiFi.begin(targetSsid.c_str(), targetPass.c_str());
-      
-      startMs = millis();
-      while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
-        delay(100); 
-      }
-    }
-  }
-
-  // Stufe 3: Notfall-AP (Greift bei Fehler ODER wenn targetSsid leer war)
-  if (WiFi.status() != WL_CONNECTED || targetSsid.length() == 0) {
-    WiFi.mode(WIFI_AP);
-    // Erzeugt z.B. "SZ1-RESCUE-1A2B3C" -> Absolut unverwechselbar!
-    String rescueSsid = "SZ" + String(STATION_ID) + "-RESCUE-" + String(ESP.getChipId(), HEX);
-    rescueSsid.toUpperCase();
-    WiFi.softAP(rescueSsid.c_str(), "12345678"); // Fallback-Passwort
-    wifiConnected = true; 
+  // Stufe 1: Daten von der Basis
+  if (strlen(otaTargetSsid) > 0) {
+    Serial.printf("[OTA] Stufe 1 (Basis-Vorgabe): SSID '%s'\n", otaTargetSsid);
+    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000);
   } else {
-    wifiConnected = true;
-    updateEspNowChannel(WiFi.channel());
+    Serial.println("[OTA] Stufe 1 uebersprungen (keine SSID uebermittelt)");
   }
+
+  // Stufe 2: Heim-WLAN (secrets.h)
+  if (!connected && strlen(WIFI_SSID) > 0) {
+    Serial.printf("[OTA] Stufe 2 (Heimnetz aus secrets.h): SSID '%s'\n", WIFI_SSID);
+    connected = tryConnectStation(WIFI_SSID, WIFI_PASSWORD, 6000);
+  }
+
+  // Stufe 3: Basis-AP
+  if (!connected && strlen(BASE_AP_SSID) > 0) {
+    Serial.printf("[OTA] Stufe 3 (Basis-AP Standard): SSID '%s'\n", BASE_AP_SSID);
+    connected = tryConnectStation(BASE_AP_SSID, BASE_AP_PASS, 4000);
+  }
+
+  // Stufe 4: Autarker Rettungs-AP
+  if (!connected) {
+    Serial.println("[OTA] Stufe 4: Alle Station-Verbindungen fehlgeschlagen!");
+    Serial.println("[OTA] Erzeuge autarken Rettungs-AP...");
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    yield();
+
+    WiFi.mode(WIFI_AP);
+    WiFi.setOutputPower(20.5);
+
+    IPAddress apIP(192, 168, 4, 1);
+    IPAddress gateway(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.softAPConfig(apIP, gateway, subnet);
+
+    String rescueSsid = "RescueSZ" + String(ESP.getChipId(), HEX);
+    rescueSsid.toUpperCase();
+    WiFi.softAP(rescueSsid.c_str(), "12345678", 1, false);
+
+    Serial.printf("[OTA] Rettungs-AP aktiv! SSID: '%s' | IP: 192.168.4.1\n", rescueSsid.c_str());
+  }
+
+  // ArduinoOTA initialisieren
+  String hostName = "SZ-" + String(STATION_ID);
+  ArduinoOTA.setHostname(hostName.c_str());
+
+  ArduinoOTA.onStart([]() { 
+    otaTransferInProgress = true; 
+    Serial.println("[OTA] Upload gestartet...");
+  });
+
+  ArduinoOTA.onEnd([]() { 
+    otaTransferInProgress = false; 
+    Serial.println("[OTA] Upload erfolgreich beendet! Starte neu...");
+    delay(100);
+    ESP.restart();
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) { 
+    Serial.printf("[OTA] FEHLER [%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    ESP.restart(); 
+  });
+
+  ArduinoOTA.begin();
+  Serial.printf("[OTA] Bereit fuer Flash unter Hostname '%s'\n", hostName.c_str());
 
   otaStartTimeMs = millis();
-  otaTransferInProgress = false;
-  digitalWrite(LED_SIGNAL, LOW); 
+  maintenanceMode = true;
+  digitalWrite(LED_SIGNAL, LOW);
 }
 
 // ==========================================
@@ -272,7 +307,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
         updateEspNowChannel(sync.channel);
       }
       
-      // Basis-MAC aus Stratum-0 Beacon lernen
       if (sync.stratum == 0 && mac != NULL) {
         if (!baseMacKnown || memcmp(baseStationMac, mac, 6) != 0) {
           if (baseMacKnown && esp_now_is_peer_exist(baseStationMac)) {
@@ -319,7 +353,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 3. ALIVE
+  // 3. ALIVE RELAY
   if (len == sizeof(AlivePacket)) {
     AlivePacket alive;
     memcpy(&alive, incomingData, sizeof(alive));
@@ -334,27 +368,19 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     return;
   }
 
-  // 4. OTA TRIGGER (Sicherer Modus: Nur Flags setzen!)
+  // 4. OTA TRIGGER
   if (len == sizeof(OtaTriggerPacket)) {
     OtaTriggerPacket ota;
     memcpy(&ota, incomingData, sizeof(ota));
     if (ota.magicCode == OTA_MAGIC_CODE) {
-      pendingOtaAck = true; // Trigger Senden im Loop
+      Serial.println("\n[ESPNOW] OTA-Trigger Paket empfangen!");
+      pendingOtaAck = true;
       triggerMaintenance = true;
       otaTargetMode = ota.targetMode;
-      otaTargetSsid = String(ota.ssid);
-      otaTargetPass = String(ota.pass);
-    }
-    return;
-  }
-  
-  // 5. HOTSPOT SYNC
-  if (len == sizeof(HotspotSyncPacket)) {
-    HotspotSyncPacket syncPkt;
-    memcpy(&syncPkt, incomingData, sizeof(syncPkt));
-    if (syncPkt.magicCode == HOTSPOT_SYNC_MAGIC) {
-      saveHotspotToEEPROM(String(syncPkt.ssid), String(syncPkt.pass));
-      pendingHotspotAck = true;
+      strncpy(otaTargetSsid, ota.ssid, 32);
+      otaTargetSsid[32] = '\0';
+      strncpy(otaTargetPass, ota.pass, 64);
+      otaTargetPass[64] = '\0';
     }
     return;
   }
@@ -365,16 +391,18 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
 // ==========================================
 
 void setup() {
+  Serial.begin(115200);
+  delay(100);
+  Serial.println("\n\n=========================================");
+  Serial.printf("[BOOT] SZ-%d startet (ChipId: %06X)\n", STATION_ID, ESP.getChipId());
+  Serial.println("=========================================");
+
   pinMode(LED_SIGNAL, OUTPUT);
-  pinMode(1, OUTPUT);
-  digitalWrite(1, LOW);
   pinMode(0, INPUT_PULLUP);
 
   digitalWrite(LED_SIGNAL, LOW);
   delay(100);
   digitalWrite(LED_SIGNAL, HIGH);
-
-  loadHotspotFromEEPROM();
 
   WiFi.persistent(false);
   WiFi.disconnect(true);
@@ -384,18 +412,17 @@ void setup() {
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   if (esp_now_init() == 0) {
+    Serial.println("[INIT] ESP-NOW erfolgreich initialisiert.");
     esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
     esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
+  } else {
+    Serial.println("[ERROR] ESP-NOW Initialisierung fehlgeschlagen!");
   }
 
   initIRDecoder();
-  ArduinoOTA.setHostname(("SZ-" + String(STATION_ID)).c_str());
-  ArduinoOTA.onStart([]() { otaTransferInProgress = true; });
-  ArduinoOTA.onEnd([]() { otaTransferInProgress = false; });
-  // onError Reboot ist hier sicher, da der ESP danach sauber bootet
-  ArduinoOTA.onError([](ota_error_t error) { ESP.restart(); });
+  Serial.println("[INIT] IR-Decoder aktiv. Bereit fuer Rennen.");
 }
 
 // ==========================================
@@ -405,9 +432,10 @@ void setup() {
 void loop() {
   uint32_t nowMs = millis();
 
-  // --- SICHERES SENDEN AUSSERHALB DES INTERRUPTS ---
+  // --- 1. OTA ACK SENDEN ---
   if (pendingOtaAck) {
     pendingOtaAck = false;
+    Serial.println("[ESPNOW] Sende OTA-ACK an Basis...");
     OtaAckPacket ack;
     ack.magicCode = OTA_ACK_MAGIC;
     ack.stationId = STATION_ID;
@@ -415,30 +443,38 @@ void loop() {
     esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
   }
 
-  if (pendingHotspotAck) {
-    pendingHotspotAck = false;
-    HotspotAckPacket ack;
-    ack.magicCode = HOTSPOT_ACK_MAGIC;
-    ack.stationId = STATION_ID;
-    if (baseMacKnown) esp_now_send(baseStationMac, (uint8_t *)&ack, sizeof(ack));
-    else esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
+  // --- 2. WARTUNGSMODUS STARTEN ---
+  if (triggerMaintenance && !maintenanceMode) {
+    triggerMaintenance = false;
+    startMaintenanceNetwork();
   }
 
-  // --- 1. KANAL-HOPPING ---
-  if (!maintenanceMode) {
-    if (nowMs - lastBeaconReceivedMs > BEACON_TIMEOUT_MS) {
-      channelLocked = false;
-      timeSynced = false;
-      currentStratum = 255;
-      if (nowMs - lastChannelHopMs >= CHANNEL_HOP_INTERVAL_MS) {
-        lastChannelHopMs = nowMs;
-        uint8_t nextCh = (currentChannel % 13) + 1;
-        updateEspNowChannel(nextCh);
-      }
+ // --- 3. WARTUNGSMODUS AUSFÜHREN (Dauerhaft aktiv bis Flash oder Power-Cycle) ---
+  if (maintenanceMode) {
+    ArduinoOTA.handle();
+    yield();
+    ESP.wdtFeed();
+    
+    // Gleichmäßiges Blinken signalisiert: "Ich warte auf deinen Upload"
+    bool blinkState = (millis() / 120) % 2 == 0;
+    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
+
+    return; // Kein Timeout, kein Auto-Reboot!
+  }
+
+  // --- 4. KANAL-HOPPING ---
+  if (nowMs - lastBeaconReceivedMs > BEACON_TIMEOUT_MS) {
+    channelLocked = false;
+    timeSynced = false;
+    currentStratum = 255;
+    if (nowMs - lastChannelHopMs >= CHANNEL_HOP_INTERVAL_MS) {
+      lastChannelHopMs = nowMs;
+      uint8_t nextCh = (currentChannel % 13) + 1;
+      updateEspNowChannel(nextCh);
     }
   }
 
-  // --- 2. RELAY QUEUE ---
+  // --- 5. RELAY QUEUE ---
   if (relayQueueTail != relayQueueHead) {
     SectorPacket pktToRelay;
     memcpy(&pktToRelay, (void*)&relayQueue[relayQueueTail], sizeof(SectorPacket));
@@ -447,60 +483,44 @@ void loop() {
     else esp_now_send(broadcastMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
   }
 
-  // --- 3. WARTUNGSMODUS / OTA ---
-  if (triggerMaintenance && !maintenanceMode) {
-    triggerMaintenance = false;
-    maintenanceMode = true;
-    connectOtaNetwork(); 
-    ArduinoOTA.begin();
-  }
-
-  if (maintenanceMode) {
-    ArduinoOTA.handle();
-    // Sichtbares Flackern als Bestätigung für OTA-Ready
-    bool blinkState = (nowMs / 166) % 2 == 0;
-    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
-
-    // Totmannschaltung nach 2 Minuten (nur wenn kein Upload läuft)
-    if (!otaTransferInProgress && (nowMs - otaStartTimeMs > 120000UL)) {
-      ESP.restart();
-    }
-  }
-
-  // --- 4. BATTERIE-STATUS & ALIVE HEARTBEAT ---
+  // --- 6. BATTERIESTATUS ---
   static uint32_t lastBatteryCheckMs = 0;
   if (nowMs - lastBatteryCheckMs > 10000) {
     lastBatteryCheckMs = nowMs;
     batteryLow = (digitalRead(0) == HIGH);
   }
 
+  // --- 7. ALIVE HEARTBEAT (3 Bytes) ---
   static uint32_t lastAliveMs = 0;
-  if (!maintenanceMode && channelLocked && (nowMs - lastAliveMs > 3000)) {
+  if (nowMs - lastAliveMs > 3000) {
     lastAliveMs = nowMs;
     AlivePacket alive;
     alive.stationId = STATION_ID;
     alive.batteryLow = batteryLow ? 1 : 0;
-    if (baseMacKnown) esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
-    else esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
-  }
-
-  // --- 5. LED STATUS ---
-  if (!maintenanceMode) {
-    if (batteryLow) {
-      bool blinkState = (nowMs / 1000) % 2 == 0;
-      digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
-    } else if (ledPulseActive) {
-      if (nowMs >= ledPulseEndMs) {
-        digitalWrite(LED_SIGNAL, LOW); 
-        ledPulseActive = false;
-      }
+    alive.isUnicast = (baseMacKnown && channelLocked) ? 1 : 0;
+    
+    if (alive.isUnicast) {
+      esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
     } else {
-      digitalWrite(LED_SIGNAL, LOW);
+      esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
     }
   }
 
-  // --- 6. IR-DECODER AUSWERTUNG ---
-  if (newCodeAvailable && !maintenanceMode) {
+  // --- 8. LED STATUS ---
+  if (batteryLow) {
+    bool blinkState = (nowMs / 1000) % 2 == 0;
+    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
+  } else if (ledPulseActive) {
+    if (nowMs >= ledPulseEndMs) {
+      digitalWrite(LED_SIGNAL, LOW); 
+      ledPulseActive = false;
+    }
+  } else {
+    digitalWrite(LED_SIGNAL, LOW);
+  }
+
+  // --- 9. IR-SIGNAL DECODIERUNG ---
+  if (newCodeAvailable) {
     newCodeAvailable = false;
     
     uint32_t triggerTime = getSynchronizedTimeMs();
@@ -529,7 +549,6 @@ void loop() {
         uint32_t eventId = ((uint32_t)STATION_ID << 16) | pkt.seqNumber;
         isAlreadyRelayed(eventId); 
 
-        // Primär: Unicast an gelernte Basis-MAC
         if (baseMacKnown) {
           esp_now_send(baseStationMac, (uint8_t *)&pkt, sizeof(pkt));
         } else {
