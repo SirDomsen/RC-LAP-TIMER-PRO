@@ -87,13 +87,13 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
       res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
-    } else {
+    } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
       res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
+      return true;
     }
-    return true;
   }
 
   String gzPath = path + ".gz";
