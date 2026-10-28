@@ -40,7 +40,7 @@ static uint32_t ghostWlanOffTimer = 0;
 static String cacheHeaderStr; 
 
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 14000;
+const size_t HEAP_CRITICAL_MIN_BYTES = 16000;
 const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
 const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
 
