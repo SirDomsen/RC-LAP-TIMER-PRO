@@ -90,8 +90,6 @@ bool channelLocked = false;
 
 bool batteryLow = false;
 bool maintenanceMode = false;
-static uint32_t otaStartTimeMs = 0;
-static bool otaTransferInProgress = false;
 
 volatile bool triggerMaintenance = false;
 volatile bool pendingOtaAck = false; 
@@ -151,14 +149,11 @@ void updateEspNowChannel(uint8_t ch) {
   }
 }
 
-// Watchdog-sicherer Verbindungsversuch mit detaillierter Ausgabe
-bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
+bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs, bool useStaticIp = false) {
   if (!ssid || strlen(ssid) == 0) {
-    Serial.println("[WIFI] Uebersprungen: Leere SSID");
     return false;
   }
 
-  Serial.printf("[WIFI] Verbindungsversuch zu: '%s' (Timeout: %u ms)...\n", ssid, timeoutMs);
   WiFi.mode(WIFI_OFF);
   delay(60);
   yield();
@@ -168,6 +163,17 @@ bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.setOutputPower(20.5);
   WiFi.hostname("SZ-" + String(STATION_ID));
+
+  if (useStaticIp) {
+    IPAddress staticIp(192, 168, 0, 10 + STATION_ID);
+    IPAddress gateway(192, 168, 0, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    IPAddress dns(192, 168, 0, 1);
+    WiFi.config(staticIp, gateway, subnet, dns);
+  } else {
+    WiFi.config(0u, 0u, 0u);
+  }
+
   WiFi.begin(ssid, pass);
 
   uint32_t startMs = millis();
@@ -175,18 +181,9 @@ bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
     delay(100);
     yield();
     ESP.wdtFeed();
-    Serial.print(".");
-  }
-  Serial.println();
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[WIFI] Erfolgreich verbunden! IP: %s | RSSI: %d dBm\n", 
-                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    return true;
   }
 
-  Serial.printf("[WIFI] Fehlgeschlagen! Status: %d\n", (int)WiFi.status());
-  return false;
+  return (WiFi.status() == WL_CONNECTED);
 }
 
 // ==========================================
@@ -194,13 +191,8 @@ bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
 // ==========================================
 
 void startMaintenanceNetwork() {
-  Serial.println("\n=================================");
-  Serial.println("[OTA] Starte Wartungs-Netzwerk...");
-  Serial.println("=================================");
-
   digitalWrite(LED_SIGNAL, HIGH);
   
-  Serial.println("[OTA] Trenne ESP-NOW...");
   esp_now_deinit();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
@@ -209,31 +201,24 @@ void startMaintenanceNetwork() {
 
   bool connected = false;
 
-  // Stufe 1: Daten von der Basis
+  // Stufe 1: Vorgabe von der Basis (statisch falls Heimnetz-SSID)
   if (strlen(otaTargetSsid) > 0) {
-    Serial.printf("[OTA] Stufe 1 (Basis-Vorgabe): SSID '%s'\n", otaTargetSsid);
-    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000);
-  } else {
-    Serial.println("[OTA] Stufe 1 uebersprungen (keine SSID uebermittelt)");
+    bool isHomeNet = (strcmp(otaTargetSsid, WIFI_SSID) == 0);
+    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000, isHomeNet);
   }
 
-  // Stufe 2: Heim-WLAN (secrets.h)
+  // Stufe 2: Heim-WLAN (secrets.h) -> immer statische IP
   if (!connected && strlen(WIFI_SSID) > 0) {
-    Serial.printf("[OTA] Stufe 2 (Heimnetz aus secrets.h): SSID '%s'\n", WIFI_SSID);
-    connected = tryConnectStation(WIFI_SSID, WIFI_PASSWORD, 6000);
+    connected = tryConnectStation(WIFI_SSID, WIFI_PASSWORD, 6000, true);
   }
 
-  // Stufe 3: Basis-AP
+  // Stufe 3: Basis-AP -> DHCP
   if (!connected && strlen(BASE_AP_SSID) > 0) {
-    Serial.printf("[OTA] Stufe 3 (Basis-AP Standard): SSID '%s'\n", BASE_AP_SSID);
-    connected = tryConnectStation(BASE_AP_SSID, BASE_AP_PASS, 4000);
+    connected = tryConnectStation(BASE_AP_SSID, BASE_AP_PASS, 4000, false);
   }
 
   // Stufe 4: Autarker Rettungs-AP
   if (!connected) {
-    Serial.println("[OTA] Stufe 4: Alle Station-Verbindungen fehlgeschlagen!");
-    Serial.println("[OTA] Erzeuge autarken Rettungs-AP...");
-
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     delay(100);
@@ -250,40 +235,22 @@ void startMaintenanceNetwork() {
     String rescueSsid = "RescueSZ" + String(ESP.getChipId(), HEX);
     rescueSsid.toUpperCase();
     WiFi.softAP(rescueSsid.c_str(), "12345678", 1, false);
-
-    Serial.printf("[OTA] Rettungs-AP aktiv! SSID: '%s' | IP: 192.168.4.1\n", rescueSsid.c_str());
   }
 
-  // ArduinoOTA initialisieren
   String hostName = "SZ-" + String(STATION_ID);
   ArduinoOTA.setHostname(hostName.c_str());
 
-  ArduinoOTA.onStart([]() { 
-    otaTransferInProgress = true; 
-    Serial.println("[OTA] Upload gestartet...");
-  });
-
   ArduinoOTA.onEnd([]() { 
-    otaTransferInProgress = false; 
-    Serial.println("[OTA] Upload erfolgreich beendet! Starte neu...");
     delay(100);
     ESP.restart();
   });
 
   ArduinoOTA.onError([](ota_error_t error) { 
-    Serial.printf("[OTA] FEHLER [%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
     ESP.restart(); 
   });
 
   ArduinoOTA.begin();
-  Serial.printf("[OTA] Bereit fuer Flash unter Hostname '%s'\n", hostName.c_str());
 
-  otaStartTimeMs = millis();
   maintenanceMode = true;
   digitalWrite(LED_SIGNAL, LOW);
 }
@@ -373,7 +340,6 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
     OtaTriggerPacket ota;
     memcpy(&ota, incomingData, sizeof(ota));
     if (ota.magicCode == OTA_MAGIC_CODE) {
-      Serial.println("\n[ESPNOW] OTA-Trigger Paket empfangen!");
       pendingOtaAck = true;
       triggerMaintenance = true;
       otaTargetMode = ota.targetMode;
@@ -391,13 +357,9 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
 // ==========================================
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  Serial.println("\n\n=========================================");
-  Serial.printf("[BOOT] SZ-%d startet (ChipId: %06X)\n", STATION_ID, ESP.getChipId());
-  Serial.println("=========================================");
-
   pinMode(LED_SIGNAL, OUTPUT);
+  pinMode(1, OUTPUT);
+  digitalWrite(1, LOW); // TX-Pin hart auf Masse fuer Schaltung/Spannungsteiler
   pinMode(0, INPUT_PULLUP);
 
   digitalWrite(LED_SIGNAL, LOW);
@@ -412,17 +374,13 @@ void setup() {
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   if (esp_now_init() == 0) {
-    Serial.println("[INIT] ESP-NOW erfolgreich initialisiert.");
     esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
     esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
-  } else {
-    Serial.println("[ERROR] ESP-NOW Initialisierung fehlgeschlagen!");
   }
 
   initIRDecoder();
-  Serial.println("[INIT] IR-Decoder aktiv. Bereit fuer Rennen.");
 }
 
 // ==========================================
@@ -435,7 +393,6 @@ void loop() {
   // --- 1. OTA ACK SENDEN ---
   if (pendingOtaAck) {
     pendingOtaAck = false;
-    Serial.println("[ESPNOW] Sende OTA-ACK an Basis...");
     OtaAckPacket ack;
     ack.magicCode = OTA_ACK_MAGIC;
     ack.stationId = STATION_ID;
@@ -449,17 +406,15 @@ void loop() {
     startMaintenanceNetwork();
   }
 
- // --- 3. WARTUNGSMODUS AUSFÜHREN (Dauerhaft aktiv bis Flash oder Power-Cycle) ---
+  // --- 3. WARTUNGSMODUS AUSFÜHREN ---
   if (maintenanceMode) {
     ArduinoOTA.handle();
     yield();
     ESP.wdtFeed();
     
-    // Gleichmäßiges Blinken signalisiert: "Ich warte auf deinen Upload"
     bool blinkState = (millis() / 120) % 2 == 0;
     digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
-
-    return; // Kein Timeout, kein Auto-Reboot!
+    return;
   }
 
   // --- 4. KANAL-HOPPING ---
@@ -490,7 +445,7 @@ void loop() {
     batteryLow = (digitalRead(0) == HIGH);
   }
 
-  // --- 7. ALIVE HEARTBEAT (3 Bytes) ---
+  // --- 7. ALIVE HEARTBEAT (3 Bytes, Unicast-Flag) ---
   static uint32_t lastAliveMs = 0;
   if (nowMs - lastAliveMs > 3000) {
     lastAliveMs = nowMs;
