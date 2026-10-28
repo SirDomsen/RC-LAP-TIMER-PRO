@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 let countdownTimeouts = [];
-window.UI_VERSION = '4.3.1'; 
+window.UI_VERSION = '4.3.2'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let socket = null;
 
@@ -2289,17 +2289,18 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
 
         let lapAnnouncement = "";
         let isRaceMode = (currentMode >= 2);
+        let bestLapWord = isRaceMode ? "schnellste Rennrunde! " : "schnellste Runde! ";
 
         if (isNewTrackRecord) {
           lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
         } else if (isNewDailyRecord) {
           lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
         } else if (isRaceMode && !announceLapTimesInRace) {
-          if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+          if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
           else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
           else lapAnnouncement = driverName + posText;
         } else {
-          if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+          if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
           else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
           else lapAnnouncement = driverName + posText + timeSec;
         }

@@ -231,7 +231,7 @@ function onLapLiveEvent(msg) {
   let isNewTrackRecord = !!msg.isTrackRecord;
   let isNewDailyRecord = !!msg.isDailyRecord;
   let isPersonalBest = !!msg.isPB;
-  let isAbsoluteBest = !!msg.isOverallBest;
+  let isAbsoluteBest = isPersonalBest && !!msg.isOverallBest;
 
   if (typeof pendingRecordFlagsMap !== 'undefined') {
     pendingRecordFlagsMap[carId] = {
@@ -293,17 +293,18 @@ function onLapLiveEvent(msg) {
 
       let lapAnnouncement = "";
       let isRaceMode = (currentMode >= 2);
+      let bestLapWord = isRaceMode ? "schnellste Rennrunde! " : "schnellste Runde! ";
 
       if (isNewTrackRecord) {
         lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
       } else if (isNewDailyRecord) {
         lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
       } else if (isRaceMode && !announceLapTimesInRace) {
-        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+        if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
         else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
         else lapAnnouncement = driverName + posText;
       } else {
-        if (isAbsoluteBest) lapAnnouncement = driverName + posText + "schnellste Rennrunde! " + timeSec;
+        if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
         else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
         else lapAnnouncement = driverName + posText + timeSec;
       }

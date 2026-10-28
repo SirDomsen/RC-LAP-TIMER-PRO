@@ -803,7 +803,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
           currentOverallBestLap = bestLapDuration[c];
         }
       }
-      if (currentOverallBestLap == 0 || currentLapTimeMs < currentOverallBestLap) {
+      if (isLapPB && (currentOverallBestLap == 0 || currentLapTimeMs < currentOverallBestLap)) {
         isLapOverall = true;
       }
 
