@@ -52,7 +52,7 @@ body {
   overflow: hidden;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
   border: 1px solid var(--card-border);
-  background: linear-gradient(135deg, rgba(22, 27, 34, 0.95), rgba(10, 12, 16, 0.95));
+  background: #0b111a url('hero.svg?v=4.3.7') center/cover no-repeat;
   padding: 25px 15px;
 }
 

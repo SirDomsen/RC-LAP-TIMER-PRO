@@ -467,6 +467,10 @@ void initNetworkAndServer() {
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
+  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(204);
+  });
+
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
 

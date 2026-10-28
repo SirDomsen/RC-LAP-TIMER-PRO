@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06090e"/>
+      <stop offset="50%" stop-color="#0b121c"/>
+      <stop offset="100%" stop-color="#070a10"/>
+    </linearGradient>
+    
+    <!-- Neon Beam Gradients -->
+    <linearGradient id="cyanStreak" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#00e5ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00ff66" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <linearGradient id="greenGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00ff66" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#00ff66" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#00ff66" stop-opacity="1"/>
+    </linearGradient>
+
+    <linearGradient id="purpleStreak" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#b532ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#b532ff" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="overlayFade" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c10" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#0a0c10" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0a0c10" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <!-- Center Vignette for text contrast -->
+    <radialGradient id="centerVignette" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#0a0c10" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#0a0c10" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#0a0c10" stop-opacity="0.05"/>
+    </radialGradient>
+
+    <!-- Filter for Neon Glow -->
+    <filter id="neonBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1200" height="260" fill="url(#bgGrad)"/>
+
+  <!-- Perspective Speed Grid on the Ground -->
+  <g opacity="0.18">
+    <line x1="600" y1="120" x2="-200" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="50" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="250" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="450" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="600" y2="280" stroke="#00ff66" stroke-width="2"/>
+    <line x1="600" y1="120" x2="750" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="950" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="1150" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+    <line x1="600" y1="120" x2="1400" y2="280" stroke="#00e5ff" stroke-width="1.5"/>
+
+    <path d="M 150 240 Q 600 215 1050 240" stroke="#00e5ff" stroke-width="1" fill="none"/>
+    <path d="M 280 200 Q 600 180 920 200" stroke="#00e5ff" stroke-width="1" fill="none"/>
+    <path d="M 380 170 Q 600 155 820 170" stroke="#00e5ff" stroke-width="1" fill="none"/>
+    <path d="M 460 145 Q 600 135 740 145" stroke="#00e5ff" stroke-width="0.8" fill="none"/>
+  </g>
+
+  <!-- Left Side: Racetrack Apex & Curbing (Red & White Neon Segments) -->
+  <g opacity="0.35">
+    <path d="M -50 260 C 120 250, 220 210, 290 140 C 330 100, 370 40, 420 -20" stroke="#ff3366" stroke-width="10" stroke-dasharray="24 16" fill="none"/>
+    <path d="M -40 265 C 130 255, 230 215, 300 145 C 340 105, 380 45, 430 -15" stroke="#ffffff" stroke-width="3" stroke-dasharray="24 16" fill="none"/>
+  </g>
+
+  <!-- Right Side: Racetrack Apex & Curbing (Cyan & Purple Neon) -->
+  <g opacity="0.4">
+    <path d="M 1250 260 C 1080 250, 980 210, 910 140 C 870 100, 830 40, 780 -20" stroke="#00e5ff" stroke-width="8" stroke-dasharray="24 16" fill="none"/>
+  </g>
+
+  <!-- Stylized RC Car Silhouette (Right-Center, Charging Forward) -->
+  <g transform="translate(870, 75) scale(0.75)" opacity="0.85">
+    <!-- Aerodynamic Speed Trails -->
+    <path d="M -220 50 L -40 50" stroke="url(#cyanStreak)" stroke-width="3" filter="url(#neonBlur)"/>
+    <path d="M -280 65 L -30 65" stroke="url(#greenGlow)" stroke-width="4" filter="url(#neonBlur)"/>
+    <path d="M -240 85 L -20 85" stroke="url(#purpleStreak)" stroke-width="3" filter="url(#neonBlur)"/>
+    <path d="M -160 30 L -50 30" stroke="#00e5ff" stroke-width="2" opacity="0.7"/>
+
+    <!-- RC Buggy Silhouette Body -->
+    <!-- Rear Wing -->
+    <path d="M -60 25 L -50 10 L 0 8 L -15 25 Z" fill="#00e5ff" opacity="0.85"/>
+    <path d="M -5 18 L 15 20 L 5 28 Z" fill="#00ff66"/>
+
+    <!-- Cabin & Roll Cage -->
+    <path d="M -20 28 L 45 30 L 105 55 L 60 55 L 15 38 Z" fill="#00e5ff" opacity="0.6"/>
+    <!-- Cockpit Glow Window -->
+    <polygon points="25,36 80,50 40,50 15,38" fill="#00ff66" opacity="0.75"/>
+
+    <!-- Chassis Body -->
+    <path d="M -50 55 C -30 45, 40 45, 90 52 L 150 72 C 160 75, 170 82, 180 88 L 140 92 L 60 92 L -40 92 Z" fill="#111c2e" stroke="#00e5ff" stroke-width="1.5"/>
+
+    <!-- Front Suspension & Shock Tower -->
+    <line x1="120" y1="62" x2="145" y2="85" stroke="#00ff66" stroke-width="2"/>
+    <line x1="125" y1="60" x2="135" y2="85" stroke="#ff9900" stroke-width="1.5"/>
+
+    <!-- Wheels (Offroad Knobby Tires) -->
+    <!-- Front Wheel -->
+    <ellipse cx="145" cy="85" rx="22" ry="32" fill="#06090e" stroke="#00ff66" stroke-width="3" filter="url(#neonBlur)"/>
+    <ellipse cx="145" cy="85" rx="10" ry="16" fill="#162233" stroke="#00e5ff" stroke-width="2"/>
+    <circle cx="145" cy="85" r="4" fill="#00ff66"/>
+
+    <!-- Rear Wheel -->
+    <ellipse cx="-20" cy="80" rx="26" ry="36" fill="#06090e" stroke="#00e5ff" stroke-width="3" filter="url(#neonBlur)"/>
+    <ellipse cx="-20" cy="80" rx="12" ry="18" fill="#162233" stroke="#b532ff" stroke-width="2"/>
+    <circle cx="-20" cy="80" r="5" fill="#00e5ff"/>
+
+    <!-- Front Headlight / Laser Timing Beam -->
+    <polygon points="175,82 320,68 320,95 175,88" fill="url(#cyanStreak)" opacity="0.45" filter="url(#neonBlur)"/>
+    <circle cx="172" cy="85" r="4" fill="#fff" filter="url(#neonBlur)"/>
+  </g>
+
+  <!-- Left Side: Checkered Flag Dynamic Ribbon (Semi-transparent) -->
+  <g transform="translate(60, 40) rotate(-6)" opacity="0.12">
+    <!-- Row 1 -->
+    <rect x="0" y="0" width="18" height="18" fill="#fff"/>
+    <rect x="36" y="0" width="18" height="18" fill="#fff"/>
+    <rect x="72" y="0" width="18" height="18" fill="#fff"/>
+    <rect x="108" y="0" width="18" height="18" fill="#fff"/>
+    <!-- Row 2 -->
+    <rect x="18" y="18" width="18" height="18" fill="#fff"/>
+    <rect x="54" y="18" width="18" height="18" fill="#fff"/>
+    <rect x="90" y="18" width="18" height="18" fill="#fff"/>
+    <rect x="126" y="18" width="18" height="18" fill="#fff"/>
+    <!-- Row 3 -->
+    <rect x="0" y="36" width="18" height="18" fill="#fff"/>
+    <rect x="36" y="36" width="18" height="18" fill="#fff"/>
+    <rect x="72" y="36" width="18" height="18" fill="#fff"/>
+    <rect x="108" y="36" width="18" height="18" fill="#fff"/>
+    <!-- Row 4 -->
+    <rect x="18" y="54" width="18" height="18" fill="#fff"/>
+    <rect x="54" y="54" width="18" height="18" fill="#fff"/>
+    <rect x="90" y="54" width="18" height="18" fill="#fff"/>
+    <rect x="126" y="54" width="18" height="18" fill="#fff"/>
+  </g>
+
+  <!-- Vertical Infrared Timing Beam (Start / Finish Gate at x=600) -->
+  <line x1="600" y1="0" x2="600" y2="260" stroke="#00ff66" stroke-width="1.5" stroke-dasharray="8 6" opacity="0.35"/>
+  <line x1="600" y1="20" x2="600" y2="240" stroke="#00e5ff" stroke-width="3" opacity="0.15" filter="url(#neonBlur)"/>
+
+  <!-- Subtle Speed Streaks Across Header -->
+  <g opacity="0.4">
+    <line x1="80" y1="35" x2="380" y2="35" stroke="url(#cyanStreak)" stroke-width="1.5"/>
+    <line x1="250" y1="225" x2="520" y2="225" stroke="url(#greenGlow)" stroke-width="2"/>
+    <line x1="680" y1="45" x2="980" y2="45" stroke="url(#purpleStreak)" stroke-width="1.5"/>
+  </g>
+
+  <!-- Center Radial Vignette (Guarantees Title Text Contrast) -->
+  <rect width="1200" height="260" fill="url(#centerVignette)"/>
+  <!-- Top/Bottom Edge Darkening -->
+  <rect width="1200" height="260" fill="url(#overlayFade)"/>
+</svg>

@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.2.2 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.3.6 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Environment | Board | CPU Takt | Dateisystem | Upload / Port | Zweck / Flags |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | espota (laptimer.local) | Basisstation, AsyncWebServer, ArduinoJson 7, LWIP2 High Bandwidth |
+| `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | espota (laptimer.local) | Basisstation, AsyncWebServer, ArduinoJson 7, LWIP2 Low Memory |
 | `sz1` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-1.local) | Sektorstation 1 (`-DSECTOR_STATION -DSTATION_ID=1`) |
 | `sz2` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-2.local) | Sektorstation 2 (`-DSECTOR_STATION -DSTATION_ID=2`) |
 | `sz3` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-3.local) | Sektorstation 3 (`-DSECTOR_STATION -DSTATION_ID=3`) |
@@ -77,10 +77,10 @@
   * **95%-Flash-Schutz (`storageFullLocked`):** Verhindert das Einfrieren des ESP8266 bei vollem Speicher.
 
 ### 4.3 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
-* **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`).
+* **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`, hartes Limit auf 4 Clients).
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.
-* **Dynamischer Heap-Schutz:** Weist Verbindungen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der heap unter einen gewissen wert (web_server.cpp around L40) fällt oder die Fragmentierung zu groß wird.
+* **Dynamischer Heap-Schutz:** Weist Verbindungen und `/api/laps`-Anfragen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der freie RAM unter 16 kB sinkt, die Fragmentierung 55 % übersteigt oder der freie Block < 3 kB ist.
 
 ---
 
