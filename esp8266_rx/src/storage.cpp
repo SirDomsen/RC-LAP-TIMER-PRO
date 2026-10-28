@@ -33,11 +33,11 @@ String getDefaultApSSID() {
 }
 
 String getDeviceHostname() {
-  return String("RCLaptimerPro-") + getChipIdSuffix();
+  return "laptimer";
 }
 
 String getOtaHostname() {
-  return String("LapTimer-Base-") + getChipIdSuffix();
+  return "laptimer";
 }
 
 // Aktive Strecke & Speicherstatus

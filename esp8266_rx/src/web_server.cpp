@@ -1,504 +1,533 @@
-#include <Arduino.h>
+#include "web_server.h"
+#include "web_handlers.h"
+#include "storage.h"
+#include "esp_now_base.h"
+
 #include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
-#include "config.h"
-#include "ir_decoder.h"
-#include "secrets.h"
+#include <Updater.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
 
 extern "C" {
   #include <espnow.h>
 }
 
-#ifndef u8
-typedef uint8_t u8;
-#endif
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
 
-#ifndef WIFI_SSID
-  #define WIFI_SSID ""
-#endif
-#ifndef WIFI_PASSWORD
-  #define WIFI_PASSWORD ""
-#endif
+static IPAddress currentActiveIP(192, 168, 0, 8);
 
-uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-uint8_t baseStationMac[6] = {0};
-bool baseMacKnown = false;
+extern uint32_t perfMaxLoopUs;
+extern uint32_t perfAvgLoopUs;
 
-// ==========================================
-// PAKETSTRUKTUREN
-// ==========================================
+uint8_t currentRuntimeWifiMode = 0;
 
-struct __attribute__((packed)) SectorPacket {
-  uint8_t  stationId;
-  uint8_t  carId;
-  uint32_t timestamp;
-  uint16_t seqNumber;
-  uint8_t  ttl;
-};
+static bool pendingReset = false;
+static uint32_t resetTimer = 0;
 
-#define BEACON_SYNC_MAGIC 0x53594E43 // "SYNC"
-struct __attribute__((packed)) BeaconSyncPacket {
-  uint32_t magicCode;
-  uint32_t baseTimeMs;
-  uint8_t  channel;
-  uint8_t  stratum; 
-};
+static bool pendingWifiSwitch = false;
+static uint32_t wifiSwitchTimer = 0;
+static uint8_t targetWifiMode = 0;
 
-struct __attribute__((packed)) AlivePacket {
-  uint8_t stationId;
-  uint8_t batteryLow;
-  uint8_t isUnicast;
-};
+// --- GHOST-WLAN AUTO-OFF LOGIK ---
+static bool ghostWlanActive = false;
+static uint32_t ghostWlanOffTimer = 0;
 
-#define OTA_MAGIC_CODE 0x07A1234
-struct __attribute__((packed)) OtaTriggerPacket {
-  uint32_t magicCode;
-  uint8_t  targetMode; 
-  char     ssid[32];
-  char     pass[64];
-};
+static String cacheHeaderStr; 
 
-#define OTA_ACK_MAGIC 0x07A1235
-struct __attribute__((packed)) OtaAckPacket {
-  uint32_t magicCode;
-  uint8_t  stationId;
-};
+// --- DYNAMISCHE HEAP-SCHUTZMAUER ---
+const size_t HEAP_CRITICAL_MIN_BYTES = 14000;
+const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
+const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
 
-// ==========================================
-// GLOBALE STATUSVARIABLEN
-// ==========================================
+static const char BUSY_HTML_PROGMEM[] PROGMEM = 
+  "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+  "<meta http-equiv='refresh' content='4'>"
+  "<title>RC Lap Timer - Warteschlange</title>"
+  "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
+  ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
+  "</style></head><body><div class='box'><h3>&#x23F3; Verbindungs-Warteschlange</h3>"
+  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
-const uint32_t ESPNOW_HOP_LATENCY_MS = 1; 
-const uint32_t BEACON_TIMEOUT_MS = 15000;      
-const uint32_t CHANNEL_HOP_INTERVAL_MS = 1200; 
-
-uint32_t localSyncOffsetMs = 0;
-bool timeSynced = false;
-uint8_t currentStratum = 255;
-uint32_t lastBeaconReceivedMs = 0;
-uint32_t lastStratumResetMs = 0;
-
-uint8_t currentChannel = 1;
-uint32_t lastChannelHopMs = 0;
-bool channelLocked = false;
-
-bool batteryLow = false;
-bool maintenanceMode = false;
-
-volatile bool triggerMaintenance = false;
-volatile bool pendingOtaAck = false; 
-volatile uint8_t otaTargetMode = 1;
-char otaTargetSsid[33] = {0};
-char otaTargetPass[65] = {0};
-
-static uint32_t ledPulseEndMs = 0;
-static bool ledPulseActive = false;
-
-static uint32_t lastSeenSignalTime[MAX_CARS + 1] = {0};
-const uint32_t SECTOR_CLEARANCE_MS = 2000; 
-
-static uint16_t localSeqNumber = 0;
-
-#define RELAY_QUEUE_SIZE 8
-volatile SectorPacket relayQueue[RELAY_QUEUE_SIZE];
-volatile uint8_t relayQueueHead = 0;
-volatile uint8_t relayQueueTail = 0;
-
-#define RELAY_CACHE_SIZE 16
-static uint32_t recentRelayedIds[RELAY_CACHE_SIZE] = {0};
-static uint8_t relayCacheIndex = 0;
-
-// ==========================================
-// HILFSFUNKTIONEN
-// ==========================================
-
-bool isAlreadyRelayed(uint32_t eventId) {
-  if (eventId == 0) return false;
-  for (uint8_t i = 0; i < RELAY_CACHE_SIZE; i++) {
-    if (recentRelayedIds[i] == eventId) return true;
-  }
-  recentRelayedIds[relayCacheIndex] = eventId;
-  relayCacheIndex = (relayCacheIndex + 1) % RELAY_CACHE_SIZE;
-  return false;
+bool isHeapCriticalForFileTransfer() {
+  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
 }
 
-uint32_t getSynchronizedTimeMs() {
-  if (!timeSynced) return millis();
-  return millis() + localSyncOffsetMs;
+static const char* getContentType(const String& path) {
+  if (path.endsWith(".html")) return "text/html";
+  if (path.endsWith(".css"))  return "text/css";
+  if (path.endsWith(".js"))   return "application/javascript";
+  if (path.endsWith(".json")) return "application/json";
+  if (path.endsWith(".svg"))  return "image/svg+xml";
+  if (path.endsWith(".ico"))  return "image/x-icon";
+  return "text/plain";
 }
 
-void updateEspNowChannel(uint8_t ch) {
-  currentChannel = ch;
-  wifi_set_channel(currentChannel);
-  if (esp_now_is_peer_exist(broadcastMac)) {
-    esp_now_del_peer(broadcastMac);
-  }
-  esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
-
-  if (baseMacKnown) {
-    if (esp_now_is_peer_exist(baseStationMac)) {
-      esp_now_del_peer(baseStationMac);
-    }
-    esp_now_add_peer(baseStationMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
+static void triggerGhostWlanEarlyShutdown() {
+  if (ghostWlanActive && ghostWlanOffTimer == 0) {
+    ghostWlanOffTimer = millis() + 15000UL; 
   }
 }
 
-bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs, bool useStaticIp = false) {
-  if (!ssid || strlen(ssid) == 0) {
-    return false;
+static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
+  if (path == "/" || path.length() == 0) path = "/index.html";
+  if (path == "/admin" || path == "/admin/") path = "/admin.html";
+
+  if (path == "/index.html" || path == "/admin.html") {
+    triggerGhostWlanEarlyShutdown();
   }
 
-  WiFi.mode(WIFI_OFF);
-  delay(60);
-  yield();
-
-  WiFi.mode(WIFI_STA);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  WiFi.setOutputPower(20.5);
-  WiFi.hostname("SZ-" + String(STATION_ID));
-
-  if (useStaticIp) {
-    IPAddress staticIp(192, 168, 0, 10 + STATION_ID);
-    IPAddress gateway(192, 168, 0, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    IPAddress dns(192, 168, 0, 1);
-    WiFi.config(staticIp, gateway, subnet, dns);
-  } else {
-    WiFi.config(0u, 0u, 0u);
-  }
-
-  WiFi.begin(ssid, pass);
-
-  uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < timeoutMs)) {
-    delay(100);
-    yield();
-    ESP.wdtFeed();
-  }
-
-  return (WiFi.status() == WL_CONNECTED);
-}
-
-// ==========================================
-// 3-STUFEN-FAILSAFE WARTUNGSMODUS
-// ==========================================
-
-void startMaintenanceNetwork() {
-  digitalWrite(LED_SIGNAL, HIGH);
-  
-  esp_now_deinit();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-  yield();
-
-  bool connected = false;
-
-  // Stufe 1: Dynamische Vorgabe direkt von der Basis aus dem OtaTriggerPacket
-  if (strlen(otaTargetSsid) > 0) {
-    bool isHomeNet = (strcmp(otaTargetSsid, WIFI_SSID) == 0);
-    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000, isHomeNet);
-  }
-
-  // Stufe 2: Lokales Heim-WLAN (secrets.h) mit statischer IP
-  if (!connected && strlen(WIFI_SSID) > 0) {
-    connected = tryConnectStation(WIFI_SSID, WIFI_PASSWORD, 6000, true);
-  }
-
-  // Stufe 3: Autarker Rettungs-AP als Sicherheitsnetz gegen Softbricks
-  if (!connected) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
-    yield();
-
-    WiFi.mode(WIFI_AP);
-    WiFi.setOutputPower(20.5);
-
-    IPAddress apIP(192, 168, 4, 1);
-    IPAddress gateway(192, 168, 4, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    WiFi.softAPConfig(apIP, gateway, subnet);
-
-    String rescueSsid = "RescueSZ" + String(ESP.getChipId(), HEX);
-    rescueSsid.toUpperCase();
-    WiFi.softAP(rescueSsid.c_str(), "12345678", 1, false);
-  }
-
-  String hostName = "SZ-" + String(STATION_ID);
-  ArduinoOTA.setHostname(hostName.c_str());
-
-  ArduinoOTA.onEnd([]() { 
-    delay(100);
-    ESP.restart();
-  });
-
-  ArduinoOTA.onError([](ota_error_t error) { 
-    ESP.restart(); 
-  });
-
-  ArduinoOTA.begin();
-
-  maintenanceMode = true;
-  digitalWrite(LED_SIGNAL, LOW);
-}
-
-// ==========================================
-// ESP-NOW CALLBACKS
-// ==========================================
-
-void onDataSent(u8 *mac_addr, u8 sendStatus) {}
-
-void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  // 1. BEACON
-  if (len == sizeof(BeaconSyncPacket)) {
-    BeaconSyncPacket sync;
-    memcpy(&sync, incomingData, sizeof(sync));
-    if (sync.magicCode == BEACON_SYNC_MAGIC) {
-      lastBeaconReceivedMs = millis();
-      channelLocked = true;
-      
-      if (sync.channel >= 1 && sync.channel <= 13 && sync.channel != currentChannel) {
-        updateEspNowChannel(sync.channel);
-      }
-      
-      if (sync.stratum == 0 && mac != NULL) {
-        if (!baseMacKnown || memcmp(baseStationMac, mac, 6) != 0) {
-          if (baseMacKnown && esp_now_is_peer_exist(baseStationMac)) {
-            esp_now_del_peer(baseStationMac);
-          }
-          memcpy(baseStationMac, mac, 6);
-          esp_now_add_peer(baseStationMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
-          baseMacKnown = true;
-        }
-      }
-      
-      if (sync.stratum < currentStratum || !timeSynced || (millis() - lastStratumResetMs > 5000)) {
-        localSyncOffsetMs = (sync.baseTimeMs + ESPNOW_HOP_LATENCY_MS) - millis();
-        timeSynced = true;
-        currentStratum = sync.stratum + 1;
-        lastStratumResetMs = millis();
-        
-        BeaconSyncPacket forwardSync;
-        forwardSync.magicCode = BEACON_SYNC_MAGIC;
-        forwardSync.baseTimeMs = getSynchronizedTimeMs();
-        forwardSync.channel = currentChannel;
-        forwardSync.stratum = currentStratum;
-        esp_now_send(broadcastMac, (uint8_t *)&forwardSync, sizeof(forwardSync));
-      }
-    }
-    return;
-  }
-
-  // 2. SEKTORZEIT
-  if (len == sizeof(SectorPacket)) {
-    SectorPacket pkt;
-    memcpy(&pkt, incomingData, sizeof(pkt));
-    if (pkt.stationId != STATION_ID && pkt.stationId > 0) {
-      uint32_t eventId = ((uint32_t)pkt.stationId << 16) | pkt.seqNumber;
-      if (!isAlreadyRelayed(eventId) && pkt.ttl > 1) {
-        pkt.ttl--;
-        uint8_t nextHead = (relayQueueHead + 1) % RELAY_QUEUE_SIZE;
-        if (nextHead != relayQueueTail) {
-          memcpy((void*)&relayQueue[relayQueueHead], &pkt, sizeof(SectorPacket));
-          relayQueueHead = nextHead;
-        }
-      }
-    }
-    return;
-  }
-
-  // 3. ALIVE RELAY
-  if (len == sizeof(AlivePacket)) {
-    AlivePacket alive;
-    memcpy(&alive, incomingData, sizeof(alive));
-    if (alive.stationId != STATION_ID && alive.stationId > 0 && alive.stationId <= 3) {
-      static uint32_t lastRelayedAliveMs[4] = {0};
-      if (millis() - lastRelayedAliveMs[alive.stationId] > 2000) {
-        lastRelayedAliveMs[alive.stationId] = millis();
-        if (baseMacKnown) esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
-        else esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
-      }
-    }
-    return;
-  }
-
-  // 4. OTA TRIGGER
-  if (len == sizeof(OtaTriggerPacket)) {
-    OtaTriggerPacket ota;
-    memcpy(&ota, incomingData, sizeof(ota));
-    if (ota.magicCode == OTA_MAGIC_CODE) {
-      pendingOtaAck = true;
-      triggerMaintenance = true;
-      otaTargetMode = ota.targetMode;
-      strncpy(otaTargetSsid, ota.ssid, 32);
-      otaTargetSsid[32] = '\0';
-      strncpy(otaTargetPass, ota.pass, 64);
-      otaTargetPass[64] = '\0';
-    }
-    return;
-  }
-}
-
-// ==========================================
-// SETUP
-// ==========================================
-
-void setup() {
-  pinMode(LED_SIGNAL, OUTPUT);
-  pinMode(1, OUTPUT);
-  digitalWrite(1, LOW); // TX-Pin hart auf Masse fuer Schaltung/Spannungsteiler
-  pinMode(0, INPUT_PULLUP);
-
-  digitalWrite(LED_SIGNAL, LOW);
-  delay(100);
-  digitalWrite(LED_SIGNAL, HIGH);
-
-  WiFi.persistent(false);
-  WiFi.disconnect(true);
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G); 
-  WiFi.mode(WIFI_STA);
-  WiFi.setOutputPower(20.5); 
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-
-  if (esp_now_init() == 0) {
-    esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
-    esp_now_register_send_cb(onDataSent);
-    esp_now_register_recv_cb(onDataRecv);
-    esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
-  }
-
-  initIRDecoder();
-}
-
-// ==========================================
-// MAIN LOOP
-// ==========================================
-
-void loop() {
-  uint32_t nowMs = millis();
-
-  // --- 1. OTA ACK SENDEN ---
-  if (pendingOtaAck) {
-    pendingOtaAck = false;
-    OtaAckPacket ack;
-    ack.magicCode = OTA_ACK_MAGIC;
-    ack.stationId = STATION_ID;
-    if (baseMacKnown) esp_now_send(baseStationMac, (uint8_t *)&ack, sizeof(ack));
-    esp_now_send(broadcastMac, (uint8_t *)&ack, sizeof(ack));
-  }
-
-  // --- 2. WARTUNGSMODUS STARTEN ---
-  if (triggerMaintenance && !maintenanceMode) {
-    triggerMaintenance = false;
-    startMaintenanceNetwork();
-  }
-
-  // --- 3. WARTUNGSMODUS AUSFÜHREN ---
-  if (maintenanceMode) {
-    ArduinoOTA.handle();
-    yield();
-    ESP.wdtFeed();
-    
-    bool blinkState = (millis() / 120) % 2 == 0;
-    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
-    return;
-  }
-
-  // --- 4. KANAL-HOPPING ---
-  if (nowMs - lastBeaconReceivedMs > BEACON_TIMEOUT_MS) {
-    channelLocked = false;
-    timeSynced = false;
-    currentStratum = 255;
-    if (nowMs - lastChannelHopMs >= CHANNEL_HOP_INTERVAL_MS) {
-      lastChannelHopMs = nowMs;
-      uint8_t nextCh = (currentChannel % 13) + 1;
-      updateEspNowChannel(nextCh);
-    }
-  }
-
-  // --- 5. RELAY QUEUE ---
-  if (relayQueueTail != relayQueueHead) {
-    SectorPacket pktToRelay;
-    memcpy(&pktToRelay, (void*)&relayQueue[relayQueueTail], sizeof(SectorPacket));
-    relayQueueTail = (relayQueueTail + 1) % RELAY_QUEUE_SIZE;
-    if (baseMacKnown) esp_now_send(baseStationMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
-    else esp_now_send(broadcastMac, (uint8_t *)&pktToRelay, sizeof(pktToRelay));
-  }
-
-  // --- 6. BATTERIESTATUS ---
-  static uint32_t lastBatteryCheckMs = 0;
-  if (nowMs - lastBatteryCheckMs > 10000) {
-    lastBatteryCheckMs = nowMs;
-    batteryLow = (digitalRead(0) == HIGH);
-  }
-
-  // --- 7. ALIVE HEARTBEAT (3 Bytes, Unicast-Flag) ---
-  static uint32_t lastAliveMs = 0;
-  if (nowMs - lastAliveMs > 3000) {
-    lastAliveMs = nowMs;
-    AlivePacket alive;
-    alive.stationId = STATION_ID;
-    alive.batteryLow = batteryLow ? 1 : 0;
-    alive.isUnicast = (baseMacKnown && channelLocked) ? 1 : 0;
-    
-    if (alive.isUnicast) {
-      esp_now_send(baseStationMac, (uint8_t *)&alive, sizeof(alive));
+  if (isHeapCriticalForFileTransfer()) {
+    if (path.endsWith(".html")) {
+      AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
+      res->addHeader("Retry-After", "4");
+      res->addHeader("Connection", "close");
+      request->send(res);
     } else {
-      esp_now_send(broadcastMac, (uint8_t *)&alive, sizeof(alive));
+      AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
+      res->addHeader("Retry-After", "4");
+      res->addHeader("Connection", "close");
+      request->send(res);
     }
+    return true;
   }
 
-  // --- 8. LED STATUS ---
-  if (batteryLow) {
-    bool blinkState = (nowMs / 1000) % 2 == 0;
-    digitalWrite(LED_SIGNAL, blinkState ? LOW : HIGH);
-  } else if (ledPulseActive) {
-    if (nowMs >= ledPulseEndMs) {
-      digitalWrite(LED_SIGNAL, LOW); 
-      ledPulseActive = false;
-    }
-  } else {
-    digitalWrite(LED_SIGNAL, LOW);
-  }
+  String gzPath = path + ".gz";
+  bool hasGz = LittleFS.exists(gzPath);
+  bool hasRaw = !hasGz && LittleFS.exists(path);
 
-  // --- 9. IR-SIGNAL DECODIERUNG ---
-  if (newCodeAvailable) {
-    newCodeAvailable = false;
+  if (!hasGz && !hasRaw) return false;
+
+  const char* mime = getContentType(path);
+  AsyncWebServerResponse *response = request->beginResponse(LittleFS, hasGz ? gzPath : path, mime);
+  if (hasGz) {
+    response->addHeader("Content-Encoding", "gzip");
+  }
+  response->addHeader("Cache-Control", cacheHeaderStr.c_str());
+  response->addHeader("Connection", "close");
+  request->send(response);
+  return true;
+}
+
+void scheduleESPReset(uint16_t delayMs) {
+  pendingReset = true;
+  resetTimer = millis() + delayMs;
+}
+
+void triggerWifiSwitch(uint8_t mode) {
+  targetWifiMode = mode;
+  wifiSwitchTimer = millis() + 400; 
+  pendingWifiSwitch = true;
+}
+
+static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  if (type == WS_EVT_CONNECT) {
+    if (isHeapCriticalForFileTransfer()) {
+      client->close(1013, "Server busy");
+      return;
+    }
+    triggerGhostWlanEarlyShutdown();
+  } else if (type == WS_EVT_DATA) {
+    AwsFrameInfo *info = (AwsFrameInfo*)arg;
+    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+      data[len] = 0;
+      if (strncmp((char*)data, "{\"ping\":", 8) == 0) {
+        client->text((char*)data);
+      }
+    }
+  }
+}
+
+static void blinkGreenLED(int count) {
+  for(int i = 0; i < count; i++) {
+    digitalWrite(LED_READY, HIGH);
+    delay(166);
+    digitalWrite(LED_READY, LOW);
+    delay(166);
+  }
+}
+
+static void setupGhostWLAN() {
+  currentActiveIP = WiFi.localIP();
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setOutputPower(20.5);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+  
+  String ipStr = currentActiveIP.toString();
+  String connectedSsid = WiFi.SSID();
+  
+  int maxSsidLen = 31 - 4 - ipStr.length();
+  if (connectedSsid.length() > maxSsidLen) {
+    connectedSsid = connectedSsid.substring(0, maxSsidLen);
+  }
+  
+  String ipApName = "LT_" + connectedSsid + "-" + ipStr;
+  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
+
+  ghostWlanActive = true;
+  ghostWlanOffTimer = 0; 
+
+  digitalWrite(LED_READY, HIGH); 
+}
+
+static void setupFallbackAP() {
+  ghostWlanActive = false;
+  WiFi.disconnect(true);
+  delay(50);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
+  WiFi.mode(WIFI_AP);
+  WiFi.setOutputPower(20.5);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+  
+  IPAddress local_IP(192, 168, 0, 8);
+  if (learnedApIP.length() > 0) {
+    IPAddress parsed;
+    if (parsed.fromString(learnedApIP) && parsed[0] != 0) {
+      local_IP = parsed;
+    }
+  }
+  IPAddress gateway = local_IP;
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+  
+  String activeApName = (apSSID.length() > 0) ? apSSID : getDefaultApSSID();
+  const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
+  
+  WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 8);
+  currentActiveIP = local_IP;
+  currentRuntimeWifiMode = 0;
+  digitalWrite(LED_READY, HIGH); 
+}
+
+static void connectNetworkCascade(uint8_t startMode) {
+  if (startMode == 1) {
+    String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
+    String p = homePass.length() > 0 ? homePass : HOME_PASS;
     
-    uint32_t triggerTime = getSynchronizedTimeMs();
-    uint16_t code = receivedCode & 0xFFF;
-    uint8_t detectedCarId = (code >> 6) & 0x3F;
-    uint8_t carIdInv      = code & 0x3F;
+    digitalWrite(LED_READY, LOW);
+    WiFi.disconnect(true);
+    delay(50);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
+    WiFi.mode(WIFI_STA);
+    WiFi.setOutputPower(20.5);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    WiFi.config(0u, 0u, 0u);
+    WiFi.hostname(getDeviceHostname());
+    
+    WiFi.begin(s.c_str(), p.c_str());
+    uint32_t startMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 10000)) {
+      delay(100);
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      currentRuntimeWifiMode = 1;
+      updateLearnedApIP(WiFi.localIP());
+      setupGhostWLAN();
+      return; 
+    } else {
+      blinkGreenLED(3);
+      delay(300);
+      startMode = 2; 
+    }
+  }
 
-    if (((detectedCarId ^ carIdInv) == 0x3F) && detectedCarId >= 1 && detectedCarId <= MAX_CARS) {
-      if (!batteryLow) {
-        digitalWrite(LED_SIGNAL, HIGH); 
-        ledPulseEndMs = nowMs + 40;
-        ledPulseActive = true;
-      }
+  if (startMode == 2 && hotspotSSID.length() > 0) {
+    digitalWrite(LED_READY, LOW);
+    WiFi.disconnect(true);
+    delay(50);
+    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
+    WiFi.mode(WIFI_STA);
+    WiFi.setOutputPower(20.5);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    WiFi.config(0u, 0u, 0u);
+    WiFi.hostname(getDeviceHostname());
+    
+    WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+    uint32_t startMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 12000)) {
+      delay(100);
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      currentRuntimeWifiMode = 2;
+      setupGhostWLAN();
+      return; 
+    } else {
+      blinkGreenLED(5);
+    }
+  }
 
-      bool isNewPass = (nowMs - lastSeenSignalTime[detectedCarId] > SECTOR_CLEARANCE_MS);
-      lastSeenSignalTime[detectedCarId] = nowMs;
+  setupFallbackAP();
+}
 
-      if (isNewPass) {
-        SectorPacket pkt;
-        pkt.stationId = STATION_ID;
-        pkt.carId = detectedCarId;
-        pkt.timestamp = triggerTime;
-        pkt.seqNumber = ++localSeqNumber;
-        pkt.ttl = 3;
+static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
+  Dir dir = LittleFS.openDir(basePath);
+  while (dir.next()) {
+    String entryName = dir.fileName();
+    String fullPath = (basePath == "/") ? ("/" + entryName) : (basePath + "/" + entryName);
+    if (dir.isDirectory()) {
+      listFilesRecursive(fullPath, response, first);
+    } else {
+      if (!first) response->print(",");
+      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
+      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                       relName.c_str(), (unsigned int)dir.fileSize(), (unsigned long)dir.fileTime());
+      first = false;
+    }
+  }
+}
 
-        uint32_t eventId = ((uint32_t)STATION_ID << 16) | pkt.seqNumber;
-        isAlreadyRelayed(eventId); 
+void initNetworkAndServer() {
+  connectNetworkCascade(activeWifiMode);
 
-        if (baseMacKnown) {
-          esp_now_send(baseStationMac, (uint8_t *)&pkt, sizeof(pkt));
-        } else {
-          esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
-        }
+  cacheHeaderStr = webCacheEnabled ? "max-age=86400" : "no-cache";
+
+  auto serveUpdatePage = [](AsyncWebServerRequest *request) {
+    if (!serveStaticWithHeapGuard(request, "/update.html")) {
+      request->send(200, "text/html", "<h2>Update</h2><form method='POST' action='/api/upload' enctype='multipart/form-data'><input type='file' name='data'><input type='submit' value='Upload'></form>");
+    }
+  };
+  server.on("/update", HTTP_GET, serveUpdatePage);
+  server.on("/update.html", HTTP_GET, serveUpdatePage);
+
+  auto serveDebugPage = [](AsyncWebServerRequest *request) {
+    if (!serveStaticWithHeapGuard(request, "/debug.html")) {
+      request->send(404, "text/plain", "Debug-Seite nicht gefunden");
+    }
+  };
+  server.on("/debug", HTTP_GET, serveDebugPage);
+  server.on("/debug/", HTTP_GET, serveDebugPage);
+  server.on("/debug.html", HTTP_GET, serveDebugPage);
+
+  server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Upload erfolgreich!");
+  }, handleFileUpload);
+
+  server.on("/api/update/firmware", HTTP_POST, [](AsyncWebServerRequest *request) {
+    bool hasError = Update.hasError();
+    AsyncWebServerResponse *response = request->beginResponse(hasError ? 500 : 200, "text/plain", hasError ? "Flash-Fehler" : "OK");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    if (!hasError) {
+      scheduleESPReset(1200);
+    }
+  }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+    if (!index) {
+      Update.runAsync(true);
+      size_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+      if (!Update.begin(maxSketchSpace, U_FLASH)) {
+        Update.printError(Serial);
       }
     }
+    if (!Update.hasError()) {
+      if (Update.write(data, len) != len) {
+        Update.printError(Serial);
+      }
+    }
+    if (final) {
+      if (!Update.end(true)) {
+        Update.printError(Serial);
+      }
+    }
+  });
+
+  server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+    flushCurrentSessionToIndex();
+    FSInfo fs_info;
+    LittleFS.info(fs_info);
+    updateFsUsageCache();
+
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
+                     (unsigned int)fs_info.totalBytes, (unsigned int)fs_info.usedBytes);
+
+    bool first = true;
+    listFilesRecursive("/", response, first);
+
+    response->print("]}");
+    request->send(response);
+  });
+
+  server.on("/api/deletefile", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("file")) {
+      String filename = request->getParam("file")->value();
+      filename.replace("%2F", "/");
+      filename.replace("%2f", "/");
+      if (!filename.startsWith("/")) filename = "/" + filename;
+
+      // Falls es eine Session-Datei aus einem Unterordner ist, auch sauber aus /sessions.json entfernen
+      int lastSlash = filename.lastIndexOf('/');
+      if (lastSlash > 0 && filename.endsWith(".json")) {
+        String baseName = filename.substring(lastSlash + 1, filename.length() - 5);
+        deleteSessionById(baseName);
+      }
+
+      if (LittleFS.exists(filename)) {
+        LittleFS.remove(filename);
+      }
+      updateFsUsageCache();
+      request->send(200, "text/plain", "Geloescht");
+      return;
+    }
+    request->send(400, "text/plain", "Datei nicht gefunden");
+  });
+
+  server.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("file")) {
+      String fn = request->getParam("file")->value();
+      fn.replace("%2F", "/");
+      fn.replace("%2f", "/");
+      while (fn.startsWith("/")) fn = fn.substring(1);
+      fn = "/" + fn;
+      if (LittleFS.exists(fn)) {
+        request->send(LittleFS, fn, "application/octet-stream", true);
+        return;
+      }
+    }
+    request->send(404, "text/plain", "Datei nicht gefunden");
+  });
+
+  server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ESP startet neu...");
+    scheduleESPReset(600);
+  });
+
+  server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json;
+    json.reserve(200);
+    json = "{\"freeHeap\":";
+    json += ESP.getFreeHeap();
+    json += ",\"frag\":";
+    json += ESP.getHeapFragmentation();
+    json += ",\"maxLoopUs\":";
+    json += perfMaxLoopUs;
+    json += ",\"avgLoopUs\":";
+    json += perfAvgLoopUs;
+    json += ",\"cpuMhz\":";
+    json += ESP.getCpuFreqMHz();
+    json += ",\"uptimeSec\":";
+    json += (millis() / 1000UL);
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
+  server.on("/api/allconfig", HTTP_GET, handleGetAllConfig);
+  server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
+  server.on("/api/setwificonfig", HTTP_POST, handlePostSetWifiConfig);
+  server.on("/api/switchwifi", HTTP_POST, handlePostSwitchWifi);
+  server.on("/api/trigger_sz_ota", HTTP_POST, handlePostTriggerSzOta);
+
+  server.on("/api/hotspot", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json = "{\"ssid\":\"" + hotspotSSID + "\",\"pass\":\"" + hotspotPass + "\"}";
+    request->send(200, "application/json", json);
+  });
+  server.on("/api/sethotspot", HTTP_POST, [](AsyncWebServerRequest *request) {
+    String ssid = request->hasParam("ssid") ? request->getParam("ssid")->value() : "";
+    String pass = request->hasParam("pass") ? request->getParam("pass")->value() : "";
+    saveHotspotConfigToFS(ssid, pass);
+    request->send(200, "text/plain", "OK");
+  });
+
+  server.on("/api/debug/packets", HTTP_GET, handleGetDebugPackets);
+  server.on("/api/debug/status", HTTP_GET, handleGetDebugStatus);
+  server.on("/api/debug/set", HTTP_POST, handlePostSetDebugMode);
+
+  server.on("/api/laps", HTTP_GET, handleGetLaps);
+  server.on("/api/stations", HTTP_GET, handleGetStationsStatus);
+  server.on("/api/session", HTTP_POST, handlePostSession);
+  server.on("/api/timeleft", HTTP_GET, handleGetTimeLeft);
+  server.on("/api/recent", HTTP_GET, handleGetRecent);
+  server.on("/api/deadtime", HTTP_GET, handleGetDeadtime);
+  server.on("/api/filter", HTTP_GET, handleGetFilter);
+  server.on("/api/names", HTTP_GET, handleGetNames);
+  server.on("/api/version", HTTP_GET, handleGetVersion);
+  server.on("/api/setfilter", HTTP_POST, handlePostSetFilter);
+  server.on("/api/setdeadtime", HTTP_POST, handlePostSetDeadtime);
+  server.on("/api/rename", HTTP_POST, handlePostRename);
+  server.on("/api/reset", HTTP_POST, handlePostReset);
+
+  server.on("/api/synctime", HTTP_POST, handlePostSyncTime);
+  server.on("/api/sessions", HTTP_GET, handleGetSessions);
+  server.on("/api/sessionfile", HTTP_GET, handleGetSessionFile);
+  server.on("/api/deletelap", HTTP_POST, handlePostDeleteLap);
+  server.on("/api/deletedriverstats", HTTP_POST, handlePostDeleteDriverStats);
+  server.on("/api/deleteallstats", HTTP_POST, handlePostDeleteAllStats);
+  server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);
+
+
+  server.on("/api/tracks", HTTP_GET, handleGetTracks);
+  server.on("/api/tracks/select", HTTP_POST, handlePostSelectTrack);
+  server.on("/api/tracks/add", HTTP_POST, handlePostAddTrack);
+  server.on("/api/tracks/delete", HTTP_POST, handlePostDeleteTrack);
+  server.on("/api/tracks/deleterecord", HTTP_POST, handlePostDeleteTrackRecord);
+
+  server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
+  server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
+  
+  server.on("/api/cacheconfig", HTTP_GET, handleGetCacheConfig);
+  server.on("/api/setcacheconfig", HTTP_POST, handlePostSetCacheConfig);
+
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    String url = request->url();
+
+    if (url.startsWith("/api/")) {
+      request->send(404, "application/json", "{\"error\":\"Not Found\"}");
+      return;
+    }
+
+    if (serveStaticWithHeapGuard(request, url)) {
+      return;
+    }
+
+    request->send(404, "text/plain", "404: Not Found");
+  });
+
+  ws.onEvent(onWsEvent);
+  server.addHandler(&ws);
+
+  server.begin();
+  
+  if (MDNS.begin("laptimer")) {
+    MDNS.addService("http", "tcp", 80);
+  }
+  
+  ArduinoOTA.setHostname(getOtaHostname().c_str());
+  ArduinoOTA.begin();
+}
+
+void handleNetworkTasks() {
+  if (pendingReset && millis() >= resetTimer) {
+    ESP.restart();
+  }
+
+  if (ghostWlanActive && ghostWlanOffTimer > 0 && millis() >= ghostWlanOffTimer) {
+    ghostWlanActive = false;
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  }
+
+  if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
+    pendingWifiSwitch = false;
+    ws.closeAll();
+    server.end();
+    delay(150);
+    ESP.restart(); 
+  }
+
+  MDNS.update();
+  ArduinoOTA.handle();
+  ws.cleanupClients();
+}
+
+void broadcastWebSocket(const String& msg) {
+  if (ws.count() > 0) {
+    ws.textAll(msg);
   }
 }

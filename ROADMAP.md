@@ -18,7 +18,7 @@
 
 | Environment | Board | CPU Takt | Dateisystem | Upload / Port | Zweck / Flags |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | espota (192.168.0.8) | Basisstation, AsyncWebServer, ArduinoJson 7, LWIP2 High Bandwidth |
+| `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | espota (laptimer.local) | Basisstation, AsyncWebServer, ArduinoJson 7, LWIP2 High Bandwidth |
 | `sz1` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-1.local) | Sektorstation 1 (`-DSECTOR_STATION -DSTATION_ID=1`) |
 | `sz2` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-2.local) | Sektorstation 2 (`-DSECTOR_STATION -DSTATION_ID=2`) |
 | `sz3` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-3.local) | Sektorstation 3 (`-DSECTOR_STATION -DSTATION_ID=3`) |
