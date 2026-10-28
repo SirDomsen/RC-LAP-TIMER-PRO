@@ -62,7 +62,7 @@ function handleLiveEvent(msg) {
     onOutlapLiveEvent(msg);
   } else if (msg.type === 'track_seen') {
     handleSectorTrackEntryTTS(msg.carId);
-    updateData();
+    requestUpdateData();
   } else if (msg.type === 'base_cross') {
     handleBaseCrossEvent(msg);
   } else if (msg.type === 'lap') {
@@ -96,7 +96,7 @@ function handleLiveEvent(msg) {
       announced10 = false;
       timeExpiredAnnounced = false;
       if (typeof loadTracks === 'function') loadTracks();
-      updateData(true);
+      requestUpdateData(true, true);
     }
   }
 }
@@ -109,7 +109,7 @@ function onOutlapLiveEvent(msg) {
   if (typeof statusCarsMap !== 'undefined') {
     statusCarsMap[carId] = 'outlap';
   }
-  updateData();
+  requestUpdateData();
 }
 
 function onDragStartEvent(msg) {
@@ -121,7 +121,7 @@ function onDragStartEvent(msg) {
       speak(driver + " gestartet!");
     }
   }
-  updateData();
+  requestUpdateData();
 }
 
 function onDragFinishEvent(msg) {
@@ -138,7 +138,7 @@ function onDragFinishEvent(msg) {
     }
     speak(text);
   }
-  updateData();
+  requestUpdateData();
 }
 
 function onSectorLiveEvent(msg) {
@@ -183,7 +183,7 @@ function onSectorLiveEvent(msg) {
     void cell.offsetWidth;
     cell.className = `${textClass} ${flashClass}`;
   } else {
-    updateData();
+    requestUpdateData();
   }
 
   let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
@@ -240,6 +240,24 @@ function onLapLiveEvent(msg) {
       isDailyRecord: isNewDailyRecord,
       isOutLap: isOutLapDone
     };
+  }
+
+  // Live-Aktualisierung des Dashboards/OLED-Dimmers für das eigene Auto ohne auf HTTP zu warten
+  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
+  if (isMyCar) {
+    let dLast = document.getElementById('dimmerLast1Text');
+    let dPos = document.getElementById('dimmerPos1Text');
+    let dPb = document.getElementById('dimmerPb1Text');
+    let dStatus = document.getElementById('dimmerStatus1Badge');
+    if (dStatus) dStatus.style.display = isOutLapDone ? 'inline-block' : 'none';
+    if (dPos && position > 0) dPos.innerText = "P" + position;
+    if (dLast && msg.lapTime > 0) {
+      dLast.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+      dLast.style.color = isAbsoluteBest ? 'var(--neon-purple)' : (isPersonalBest ? 'var(--neon-green)' : 'var(--text-main)');
+    }
+    if (dPb && isPersonalBest && msg.lapTime > 0) {
+      dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+    }
   }
 
   // 1. Rundenrennen (Modus 2): Vorrang-Ansagen für verbleibende Runden basierend auf dem Führenden
@@ -320,11 +338,11 @@ function onLapLiveEvent(msg) {
     previousLaps[carId] = completedLapNum;
   }
 
-  // 4. UI-Datenaktualisierung im Hintergrund (durch Drossel geschützt)
+  // 4. UI-Datenaktualisierung im Hintergrund (durch gestaffelte Drossel geschützt)
   if (msg && (msg.isTrackRecord || msg.isDailyRecord)) {
     if (typeof loadTracks === 'function') loadTracks();
-    updateData(true);
+    requestUpdateData(true);
   } else {
-    updateData();
+    requestUpdateData();
   }
 }

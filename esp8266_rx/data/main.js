@@ -1587,8 +1587,49 @@ function startLocalTimerTicker() {
 }
 
 let lastUpdateDataTime = 0;
-const MIN_UPDATE_INTERVAL_MS = 750;
+const MIN_UPDATE_INTERVAL_MS = 1000;
 let updateDataTimer = null;
+let pendingUpdateRequested = false;
+let pendingUpdateFullSync = false;
+let isUpdatingData = false;
+
+function requestUpdateData(fullSync = false, priority = false) {
+  if (fullSync) pendingUpdateFullSync = true;
+  pendingUpdateRequested = true;
+
+  if (isUpdatingData) {
+    return;
+  }
+
+  let isDriver = (userRole === 'driver');
+  let delay = 0;
+  if (priority) {
+    delay = 30 + Math.floor(Math.random() * 70);
+  } else if (isDriver) {
+    // Fahrer-Modus: gestaffelter Jitter über 800 - 2400 ms
+    delay = 800 + Math.floor(Math.random() * 1600);
+  } else {
+    // Admin-Modus: moderater Versatz über 250 - 650 ms
+    delay = 250 + Math.floor(Math.random() * 400);
+  }
+
+  let timeSinceLast = Date.now() - lastUpdateDataTime;
+  if (timeSinceLast < MIN_UPDATE_INTERVAL_MS) {
+    delay = Math.max(delay, (MIN_UPDATE_INTERVAL_MS - timeSinceLast) + Math.floor(Math.random() * 300));
+  }
+
+  if (updateDataTimer) {
+    return;
+  }
+
+  updateDataTimer = setTimeout(() => {
+    updateDataTimer = null;
+    let doFull = pendingUpdateFullSync;
+    pendingUpdateRequested = false;
+    pendingUpdateFullSync = false;
+    updateData(doFull);
+  }, delay);
+}
 
 async function updateData(fullSync = false) {
   let now = Date.now();
@@ -1596,7 +1637,9 @@ async function updateData(fullSync = false) {
     pendingUpdateRequested = true;
     if (fullSync) pendingUpdateFullSync = true;
     if (!updateDataTimer && !isUpdatingData) {
-      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime));
+      let isDriver = (userRole === 'driver');
+      let jitter = isDriver ? Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 300);
+      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime)) + jitter;
       updateDataTimer = setTimeout(() => {
         updateDataTimer = null;
         let doFull = pendingUpdateFullSync;
@@ -1849,7 +1892,9 @@ async function updateData(fullSync = false) {
       let doFull = pendingUpdateFullSync;
       pendingUpdateRequested = false;
       pendingUpdateFullSync = false;
-      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (Date.now() - lastUpdateDataTime));
+      let isDriver = (userRole === 'driver');
+      let jitter = isDriver ? Math.floor(Math.random() * 800) : Math.floor(Math.random() * 300);
+      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (Date.now() - lastUpdateDataTime)) + jitter;
       updateDataTimer = setTimeout(() => {
         updateDataTimer = null;
         updateData(doFull);
@@ -2091,7 +2136,7 @@ function handleBaseCrossEvent(msg) {
 
   awaitingBaseCrossMap[carId] = false;
   statusCarsMap[carId] = null;
-  updateData(false);
+  requestUpdateData(false);
 }
 
 function handleSectorTrackEntryTTS(carId) {

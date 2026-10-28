@@ -197,7 +197,7 @@ static void setupFallbackAP() {
   String activeApName = (apSSID.length() > 0) ? apSSID : getDefaultApSSID();
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
-  WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 8);
+  WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 4);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
   digitalWrite(LED_READY, HIGH); 

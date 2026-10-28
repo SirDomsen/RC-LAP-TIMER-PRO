@@ -13,6 +13,13 @@ extern "C" {
 }
 
 void handleGetLaps(AsyncWebServerRequest *request) {
+  if (isHeapCriticalForFileTransfer()) {
+    AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
+    res->addHeader("Retry-After", "2");
+    res->addHeader("Connection", "close");
+    request->send(res);
+    return;
+  }
   AsyncResponseStream *response = request->beginResponseStream("application/json");
   response->print("[");
   bool first = true;
