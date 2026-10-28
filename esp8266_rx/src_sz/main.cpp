@@ -112,7 +112,7 @@ String otaTargetPass = "";
 
 String dynamicSsid = "";
 String dynamicPass = "";
-bool pendingHotspotAck = false;
+volatile bool pendingHotspotAck = false;
 
 #define EEPROM_MAGIC_HOTSPOT 0x5B
 
@@ -197,7 +197,7 @@ void updateEspNowChannel(uint8_t ch) {
   }
 }
 
-// Sichere OTA Netzwerk-Verbindung (3 Stufen, KEIN Reboot!)
+// Sichere OTA Netzwerk-Verbindung (Keine festen Zugangsdaten, Eindeutiger AP!)
 void connectOtaNetwork() {
   digitalWrite(LED_SIGNAL, HIGH); 
   WiFi.disconnect(true);
@@ -209,39 +209,39 @@ void connectOtaNetwork() {
   String targetSsid = otaTargetSsid;
   String targetPass = otaTargetPass;
 
-  if (targetSsid.length() == 0) {
-    targetSsid = HOME_SSID;
-    targetPass = HOME_PASS;
-  }
-
-  // Stufe 1: Dynamisch per DHCP
-  WiFi.config(0u, 0u, 0u);
-  WiFi.hostname(String("SZ-") + String(STATION_ID));
-  WiFi.begin(targetSsid.c_str(), targetPass.c_str());
-
-  uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
-    delay(100); 
-  }
-  
-  // Stufe 2: Fallback auf feste IP
-  if (WiFi.status() != WL_CONNECTED && otaTargetMode == 1) {
-    IPAddress gateway(192, 168, 0, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    WiFi.config(local_IP, gateway, subnet);
+  // Nur wenn die Basis uns eine SSID geschickt hat, versuchen wir Stufe 1 & 2
+  if (targetSsid.length() > 0) {
+    // Stufe 1: Dynamisch per DHCP
+    WiFi.config(0u, 0u, 0u);
+    WiFi.hostname(String("SZ-") + String(STATION_ID));
     WiFi.begin(targetSsid.c_str(), targetPass.c_str());
-    
-    startMs = millis();
+
+    uint32_t startMs = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
       delay(100); 
     }
+    
+    // Stufe 2: Fallback auf feste IP
+    if (WiFi.status() != WL_CONNECTED && otaTargetMode == 1) {
+      IPAddress gateway(192, 168, 0, 1);
+      IPAddress subnet(255, 255, 255, 0);
+      WiFi.config(local_IP, gateway, subnet);
+      WiFi.begin(targetSsid.c_str(), targetPass.c_str());
+      
+      startMs = millis();
+      while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 8000)) { 
+        delay(100); 
+      }
+    }
   }
 
-  // Stufe 3: Notfall-AP als Rettungsanker (Lebensversicherung!)
-  if (WiFi.status() != WL_CONNECTED) {
+  // Stufe 3: Notfall-AP (Greift bei Fehler ODER wenn targetSsid leer war)
+  if (WiFi.status() != WL_CONNECTED || targetSsid.length() == 0) {
     WiFi.mode(WIFI_AP);
-    String rescueSsid = "SZ-RESCUE-" + String(STATION_ID);
-    WiFi.softAP(rescueSsid.c_str(), "12345678");
+    // Erzeugt z.B. "SZ1-RESCUE-1A2B3C" -> Absolut unverwechselbar!
+    String rescueSsid = "SZ" + String(STATION_ID) + "-RESCUE-" + String(ESP.getChipId(), HEX);
+    rescueSsid.toUpperCase();
+    WiFi.softAP(rescueSsid.c_str(), "12345678"); // Fallback-Passwort
     wifiConnected = true; 
   } else {
     wifiConnected = true;
@@ -272,6 +272,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
         updateEspNowChannel(sync.channel);
       }
       
+      // Basis-MAC aus Stratum-0 Beacon lernen
       if (sync.stratum == 0 && mac != NULL) {
         if (!baseMacKnown || memcmp(baseStationMac, mac, 6) != 0) {
           if (baseMacKnown && esp_now_is_peer_exist(baseStationMac)) {
