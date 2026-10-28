@@ -80,7 +80,7 @@
 * **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`).
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.
-* **Dynamischer Heap-Schutz:** Weist Verbindungen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der freie RAM unter 20 kB sinkt oder die Fragmentierung 47 % übersteigt.
+* **Dynamischer Heap-Schutz:** Weist Verbindungen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der heap unter einen gewissen wert (web_server.cpp around L40) fällt oder die Fragmentierung zu groß wird.
 
 ---
 

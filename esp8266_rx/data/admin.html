@@ -4,7 +4,7 @@
   <title>RC Lap Timer Pro - Rennleiter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
-  <link rel="stylesheet" href="style.css?v=4.3.4">
+  <link rel="stylesheet" href="style.css?v=4.3.5">
 </head>
 <body class="role-admin">
 
@@ -418,13 +418,6 @@
           </div>
         </div>
 
-        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-red);">
-          <h4 style="color:var(--neon-red); margin:0 0 5px 0; font-family:var(--font-display);">⚙️ Sektorstationen Wartung (OTA)</h4>
-          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
-            Versetzt die Sektorstationen in den Flash-Modus. Sie verbinden sich mit dem aktuellen Netzwerk (Ausnahme: Hotspot-Modus nicht unterstützt).
-          </p>
-          <button class="btn btn-red" style="width: 100%; padding:8px; font-size:12px;" onclick="triggerSZOta()">⚡ SZ OTA-Wartungsmodus starten</button>
-        </div>
 
         <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid var(--neon-green);">
           <h4 style="color:var(--neon-green); margin:0 0 5px 0; font-family:var(--font-display);">🎙️ Sprachausgabe für dieses Handy</h4>
@@ -516,23 +509,6 @@
     </div>
   </div>
 
-  <div id="otaAlertModal" class="modal" style="z-index: 9999;">
-    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);">
-      <h3 style="color:var(--neon-red); font-family:var(--font-display); margin-top:0;">⚡ SZ WARTUNGSMODUS (OTA)</h3>
-      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="otaModalDesc">
-        Wartungsmodus an alle Sektorstationen funken?<br>Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!
-      </p>
-      
-      <div id="otaModalStatus" style="display:none; background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
-        <p id="otaStatusText" style="margin:0; font-size:14px; color:var(--neon-green); font-weight:bold;">Status...</p>
-      </div>
-      
-      <div id="otaModalButtons" style="display:flex; gap:10px;">
-        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
-        <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
-      </div>
-    </div>
-  </div>
 
   <!-- MODAL: NEUE STRECKE ANLEGEN -->
   <div id="newTrackModal" class="modal" style="z-index: 9999;">
@@ -590,17 +566,17 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.3.4</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.3.5</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.3.4"></script>
-  <script src="websocket.js?v=4.3.4"></script>
-  <script src="modes.js?v=4.3.4"></script>
-  <script src="stats.js?v=4.3.4"></script>
-  <script src="config.js?v=4.3.4"></script>
-  <script src="main.js?v=4.3.4"></script>
+  <script src="tts.js?v=4.3.5"></script>
+  <script src="websocket.js?v=4.3.5"></script>
+  <script src="modes.js?v=4.3.5"></script>
+  <script src="stats.js?v=4.3.5"></script>
+  <script src="config.js?v=4.3.5"></script>
+  <script src="main.js?v=4.3.5"></script>
 </body>
 </html>

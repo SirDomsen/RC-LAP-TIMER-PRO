@@ -127,7 +127,7 @@ function onDragStartEvent(msg) {
 function onDragFinishEvent(msg) {
   if (isCarAllowedForTTS(msg.carId)) {
     let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
-    let timeSec = (msg.time / 1000).toFixed(2).replace('.', ',');
+    let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.time) : (msg.time / 1000).toFixed(2).replace('.', ',');
     let text = "";
     if (msg.isOverallBest) {
       text = driver + ", neue absolute Bestzeit! " + timeSec + " Sekunden!";
@@ -287,7 +287,7 @@ function onLapLiveEvent(msg) {
     if (isOutLapDone) {
       speak(driverName + ", Outlap beendet!");
     } else if (msg.lapTime > 0) {
-      let timeSec = (msg.lapTime / 1000).toFixed(2).replace('.', ',');
+      let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.lapTime) : (msg.lapTime / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
       if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
 

@@ -2025,7 +2025,7 @@ function finishSessionNow() {
       let poleDriver = pole.driver || (carNamesMap[pole.id]?.driver || ("Fahrer " + pole.id));
       let poleCar = pole.car || (carNamesMap[pole.id]?.car || ("Auto " + pole.id));
       let poleTimeDisp = (pole.bestLap / 1000).toFixed(2) + 's';
-      let poleTimeSpeech = (pole.bestLap / 1000).toFixed(2).replace('.', ',');
+      let poleTimeSpeech = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(pole.bestLap) : (pole.bestLap / 1000).toFixed(2).replace('.', ',');
 
       let banner = document.getElementById('poleBanner');
       let bannerTxt = document.getElementById('poleBannerText');
@@ -2034,7 +2034,7 @@ function finishSessionNow() {
         banner.style.display = 'block';
       }
 
-      let speechText = `Qualifying beendet! Herzlichen Glückwunsch ${poleDriver} auf ${poleCar} zur Pohl Posischen mit ${poleTimeSpeech} Sekunden!`;
+      let speechText = `Qualifying beendet! Herzlichen Glückwunsch ${poleDriver} auf ${poleCar} zur Pole Position mit ${poleTimeSpeech}!`;
 
       let p2 = activeCars[1];
       let p3 = activeCars[2];
@@ -2283,7 +2283,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       if (isOutLapDone) {
         speak(driverName + ", Outlap beendet!");
       } else if (car.lastLap > 0) {
-        let timeSec = (car.lastLap / 1000).toFixed(2).replace('.', ',');
+        let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(car.lastLap) : (car.lastLap / 1000).toFixed(2).replace('.', ',');
         let posText = ", ";
         if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
 

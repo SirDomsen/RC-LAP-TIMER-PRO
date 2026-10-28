@@ -109,6 +109,8 @@
     .btn-red:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 15px rgba(255, 51, 102, 0.5); }
     .btn-orange { background: rgba(255, 153, 0, 0.15); color: var(--neon-orange); border-color: var(--neon-orange); }
     .btn-orange:hover { background: var(--neon-orange); color: #000; box-shadow: 0 0 15px rgba(255, 153, 0, 0.5); }
+    .btn-warning { background: rgba(255, 153, 0, 0.15); color: var(--neon-orange); border-color: var(--neon-orange); }
+    .btn-warning:hover { background: var(--neon-orange); color: #000; box-shadow: 0 0 15px rgba(255, 153, 0, 0.5); }
     .btn-purple { background: var(--neon-purple); color: #fff; border-color: var(--neon-purple); }
     .btn-purple:hover { background: #9900ff; box-shadow: 0 0 15px rgba(181, 50, 255, 0.6); }
     .modal {
@@ -349,15 +351,6 @@
       </div>
     </div>
 
-    <!-- REBOOT -->
-    <div class="card">
-      <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
-        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .
-      </p>
-      <button class="btn btn-red" style="margin-top:10px;" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
-    </div>
-
     <!-- FIRMWARE OTA UPDATE CARD -->
     <div class="card" style="border-color: rgba(181, 50, 255, 0.4);">
       <h3 class="card-title" style="color: var(--neon-purple);">⚡ Firmware OTA Update (.bin)</h3>
@@ -379,6 +372,24 @@
       </div>
       <div id="fwStatusText" style="font-size:13px; margin-top:10px; text-align:center; min-height:18px; font-family:monospace;"></div>
     </div>
+
+    <!-- SEKTORSTATIONEN OTA WARTUNG CARD -->
+    <div class="card" style="border-color: var(--neon-red);">
+      <h3 class="card-title" style="color:var(--neon-red);">⚙️ Sektorstationen Wartung (OTA)</h3>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top:0; margin-bottom: 10px;">
+        Versetzt die Sektorstationen in den Flash-Modus. Sie verbinden sich mit dem aktuellen Netzwerk (Ausnahme: Hotspot-Modus nicht unterstützt).
+      </p>
+      <button class="btn btn-red" style="width: 100%; padding:8px; font-size:12px;" onclick="triggerSZOta()">⚡ SZ OTA-Wartungsmodus starten</button>
+    </div>
+
+    <!-- REBOOT -->
+    <div class="card">
+      <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
+        Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .
+      </p>
+      <button class="btn btn-red" style="margin-top:10px;" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
+    </div>
   </div>
 
   <!-- UNIVERSELLES DIALOG-MODAL -->
@@ -397,6 +408,25 @@
       <div id="universalModalButtons" style="display:flex; gap:10px;">
         <button id="universalModalCancelBtn" class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold; margin-top:0;" onclick="closeUniversalDialog(false)">ABBRECHEN</button>
         <button id="universalModalConfirmBtn" class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold; margin-top:0;" onclick="closeUniversalDialog(true)">BESTÄTIGEN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SZ WARTUNGSMODUS (OTA) MODAL -->
+  <div id="otaAlertModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; border: 1px solid var(--neon-red); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);">
+      <h3 style="color:var(--neon-red); font-family:'Orbitron',sans-serif; margin-top:0;">⚡ SZ WARTUNGSMODUS (OTA)</h3>
+      <p style="font-size:14px; color:var(--text-main); margin-bottom:15px;" id="otaModalDesc">
+        Wartungsmodus an alle Sektorstationen funken?<br>Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!
+      </p>
+      
+      <div id="otaModalStatus" style="display:none; background:rgba(0,0,0,0.6); padding:15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin-bottom:20px;">
+        <p id="otaStatusText" style="margin:0; font-size:14px; color:var(--neon-green); font-weight:bold;">Status...</p>
+      </div>
+      
+      <div id="otaModalButtons" style="display:flex; gap:10px;">
+        <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
+        <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
       </div>
     </div>
   </div>
@@ -1431,13 +1461,75 @@
       }
     }
 
+    function triggerSZOta() {
+      let modal = document.getElementById('otaAlertModal');
+      let statusBox = document.getElementById('otaModalStatus');
+      let btns = document.getElementById('otaModalButtons');
+      let desc = document.getElementById('otaModalDesc');
+      
+      if (modal) {
+        statusBox.style.display = 'none';
+        btns.innerHTML = `
+          <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
+          <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
+        `;
+        btns.style.display = 'flex';
+        desc.style.display = 'block';
+        modal.style.display = 'block';
+      }
+    }
+
+    function closeOtaAlert() {
+      let modal = document.getElementById('otaAlertModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function confirmOtaAlert() {
+      let btns = document.getElementById('otaModalButtons');
+      let statusBox = document.getElementById('otaModalStatus');
+      let statusText = document.getElementById('otaStatusText');
+      let desc = document.getElementById('otaModalDesc');
+      
+      btns.style.display = 'none';
+      desc.style.display = 'none';
+      statusBox.style.display = 'block';
+      statusText.style.color = 'var(--neon-cyan)';
+      statusText.innerText = "Sende Trigger-Signal an Sektorstationen...";
+
+      try {
+        let res = await fetch('/api/trigger_sz_ota', { method: 'POST' });
+        let msg = await res.text();
+        
+        if (!res.ok) {
+          statusText.style.color = 'var(--neon-orange)';
+          statusText.innerText = "⚠️ Fehler: " + msg;
+        } else {
+          statusText.style.color = 'var(--neon-green)';
+          statusText.innerHTML = "✅ Signal erfolgreich gesendet!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Die Stationen blinken nun schnell (3Hz) und verbinden sich mit dem aktuellen Netzwerk.<br>Flash-Vorgang per OTA kann gestartet werden.</span>";
+        }
+      } catch(e) {
+        statusText.style.color = 'var(--neon-red)';
+        statusText.innerText = "❌ Fehler beim Senden: " + e.message;
+      }
+      
+      setTimeout(() => {
+        btns.innerHTML = `<button class="btn btn-cyan" style="width:100%; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">SCHLIESSEN</button>`;
+        btns.style.display = 'flex';
+      }, 500);
+    }
+
     window.onclick = function(event) {
       let modal = document.getElementById('universalModal');
       if (event.target === modal) closeUniversalDialog(false);
+      let otaModal = document.getElementById('otaAlertModal');
+      if (event.target === otaModal) closeOtaAlert();
     };
 
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') closeUniversalDialog(false);
+      if (e.key === 'Escape') {
+        closeUniversalDialog(false);
+        closeOtaAlert();
+      }
     });
 
     document.addEventListener('DOMContentLoaded', () => {
