@@ -41,8 +41,6 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request);
 
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final);
 
-void handleGetCacheConfig(AsyncWebServerRequest *request);
-void handlePostSetCacheConfig(AsyncWebServerRequest *request);
 
 // Konsolidierter Handler für alle Einstellungen (1 TCP-Verbindung)
 void handleGetAllConfig(AsyncWebServerRequest *request);

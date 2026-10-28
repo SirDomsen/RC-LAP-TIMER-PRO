@@ -535,18 +535,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
   }
 }
 
-void handleGetCacheConfig(AsyncWebServerRequest *request) {
-  String json = "{\"cache\":" + String(webCacheEnabled ? "true" : "false") + "}";
-  request->send(200, "application/json", json);
-}
 
-void handlePostSetCacheConfig(AsyncWebServerRequest *request) {
-  if (request->hasParam("cache")) {
-    webCacheEnabled = (request->getParam("cache")->value() == "1");
-    saveCacheConfigToEEPROM(webCacheEnabled);
-  }
-  request->send(200, "text/plain", "OK");
-}
 
 void handleGetAllConfig(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
@@ -570,7 +559,6 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
 
   response->printf("\"deadtime\":{\"ms\":%u},", minLapTimeMs);
   response->printf("\"filter\":{\"enabled\":%s},", requireTwoFrames ? "true" : "false");
-  response->printf("\"cache\":{\"cache\":%s},", webCacheEnabled ? "true" : "false");
 
   response->print("\"sector\":{");
   response->printf("\"useSz1\":%s,", useSz1 ? "true" : "false");

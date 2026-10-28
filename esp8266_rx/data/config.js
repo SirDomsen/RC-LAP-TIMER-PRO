@@ -1,4 +1,3 @@
-let initialCacheState = null;
 let pendingWifiMode = 0;
 let lastLearnedApIp = '192.168.0.8';
 let defaultApSSID = 'RC-LapTimer';
@@ -116,15 +115,6 @@ function openConfigModal() {
       if (cb) cb.checked = all.filter.enabled;
     }
 
-    // 4. Cache
-    if (all.cache) {
-      let cb = document.getElementById('cfg_web_cache');
-      if (cb) {
-        cb.checked = all.cache.cache;
-        initialCacheState = all.cache.cache;
-      }
-    }
-
     // 5. Sector
     if (all.sector) {
       let sz1 = document.getElementById('cfg_use_sz1');
@@ -220,19 +210,6 @@ async function saveConfig() {
     let filterCb = document.getElementById('cfg_two_frames');
     if (filterCb) {
       await fetch('/api/setfilter?enable=' + (filterCb.checked ? "1" : "0"), { method: 'POST' });
-    }
-
-    let cacheCb = document.getElementById('cfg_web_cache');
-    if (cacheCb) {
-      let cacheVal = cacheCb.checked;
-      if (initialCacheState !== null && cacheVal !== initialCacheState) {
-        await fetch('/api/setcacheconfig?cache=' + (cacheVal ? "1" : "0"), { method: 'POST' });
-        await showAlert({
-          title: "ℹ️ WEB-CACHE HINWEIS",
-          theme: "orange",
-          message: "Die Änderung des Web-Caches wird erst nach einem Neustart des ESP8266 aktiv."
-        });
-      }
     }
 
     let bSz1 = document.getElementById('cfg_use_sz1')?.checked ?? true;

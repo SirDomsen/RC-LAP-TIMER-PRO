@@ -18,7 +18,6 @@ struct RecordEntry {
 
 extern String driverNames[MAX_CARS + 1];
 extern String carNames[MAX_CARS + 1];
-extern bool webCacheEnabled;
 
 // Vollständig konfigurierbares WLAN
 extern String homeSSID;
@@ -65,7 +64,6 @@ void loadNamesFromFS();
 void saveNamesToEEPROM(int id, const String& driver, const String& car);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
-void saveCacheConfigToEEPROM(bool enable);
 
 // WLAN-Ladefunktionen
 void loadWifiConfigFromFS();

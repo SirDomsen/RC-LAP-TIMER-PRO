@@ -70,50 +70,6 @@ let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
 
-async function forceCleanReload() {
-  let btn = document.getElementById('hardReloadBtn');
-  if (btn) {
-    btn.innerText = "⏳ Leere Cache...";
-    btn.disabled = true;
-  }
-
-  const assets = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/tts.js',
-    '/websocket.js',
-    '/modes.js',
-    '/stats.js',
-    '/config.js',
-    '/admin.html',
-    '/main.js'
-  ];
-
-  for (let i = 0; i < assets.length; i++) {
-    try {
-      await fetch(assets[i], {
-        method: 'GET',
-        cache: 'reload',
-        headers: {
-          'Pragma': 'no-cache',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
-        }
-      });
-      await new Promise(r => setTimeout(r, 50));
-    } catch (e) {}
-  }
-
-  if ('caches' in window) {
-    try {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
-    } catch (e) {}
-  }
-
-  window.location.replace(window.location.href.split('?')[0] + '?v=' + Date.now());
-}
-
 // --- UNIVERSELLES DIALOG-SYSTEM (Vorbild Firmware-OTA) ---
 let _dialogResolver = null;
 

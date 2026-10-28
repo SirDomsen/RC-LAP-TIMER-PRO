@@ -9,7 +9,6 @@
 String driverNames[MAX_CARS + 1];
 String carNames[MAX_CARS + 1];
 
-bool webCacheEnabled = true;
 
 // WLAN Variablen mit Default-Werten aus config.h
 String homeSSID = HOME_SSID;
@@ -1126,7 +1125,6 @@ void loadSettingsFromEEPROM() {
     checkpointMode = false;
     dragraceMode = false;
     sectorAudioFeedback = true;
-    webCacheEnabled = true;
   } else {
     uint16_t low = EEPROM.read(301);
     uint16_t high = EEPROM.read(302);
@@ -1142,7 +1140,6 @@ void loadSettingsFromEEPROM() {
     checkpointMode = (EEPROM.read(307) != 0);
     dragraceMode = (EEPROM.read(308) != 0);
     sectorAudioFeedback = (EEPROM.read(309) != 0);
-    webCacheEnabled = (EEPROM.read(310) != 0);
   }
 }
 
@@ -1167,10 +1164,6 @@ void saveFilterToEEPROM(bool enable) {
   EEPROM.commit();
 }
 
-void saveCacheConfigToEEPROM(bool enable) {
-  EEPROM.write(310, enable ? 1 : 0);
-  EEPROM.commit();
-}
 
 void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool audio) {
   EEPROM.write(304, s1 ? 1 : 0);

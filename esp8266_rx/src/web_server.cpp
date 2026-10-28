@@ -37,8 +37,7 @@ static uint8_t targetWifiMode = 0;
 static bool ghostWlanActive = false;
 static uint32_t ghostWlanOffTimer = 0;
 
-static String cacheHeaderStr; 
-
+static const char* cacheHeaderStr = "max-age=86400";
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
 const size_t HEAP_CRITICAL_MIN_BYTES = 16000;
 const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
@@ -107,7 +106,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (hasGz) {
     response->addHeader("Content-Encoding", "gzip");
   }
-  response->addHeader("Cache-Control", cacheHeaderStr.c_str());
+  response->addHeader("Cache-Control", cacheHeaderStr);
   response->addHeader("Connection", "close");
   request->send(response);
   return true;
@@ -285,8 +284,6 @@ static void listFilesRecursive(const String& basePath, AsyncResponseStream *resp
 
 void initNetworkAndServer() {
   connectNetworkCascade(activeWifiMode);
-
-  cacheHeaderStr = webCacheEnabled ? "max-age=86400" : "no-cache";
 
   auto serveUpdatePage = [](AsyncWebServerRequest *request) {
     if (!serveStaticWithHeapGuard(request, "/update.html")) {
@@ -469,9 +466,6 @@ void initNetworkAndServer() {
 
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
-  
-  server.on("/api/cacheconfig", HTTP_GET, handleGetCacheConfig);
-  server.on("/api/setcacheconfig", HTTP_POST, handlePostSetCacheConfig);
 
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
