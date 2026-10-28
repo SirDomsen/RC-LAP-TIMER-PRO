@@ -5,6 +5,7 @@
 * **Wichtigste Regel:** **Zuerst reden, dann coden!** Bei neuen Ideen, Problemen oder Features diskutieren wir immer zuerst den Ansatz, wägen Optionen ab und denken gemeinsam mit. Erst wenn der User sein klares **„Go“** gibt, wird Code geschrieben oder geändert.
 * **Arbeitsverzeichnis:** Antigravity arbeitet direkt im Haupt-Repository (`C:\#Coding\Github\RC-LAP-TIMER-PRO\`), niemals in separaten Git-Worktrees. Kein duales Kopieren oder Worktree-Sync nötig.
 * Wir kürzen nichts ungefragt!
+* **Akribisches Gegenchecken & Diff-Kontrolle:** Keine blinden Datei-Überschreibungen (`write_file`), wenn nur Teilbereiche oder Versionen geändert werden; stattdessen strikt zielgerichtete Edits. Nach jeder Dateiänderung wird der Git-Diff (`git diff`) zwingend gegengeprüft, um sicherzustellen, dass keine Makros, Pin-Definitionen, Logiken oder Kommentare versehentlich gelöscht oder abgeschnitten wurden.
 * wenn wir wichtige Dinge umgebaut, integriert oder verändert haben, gleiche mit der aktuellen gemini.md ab und ergänze/ändere ab. besprich diese Änderungen immer mit mir!
 
 ---
