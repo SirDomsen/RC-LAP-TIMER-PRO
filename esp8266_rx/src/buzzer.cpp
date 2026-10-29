@@ -1,0 +1,119 @@
+#include "buzzer.h"
+#include "config.h"
+
+// Aktivierungsstatus (Standard: aktiv)
+bool buzzerEnabled = true;
+
+struct ToneStep {
+  uint16_t freq;      // Frequenz in Hz (0 = Pause)
+  uint16_t duration;  // Dauer in Millisekunden
+};
+
+// 1. Startampel (Grand Prix Circuit: 2-1-GO!)
+static const ToneStep startLightsSeq[] PROGMEM = {
+  { 260,  300 }, // Rot 1 (2)
+  { 0,    650 }, // Pause
+  { 260,  300 }, // Rot 2 (1)
+  { 0,    650 }, // Pause
+  { 1050, 450 }, // GRÜN (GO!)
+  { 0,     50 }  // Ausklang
+};
+
+// 2. Zieldurchfahrt (Knackiger, kurzer Impuls)
+static const ToneStep lapSeq[] PROGMEM = {
+  { 1760, 35 },
+  { 0,    10 }
+};
+
+// 3. Neuer Streckenrekord / Bestzeit (Aufsteigende Arcade-Fanfare)
+static const ToneStep recordSeq[] PROGMEM = {
+  { 523,   65 }, // C5
+  { 0,     15 },
+  { 659,   65 }, // E5
+  { 0,     15 },
+  { 784,   65 }, // G5
+  { 0,     15 },
+  { 1046, 180 }, // C6
+  { 0,     50 }
+};
+
+// Status-Variablen der State-Machine (rein statischer RAM, 0 Byte Heap)
+static const ToneStep* currentSeq = nullptr;
+static uint8_t currentSeqLen = 0;
+static uint8_t currentStepIdx = 0;
+static uint32_t stepStartMs = 0;
+static bool isBuzzerPlaying = false;
+
+void initBuzzer() {
+  pinMode(SPEAKER_PIN, OUTPUT);
+  digitalWrite(SPEAKER_PIN, LOW);
+  noTone(SPEAKER_PIN);
+  isBuzzerPlaying = false;
+  currentSeq = nullptr;
+}
+
+static void startSequence(const ToneStep* seq, uint8_t length) {
+  if (!buzzerEnabled || seq == nullptr || length == 0) return;
+
+  currentSeq = seq;
+  currentSeqLen = length;
+  currentStepIdx = 0;
+  isBuzzerPlaying = true;
+  stepStartMs = millis();
+
+  uint16_t freq = pgm_read_word(&(currentSeq[0].freq));
+  if (freq > 0) {
+    tone(SPEAKER_PIN, freq);
+  } else {
+    noTone(SPEAKER_PIN);
+    digitalWrite(SPEAKER_PIN, LOW);
+  }
+}
+
+void playBuzzerStartLights() {
+  startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep));
+}
+
+void playBuzzerLap() {
+  // Wenn gerade die Startampel läuft, unterbrechen wir diese nicht
+  if (isBuzzerPlaying && currentSeq == startLightsSeq) return;
+  startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep));
+}
+
+void playBuzzerRecord() {
+  // Streckenrekord hat Vorrang vor normalem Lap-Tick
+  startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep));
+}
+
+void stopBuzzer() {
+  isBuzzerPlaying = false;
+  currentSeq = nullptr;
+  currentSeqLen = 0;
+  currentStepIdx = 0;
+  noTone(SPEAKER_PIN);
+  digitalWrite(SPEAKER_PIN, LOW);
+}
+
+void updateBuzzer() {
+  if (!isBuzzerPlaying || currentSeq == nullptr) return;
+
+  uint32_t now = millis();
+  uint16_t stepDur = pgm_read_word(&(currentSeq[currentStepIdx].duration));
+
+  if (now - stepStartMs >= stepDur) {
+    currentStepIdx++;
+    if (currentStepIdx >= currentSeqLen) {
+      stopBuzzer();
+      return;
+    }
+
+    stepStartMs = now;
+    uint16_t nextFreq = pgm_read_word(&(currentSeq[currentStepIdx].freq));
+    if (buzzerEnabled && nextFreq > 0) {
+      tone(SPEAKER_PIN, nextFreq);
+    } else {
+      noTone(SPEAKER_PIN);
+      digitalWrite(SPEAKER_PIN, LOW);
+    }
+  }
+}

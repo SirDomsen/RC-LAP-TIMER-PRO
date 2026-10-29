@@ -5,6 +5,7 @@ function startRaceCountdown(onComplete) {
   let t1 = setTimeout(() => {
     speak("3");
     let t2 = setTimeout(() => {
+      fetch('/api/buzzer?cmd=start', { method: 'POST' }).catch(() => {});
       speak("2");
       let t3 = setTimeout(() => {
         speak("1");

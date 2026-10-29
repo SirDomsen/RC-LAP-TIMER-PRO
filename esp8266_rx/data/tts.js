@@ -140,6 +140,7 @@ function cancelRaceCountdown() {
     speechQueue = [];
     isSpeaking = false;
   }
+  fetch('/api/buzzer?cmd=stop', { method: 'POST' }).catch(() => {});
 }
 
 function speak(text, cancelCurrent = false) {

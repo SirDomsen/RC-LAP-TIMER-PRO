@@ -3,6 +3,7 @@
 #include "lap_logic.h"
 #include "esp_now_base.h"
 #include "web_server.h"
+#include "buzzer.h"
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -669,8 +670,33 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
   }
   delay(100);
 
-  uint8_t targetMode = 1; // Immer 1 senden, damit die SZ auch Stufe 2 (feste Notfall-IP 192.168.0.11-13) bei Bedarf ausführt
+  uint8_t targetMode = 1; // Immer 1 senden, damit die SZ auch Stufe 2 (feste Notfall-IP 192.168.0.11-13) bei Bedarf ausfÃ¼hrt
   sendSZOtaTrigger(targetMode, syncPkt.ssid, syncPkt.pass);
 
   request->send(200, "text/plain", "SZ OTA Trigger (Legacy & Neu) gesendet");
+}
+
+
+void handlePostBuzzer(AsyncWebServerRequest *request) {
+  if (request->hasParam("cmd")) {
+    String cmd = request->getParam("cmd")->value();
+    if (cmd == "start" || cmd == "start_lights") {
+      playBuzzerStartLights();
+    } else if (cmd == "lap") {
+      playBuzzerLap();
+    } else if (cmd == "record") {
+      playBuzzerRecord();
+    } else if (cmd == "stop") {
+      stopBuzzer();
+    }
+  }
+  if (request->hasParam("enable")) {
+    String en = request->getParam("enable")->value();
+    buzzerEnabled = (en == "1" || en == "true");
+  }
+  request->send(200, "application/json", buzzerEnabled ? "{\"status\":\"ok\",\"enabled\":true}" : "{\"status\":\"ok\",\"enabled\":false}");
+}
+
+void handleGetBuzzer(AsyncWebServerRequest *request) {
+  request->send(200, "application/json", buzzerEnabled ? "{\"enabled\":true}" : "{\"enabled\":false}");
 }

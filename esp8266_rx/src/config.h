@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.3.9"
+#define FIRMWARE_VERSION  "v4.4.0"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif
@@ -36,6 +36,7 @@
   #define LED_READY   D5          // GPIO14 - Grüne Ready-LED 
   #define LED_SIGNAL  D6          // GPIO12 - Gelbe Signal-LED 
   #define LED_ONBOARD LED_BUILTIN // GPIO2  - Interne ESP Status LED (Active LOW) 
+  #define SPEAKER_PIN D1          // GPIO5  - Arcade Sound / BC337 Transistor Speaker
 #endif
 
 // --- Renn- & EEPROM Parameter ---

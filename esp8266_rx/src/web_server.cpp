@@ -50,7 +50,7 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
   ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
   "</style></head><body><div class='box'><h3>&#x23F3; Verbindungs-Warteschlange</h3>"
-  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
+  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere GerÃ¤te laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
   return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
@@ -469,6 +469,9 @@ void initNetworkAndServer() {
 
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
+
+  server.on("/api/buzzer", HTTP_POST, handlePostBuzzer);
+  server.on("/api/buzzer", HTTP_GET, handleGetBuzzer);
 
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(204);

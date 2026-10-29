@@ -5,6 +5,7 @@
 #include "lap_logic.h"
 #include "web_server.h"
 #include "esp_now_base.h"
+#include "buzzer.h"
 #include <ESP8266mDNS.h>
 #include <espnow.h>
 
@@ -17,13 +18,8 @@ void setup() {
   // CPU-Takt auf 160 MHz setzen für maximale Rechenleistung
   system_update_cpu_freq(160);
 
-  
+  Serial.begin(115200);
   delay(100);
-
-  
-  
-  
-  
 
   initFS();
   loadSettingsFromEEPROM();
@@ -31,6 +27,7 @@ void setup() {
   initLapLogic();
   initNetworkAndServer();
   initESPNowBase();
+  initBuzzer();
 }
 
 void loop() {
@@ -40,8 +37,27 @@ void loop() {
   updateLapLogicTasks();
   processStorageQueue();
   updateLEDs();
+  updateBuzzer();
   handleNetworkTasks();
   handleTimeSyncBroadcast();
+
+  // Serielles Test-Interface für D1-Mini / Desktop-Testing
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == '1') {
+      Serial.println(F("[BUZZER] Trigger Startampel (2-1-GO)"));
+      playBuzzerStartLights();
+    } else if (c == '2') {
+      Serial.println(F("[BUZZER] Trigger Lap Tick"));
+      playBuzzerLap();
+    } else if (c == '3') {
+      Serial.println(F("[BUZZER] Trigger Bestzeit Fanfare"));
+      playBuzzerRecord();
+    } else if (c == 's') {
+      Serial.println(F("[BUZZER] Stop Sound"));
+      stopBuzzer();
+    }
+  }
 
   uint32_t loopDuration = micros() - loopStart;
   if (loopDuration > perfMaxLoopUs) {

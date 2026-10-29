@@ -41,7 +41,6 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request);
 
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final);
 
-
 // Konsolidierter Handler für alle Einstellungen (1 TCP-Verbindung)
 void handleGetAllConfig(AsyncWebServerRequest *request);
 
@@ -50,5 +49,9 @@ void handleGetWifiConfig(AsyncWebServerRequest *request);
 void handlePostSetWifiConfig(AsyncWebServerRequest *request);
 void handlePostSwitchWifi(AsyncWebServerRequest *request);
 void handlePostTriggerSzOta(AsyncWebServerRequest *request);
+
+// Arcade Buzzer / Sound Handler
+void handlePostBuzzer(AsyncWebServerRequest *request);
+void handleGetBuzzer(AsyncWebServerRequest *request);
 
 #endif

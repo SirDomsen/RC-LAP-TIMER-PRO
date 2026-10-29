@@ -2,6 +2,7 @@
 #include "ir_decoder.h"
 #include "storage.h"
 #include "web_server.h"
+#include "buzzer.h"
 #include <sys/time.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -30,7 +31,7 @@ bool inPitOrPause[MAX_CARS + 1]      = {false};
 bool isOutLap[MAX_CARS + 1]          = {false};
 bool lastLapIsOutLap[MAX_CARS + 1]   = {false};
 
-// Ringpuffer für die letzten 3 gültigen Rundenzeiten pro Fahrzeug
+// Ringpuffer fÃ¼r die letzten 3 gÃ¼ltigen Rundenzeiten pro Fahrzeug
 static uint32_t recentValidLaps[MAX_CARS + 1][3] = {{0}};
 static uint8_t  recentValidLapCount[MAX_CARS + 1] = {0};
 static uint8_t  recentValidLapIdx[MAX_CARS + 1]   = {0};
@@ -233,7 +234,7 @@ void resetAllLaps(bool isHardReset) {
   overallBestSz4Ms = 0;
   
   if (isHardReset) {
-    // Setzt die Tagesbestzeiten (Top 5 heute) zurück, erhält aber den ewigen Streckenrekord!
+    // Setzt die Tagesbestzeiten (Top 5 heute) zurÃ¼ck, erhÃ¤lt aber den ewigen Streckenrekord!
     deleteTrackRecordEntry(activeTrackId, true, -1);
   }
 
@@ -453,6 +454,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       broadcastWebSocket(finishJson);
 
       broadcastLapEvent(carId, completedRun, elapsedMs, 1, isPB, isOverall, false, false, false);
+      if (isOverall) playBuzzerRecord(); else playBuzzerLap();
       return;
     }
 
@@ -807,13 +809,13 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
         isLapOverall = true;
       }
 
-      // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur für rundenbasierte Events!) ---
+      // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur fÃ¼r rundenbasierte Events!) ---
       if (currentMode != MODE_DRAGRACE && currentLapTimeMs > 100) {
         checkAndUpdateTrackRecords(carId, currentLapTimeMs, isNewTrackRecord, isNewDailyRecord);
       }
     }
     
-    // Gültige Sektorzeiten dieser Runde für die Statistik sichern
+    // GÃ¼ltige Sektorzeiten dieser Runde fÃ¼r die Statistik sichern
     uint32_t savedSz1 = (sectorPassedInLap[carId] & (1 << 1)) ? sz1TimeMs[carId] : 0;
     uint32_t savedSz2 = ((sectorPassedInLap[carId] & (1 << 2)) || finalSectorNum == 2) ? sz2TimeMs[carId] : 0;
     uint32_t savedSz3 = ((sectorPassedInLap[carId] & (1 << 3)) || finalSectorNum == 3) ? sz3TimeMs[carId] : 0;
@@ -844,6 +846,11 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs, currentLapIsOutLap);
 
     broadcastLapEvent(carId, completedLap, currentLapTimeMs, pos, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
+    if (isNewTrackRecord || isLapOverall) {
+      playBuzzerRecord();
+    } else {
+      playBuzzerLap();
+    }
   }
 
   if (lapCounted) {
@@ -852,7 +859,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyLedOffTime = millis() + 200;
   }
 }
-
 void processLapLogic() {
   if (!newCodeAvailable) return;
 
