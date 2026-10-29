@@ -3,14 +3,14 @@ function startRaceCountdown(onComplete) {
   speak("Achtung, das Rennen beginnt gleich!", true);
 
   let t1 = setTimeout(() => {
-    speak("3");
+    if (!muteCountdownTts) speak("3");
     let t2 = setTimeout(() => {
       fetch('/api/buzzer?cmd=start', { method: 'POST' }).catch(() => {});
-      speak("2");
+      if (!muteCountdownTts) speak("2");
       let t3 = setTimeout(() => {
-        speak("1");
+        if (!muteCountdownTts) speak("1");
         let t4 = setTimeout(() => {
-          speak("Los!");
+          if (!muteCountdownTts) speak("Los!");
           if (typeof onComplete === 'function') {
             onComplete();
           }

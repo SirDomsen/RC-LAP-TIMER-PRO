@@ -37,78 +37,409 @@ static const ToneStep recordSeq[] PROGMEM = {
   { 0,     50 }
 };
 
-// 4. Grand Prix Circuit - Lead Synth Hook (Kris Hatlelid, A-Moll)
-static const ToneStep gpcThemeSeq[] PROGMEM = {
-  { 440,  95 }, { 0, 15 }, // A4
-  { 440,  95 }, { 0, 15 }, // A4
-  { 523,  95 }, { 0, 15 }, // C5
-  { 587,  95 }, { 0, 15 }, // D5
-  { 659, 190 }, { 0, 30 }, // E5
-  { 587,  95 }, { 0, 15 }, // D5
-  { 523,  95 }, { 0, 15 }, // C5
-  { 440, 220 }, { 0, 50 }, // A4
-  { 392,  95 }, { 0, 15 }, // G4
-  { 440,  95 }, { 0, 15 }, // A4
-  { 523, 190 }, { 0, 30 }, // C5
-  { 587, 190 }, { 0, 30 }, // D5
-  { 659, 350 }, { 0, 50 }, // E5
-  // Schneller Arpeggio-Lauf (typischer Hatlelid-Synthlauf)
-  { 440,  40 }, { 523, 40 }, { 659, 40 }, { 880, 120 },
-  { 0,    50 }
+// Accolade Grand Prix Circuit - Title Theme (Original MIDI)
+static const ToneStep gpcTitleSeq[172] PROGMEM = {
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 185, 200 },
+    { 277, 200 },
+    { 370, 200 },
+    { 185, 200 },
+    { 330, 200 },
+    { 185, 100 },
+    { 311, 200 },
+    { 185, 100 },
+    { 277, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 494, 200 },
+    { 740, 200 },
+    { 988, 200 },
+    { 494, 200 },
+    { 880, 200 },
+    { 494, 100 },
+    { 831, 200 },
+    { 494, 100 },
+    { 740, 200 },
+    { 494, 200 },
+    { 740, 200 },
+    { 988, 200 },
+    { 494, 200 },
+    { 880, 200 },
+    { 494, 100 },
+    { 831, 200 },
+    { 494, 100 },
+    { 740, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 277, 200 },
+    { 415, 200 },
+    { 554, 200 },
+    { 277, 200 },
+    { 494, 200 },
+    { 277, 100 },
+    { 466, 200 },
+    { 277, 100 },
+    { 415, 200 },
+    { 494, 200 },
+    { 740, 200 },
+    { 988, 200 },
+    { 494, 200 },
+    { 880, 200 },
+    { 494, 100 },
+    { 831, 200 },
+    { 494, 100 },
+    { 740, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 },
+    { 554, 200 },
+    { 740, 200 },
+    { 370, 200 },
+    { 659, 200 },
+    { 370, 100 },
+    { 622, 200 },
+    { 370, 100 },
+    { 554, 200 },
+    { 370, 200 }
 };
 
-// 5. Test Drive 1 - Blues Beeper Riff (Patrick Payne, E-Moll)
-static const ToneStep tdThemeSeq[] PROGMEM = {
-  { 165,  90 }, { 0, 20 }, // E3
-  { 165,  90 }, { 0, 20 }, // E3
-  { 196, 110 }, { 0, 20 }, // G3
-  { 165,  90 }, { 0, 20 }, // E3
-  { 220, 110 }, { 0, 20 }, // A3
-  { 233,  90 }, { 0, 15 }, // Bb3
-  { 247, 150 }, { 0, 30 }, // B3
-  { 294, 110 }, { 0, 20 }, // D4
-  { 330, 250 }, { 0, 60 }, // E4
-  { 165,  90 }, { 0, 20 }, // E3
-  { 294, 110 }, { 0, 20 }, // D4
-  { 247, 180 }, { 0, 40 }, // B3
-  { 196, 250 }, { 0, 50 }  // G3
+// Accolade Grand Prix Circuit - Menu Theme (Original MIDI)
+static const ToneStep gpcMenuSeq[191] PROGMEM = {
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 },
+    { 87, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 },
+    { 87, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 220, 120 },
+    { 110, 120 },
+    { 262, 120 },
+    { 110, 120 },
+    { 330, 120 },
+    { 110, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 294, 120 },
+    { 147, 120 },
+    { 349, 120 },
+    { 147, 120 },
+    { 440, 120 },
+    { 147, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 196, 120 },
+    { 98, 120 },
+    { 262, 120 },
+    { 98, 120 },
+    { 294, 120 },
+    { 98, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 175, 120 },
+    { 87, 120 },
+    { 233, 120 },
+    { 87, 120 },
+    { 262, 120 }
 };
 
-// 6. Retro Victory Fanfare (Arcade Klassiker)
-static const ToneStep kartThemeSeq[] PROGMEM = {
-  { 523, 100 }, { 0, 20 },
-  { 523, 100 }, { 0, 20 },
-  { 523, 100 }, { 0, 20 },
-  { 523, 300 }, { 0, 40 },
-  { 415, 300 }, { 0, 30 }, // Ab4
-  { 466, 300 }, { 0, 30 }, // Bb4
-  { 523, 200 }, { 0, 20 }, // C5
-  { 466, 100 }, { 0, 20 }, // Bb4
-  { 523, 600 }, { 0, 50 }  // C5
-};
 
-// Status-Variablen der State-Machine (rein statischer RAM, 0 Byte Heap)
+// Status-Variablen für Ton-Sequenzen
 static const ToneStep* currentSeq = nullptr;
-static uint8_t currentSeqLen = 0;
-static uint8_t currentStepIdx = 0;
+static uint16_t currentSeqLen = 0;
+static uint16_t currentStepIdx = 0;
 static uint32_t stepStartMs = 0;
 static bool isBuzzerPlaying = false;
+static bool isLooping = false;
+static bool seqInGap = false;
 
 void initBuzzer() {
   pinMode(SPEAKER_PIN, OUTPUT);
   digitalWrite(SPEAKER_PIN, LOW);
   noTone(SPEAKER_PIN);
   isBuzzerPlaying = false;
+  isLooping = false;
+  seqInGap = false;
   currentSeq = nullptr;
+  currentSeqLen = 0;
+  currentStepIdx = 0;
 }
 
-static void startSequence(const ToneStep* seq, uint8_t length) {
+static void startSequence(const ToneStep* seq, uint16_t length, bool loop = false) {
   if (!buzzerEnabled || seq == nullptr || length == 0) return;
 
+  stopBuzzer();
   currentSeq = seq;
   currentSeqLen = length;
   currentStepIdx = 0;
   isBuzzerPlaying = true;
+  isLooping = loop;
+  seqInGap = false;
   stepStartMs = millis();
 
   uint16_t freq = pgm_read_word(&(currentSeq[0].freq));
@@ -121,32 +452,30 @@ static void startSequence(const ToneStep* seq, uint8_t length) {
 }
 
 void playBuzzerStartLights() {
-  startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep));
+  startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep), false);
 }
 
 void playBuzzerLap() {
   if (isBuzzerPlaying && currentSeq == startLightsSeq) return;
-  startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep));
+  startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep), false);
 }
 
 void playBuzzerRecord() {
-  startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep));
+  startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep), false);
 }
 
-void playBuzzerGrandPrix() {
-  startSequence(gpcThemeSeq, sizeof(gpcThemeSeq) / sizeof(ToneStep));
+void playBuzzerTitle() {
+  startSequence(gpcTitleSeq, sizeof(gpcTitleSeq) / sizeof(ToneStep), true);
 }
 
-void playBuzzerTestDrive() {
-  startSequence(tdThemeSeq, sizeof(tdThemeSeq) / sizeof(ToneStep));
-}
-
-void playBuzzerKart() {
-  startSequence(kartThemeSeq, sizeof(kartThemeSeq) / sizeof(ToneStep));
+void playBuzzerMenu() {
+  startSequence(gpcMenuSeq, sizeof(gpcMenuSeq) / sizeof(ToneStep), true);
 }
 
 void stopBuzzer() {
   isBuzzerPlaying = false;
+  isLooping = false;
+  seqInGap = false;
   currentSeq = nullptr;
   currentSeqLen = 0;
   currentStepIdx = 0;
@@ -159,12 +488,35 @@ void updateBuzzer() {
 
   uint32_t now = millis();
   uint16_t stepDur = pgm_read_word(&(currentSeq[currentStepIdx].duration));
+  uint16_t stepFreq = pgm_read_word(&(currentSeq[currentStepIdx].freq));
+
+  // Artikulation: Stakkato-Trennlücke vor dem nächsten Schritt
+  if (!seqInGap) {
+    uint32_t toneMs = stepDur;
+    if (stepFreq > 0) {
+      if (stepDur >= 50) {
+        toneMs = (stepDur * 85) / 100;
+      } else if (stepDur > 12) {
+        toneMs = stepDur - 8;
+      }
+    }
+    if (now - stepStartMs >= toneMs) {
+      noTone(SPEAKER_PIN);
+      digitalWrite(SPEAKER_PIN, LOW);
+      seqInGap = true;
+    }
+  }
 
   if (now - stepStartMs >= stepDur) {
     currentStepIdx++;
+    seqInGap = false;
     if (currentStepIdx >= currentSeqLen) {
-      stopBuzzer();
-      return;
+      if (isLooping) {
+        currentStepIdx = 0; // Nahtloser Dauerloop
+      } else {
+        stopBuzzer();
+        return;
+      }
     }
 
     stepStartMs = now;

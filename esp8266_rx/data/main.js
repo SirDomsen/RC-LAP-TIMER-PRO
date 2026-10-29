@@ -69,6 +69,7 @@ let activeStatsCarId = null;
 let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
+let muteCountdownTts = JSON.parse(localStorage.getItem('muteCountdownTts') ?? 'false');
 
 // --- UNIVERSELLES DIALOG-SYSTEM (Vorbild Firmware-OTA) ---
 let _dialogResolver = null;
@@ -379,6 +380,9 @@ function openDriverConfigModal() {
 
   let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
+
+  let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
+  if (muteCdownCb) muteCdownCb.checked = muteCountdownTts;
 }
 
 function closeDriverConfigModal() {
@@ -399,7 +403,18 @@ function saveDriverAudioConfig() {
     localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
   }
 
+  let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
+  if (muteCdownCb) {
+    muteCountdownTts = muteCdownCb.checked;
+    localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
+  }
+
   fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
+}
+
+// Easter Egg: Grand Prix Circuit Melodien auf dem Hardware-Speaker abspielen
+function playGpcWebBuzzer(cmd) {
+  fetch('/api/buzzer?cmd=' + encodeURIComponent(cmd), { method: 'POST' }).catch(() => {});
 }
 
 // Aktualisiert eine einzelne Fahrer-Spalte im Dashboard (colIdx = 1 oder 2)

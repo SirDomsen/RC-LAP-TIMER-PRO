@@ -32,14 +32,13 @@ void setup() {
   Serial.println();
   Serial.println(F("========================================="));
   Serial.println(F("   RC LAP TIMER PRO - v4.4.0"));
-  Serial.println(F("   Arcade Sound Test-Modus aktiv!"));
+  Serial.println(F("   Arcade Sound & Grand Prix Circuit Audio"));
   Serial.println(F("   Tasten im Terminal:"));
   Serial.println(F("   [1] Startampel (2-1-GO)"));
   Serial.println(F("   [2] Zieldurchfahrt (Lap-Tick)"));
   Serial.println(F("   [3] Streckenrekord Fanfare"));
-  Serial.println(F("   [4] Grand Prix Circuit (1988)"));
-  Serial.println(F("   [5] Test Drive 1 (1987)"));
-  Serial.println(F("   [6] Retro Victory Fanfare"));
+  Serial.println(F("   [4] Grand Prix Circuit - Title Theme (Original MIDI)"));
+  Serial.println(F("   [5] Grand Prix Circuit - Menu Theme (Original MIDI)"));
   Serial.println(F("   [s] Sound Stoppen"));
   Serial.println(F("========================================="));
   Serial.println();
@@ -70,14 +69,11 @@ void loop() {
         Serial.println(F("[BUZZER] ▶ Bestzeit Fanfare"));
         playBuzzerRecord();
       } else if (c == '4') {
-        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit Theme"));
-        playBuzzerGrandPrix();
+        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit - Title Theme (Original MIDI)"));
+        playBuzzerTitle();
       } else if (c == '5') {
-        Serial.println(F("[BUZZER] ▶ Test Drive 1 Theme"));
-        playBuzzerTestDrive();
-      } else if (c == '6') {
-        Serial.println(F("[BUZZER] ▶ Retro Victory Fanfare"));
-        playBuzzerKart();
+        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit - Menu Theme (Original MIDI)"));
+        playBuzzerMenu();
       } else if (c == 's') {
         Serial.println(F("[BUZZER] ⏹ Sound gestoppt"));
         stopBuzzer();

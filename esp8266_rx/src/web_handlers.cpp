@@ -686,12 +686,10 @@ void handlePostBuzzer(AsyncWebServerRequest *request) {
       playBuzzerLap();
     } else if (cmd == "record") {
       playBuzzerRecord();
-    } else if (cmd == "gpc" || cmd == "grandprix") {
-      playBuzzerGrandPrix();
-    } else if (cmd == "td" || cmd == "testdrive") {
-      playBuzzerTestDrive();
-    } else if (cmd == "kart" || cmd == "victory") {
-      playBuzzerKart();
+    } else if (cmd == "title" || cmd == "gpc" || cmd == "grandprix") {
+      playBuzzerTitle();
+    } else if (cmd == "menu") {
+      playBuzzerMenu();
     } else if (cmd == "stop") {
       stopBuzzer();
     }

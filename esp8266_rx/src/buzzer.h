@@ -18,10 +18,9 @@ void playBuzzerLap();
 // Retro-Arcade Fanfare bei neuem Streckenrekord / Bestzeit
 void playBuzzerRecord();
 
-// Melodien-Tests
-void playBuzzerGrandPrix();
-void playBuzzerTestDrive();
-void playBuzzerKart();
+// Accolade Grand Prix Circuit Themes (Original 1-Voice MIDI)
+void playBuzzerTitle();
+void playBuzzerMenu();
 
 // Sofortiger Not-Aus / Ton stoppen
 void stopBuzzer();

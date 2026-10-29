@@ -302,10 +302,15 @@
             <strong>📢 Sektor-Bestzeiten Sprachansage</strong>
             <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Sagt neue absolute und persönliche Sektor-Bestzeiten an</div>
           </label>
-          <label style="cursor:pointer; display: block;">
+          <label style="cursor:pointer; display: block; margin-bottom: 12px;">
             <input type="checkbox" id="driver_cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
             <strong>📢 Rundenzeiten im Rennen ansagen</strong>
             <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Platzierungen werden im Rennen immer angesagt</div>
+          </label>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="driver_cfg_mute_countdown_tts" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
+            <strong>🚦 Countdown-Sprachansage stummschalten</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Kein Sprach-Countdown (3-2-1), sondern nur der synchrone Startampel-Buzzer</div>
           </label>
         </div>
       </div>
@@ -431,6 +436,12 @@
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
+    <div style="margin-top:10px; font-size:11px; opacity:0.35; transition:opacity 0.2s;" onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.35'">
+      <span style="cursor:default;">🏎️ GPC:</span>
+      <button type="button" onclick="playGpcWebBuzzer('title')" style="background:none; border:none; color:var(--neon-cyan); cursor:pointer; font-size:11px; text-decoration:underline; padding:0 3px;">Theme abspielen</button> •
+      <button type="button" onclick="playGpcWebBuzzer('menu')" style="background:none; border:none; color:var(--neon-cyan); cursor:pointer; font-size:11px; text-decoration:underline; padding:0 3px;">Menümusik aktivieren</button> •
+      <button type="button" onclick="playGpcWebBuzzer('stop')" style="background:none; border:none; color:#ff4444; cursor:pointer; font-size:11px; text-decoration:underline; padding:0 3px;">Stop</button>
+    </div>
   </footer>
 
   <script src="tts.js?v=4.4.0"></script>
