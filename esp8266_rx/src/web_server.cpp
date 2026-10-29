@@ -63,6 +63,9 @@ static const char* getContentType(const String& path) {
   if (path.endsWith(".json")) return "application/json";
   if (path.endsWith(".svg"))  return "image/svg+xml";
   if (path.endsWith(".ico"))  return "image/x-icon";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".png"))  return "image/png";
+  if (path.endsWith(".webp")) return "image/webp";
   return "text/plain";
 }
 
