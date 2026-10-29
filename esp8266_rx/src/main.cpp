@@ -28,6 +28,21 @@ void setup() {
   initNetworkAndServer();
   initESPNowBase();
   initBuzzer();
+
+  Serial.println();
+  Serial.println(F("========================================="));
+  Serial.println(F("   RC LAP TIMER PRO - v4.4.0"));
+  Serial.println(F("   Arcade Sound Test-Modus aktiv!"));
+  Serial.println(F("   Tasten im Terminal:"));
+  Serial.println(F("   [1] Startampel (2-1-GO)"));
+  Serial.println(F("   [2] Zieldurchfahrt (Lap-Tick)"));
+  Serial.println(F("   [3] Streckenrekord Fanfare"));
+  Serial.println(F("   [4] Grand Prix Circuit (1988)"));
+  Serial.println(F("   [5] Test Drive 1 (1987)"));
+  Serial.println(F("   [6] Retro Victory Fanfare"));
+  Serial.println(F("   [s] Sound Stoppen"));
+  Serial.println(F("========================================="));
+  Serial.println();
 }
 
 void loop() {
@@ -44,18 +59,29 @@ void loop() {
   // Serielles Test-Interface für D1-Mini / Desktop-Testing
   if (Serial.available()) {
     char c = Serial.read();
-    if (c == '1') {
-      Serial.println(F("[BUZZER] Trigger Startampel (2-1-GO)"));
-      playBuzzerStartLights();
-    } else if (c == '2') {
-      Serial.println(F("[BUZZER] Trigger Lap Tick"));
-      playBuzzerLap();
-    } else if (c == '3') {
-      Serial.println(F("[BUZZER] Trigger Bestzeit Fanfare"));
-      playBuzzerRecord();
-    } else if (c == 's') {
-      Serial.println(F("[BUZZER] Stop Sound"));
-      stopBuzzer();
+    if (c != '\r' && c != '\n') {
+      if (c == '1') {
+        Serial.println(F("[BUZZER] ▶ Startampel (2-1-GO)"));
+        playBuzzerStartLights();
+      } else if (c == '2') {
+        Serial.println(F("[BUZZER] ▶ Lap Tick"));
+        playBuzzerLap();
+      } else if (c == '3') {
+        Serial.println(F("[BUZZER] ▶ Bestzeit Fanfare"));
+        playBuzzerRecord();
+      } else if (c == '4') {
+        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit Theme"));
+        playBuzzerGrandPrix();
+      } else if (c == '5') {
+        Serial.println(F("[BUZZER] ▶ Test Drive 1 Theme"));
+        playBuzzerTestDrive();
+      } else if (c == '6') {
+        Serial.println(F("[BUZZER] ▶ Retro Victory Fanfare"));
+        playBuzzerKart();
+      } else if (c == 's') {
+        Serial.println(F("[BUZZER] ⏹ Sound gestoppt"));
+        stopBuzzer();
+      }
     }
   }
 

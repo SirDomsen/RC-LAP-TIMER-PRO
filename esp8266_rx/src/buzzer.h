@@ -18,6 +18,11 @@ void playBuzzerLap();
 // Retro-Arcade Fanfare bei neuem Streckenrekord / Bestzeit
 void playBuzzerRecord();
 
+// Melodien-Tests
+void playBuzzerGrandPrix();
+void playBuzzerTestDrive();
+void playBuzzerKart();
+
 // Sofortiger Not-Aus / Ton stoppen
 void stopBuzzer();
 

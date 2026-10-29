@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.3.6 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.4.0 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 
@@ -76,7 +76,17 @@
   * `PendingLap lapQueue[30]`: Rundenzeiten werden im RAM gepuffert und asynchron weggeschrieben, um den Loop nicht zu blockieren.
   * **95%-Flash-Schutz (`storageFullLocked`):** Verhindert das Einfrieren des ESP8266 bei vollem Speicher.
 
-### 4.3 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
+### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h`)
+* **Hardware:** 32Ω Mylar- oder PC-Lautsprecher an **D1 (GPIO5)**, getrieben über **BC337-Transistor** (1kΩ Basiswiderstand) an 5V/VIN.
+* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM`).
+* **Sound-Events:**
+  * **Startampel:** Original Grand Prix Circuit (1988) Sequenz (2x Rot 260 Hz à 300 ms, 650 ms Pause ➔ Grün 1050 Hz à 450 ms), synchronisiert mit Renn-Countdown in `modes.js`.
+  * **Zieldurchfahrt:** Kurzer, trockener Bestätigungs-Impuls (1760 Hz, 35 ms) direkt bei Zieldurchfahrt in `lap_logic.cpp`.
+  * **Streckenrekord:** Aufsteigende 4-Ton Arcade-Fanfare bei neuem Streckenrekord / absoluter Bestzeit.
+  * **Themes:** Optionale Chiptune-Riffs (Grand Prix Circuit & Test Drive 1) abrufbar via Serial Monitor oder Web-API (`/api/buzzer`).
+* **Ruhestrom-Schutz:** Pin wird im Standby fest auf `LOW` gehalten, sodass der Transistor komplett sperrt und kein Strom fließt.
+
+### 4.4 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
 * **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`, hartes Limit auf 4 Clients).
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.

@@ -37,6 +37,56 @@ static const ToneStep recordSeq[] PROGMEM = {
   { 0,     50 }
 };
 
+// 4. Grand Prix Circuit - Lead Synth Hook (Kris Hatlelid, A-Moll)
+static const ToneStep gpcThemeSeq[] PROGMEM = {
+  { 440,  95 }, { 0, 15 }, // A4
+  { 440,  95 }, { 0, 15 }, // A4
+  { 523,  95 }, { 0, 15 }, // C5
+  { 587,  95 }, { 0, 15 }, // D5
+  { 659, 190 }, { 0, 30 }, // E5
+  { 587,  95 }, { 0, 15 }, // D5
+  { 523,  95 }, { 0, 15 }, // C5
+  { 440, 220 }, { 0, 50 }, // A4
+  { 392,  95 }, { 0, 15 }, // G4
+  { 440,  95 }, { 0, 15 }, // A4
+  { 523, 190 }, { 0, 30 }, // C5
+  { 587, 190 }, { 0, 30 }, // D5
+  { 659, 350 }, { 0, 50 }, // E5
+  // Schneller Arpeggio-Lauf (typischer Hatlelid-Synthlauf)
+  { 440,  40 }, { 523, 40 }, { 659, 40 }, { 880, 120 },
+  { 0,    50 }
+};
+
+// 5. Test Drive 1 - Blues Beeper Riff (Patrick Payne, E-Moll)
+static const ToneStep tdThemeSeq[] PROGMEM = {
+  { 165,  90 }, { 0, 20 }, // E3
+  { 165,  90 }, { 0, 20 }, // E3
+  { 196, 110 }, { 0, 20 }, // G3
+  { 165,  90 }, { 0, 20 }, // E3
+  { 220, 110 }, { 0, 20 }, // A3
+  { 233,  90 }, { 0, 15 }, // Bb3
+  { 247, 150 }, { 0, 30 }, // B3
+  { 294, 110 }, { 0, 20 }, // D4
+  { 330, 250 }, { 0, 60 }, // E4
+  { 165,  90 }, { 0, 20 }, // E3
+  { 294, 110 }, { 0, 20 }, // D4
+  { 247, 180 }, { 0, 40 }, // B3
+  { 196, 250 }, { 0, 50 }  // G3
+};
+
+// 6. Retro Victory Fanfare (Arcade Klassiker)
+static const ToneStep kartThemeSeq[] PROGMEM = {
+  { 523, 100 }, { 0, 20 },
+  { 523, 100 }, { 0, 20 },
+  { 523, 100 }, { 0, 20 },
+  { 523, 300 }, { 0, 40 },
+  { 415, 300 }, { 0, 30 }, // Ab4
+  { 466, 300 }, { 0, 30 }, // Bb4
+  { 523, 200 }, { 0, 20 }, // C5
+  { 466, 100 }, { 0, 20 }, // Bb4
+  { 523, 600 }, { 0, 50 }  // C5
+};
+
 // Status-Variablen der State-Machine (rein statischer RAM, 0 Byte Heap)
 static const ToneStep* currentSeq = nullptr;
 static uint8_t currentSeqLen = 0;
@@ -75,14 +125,24 @@ void playBuzzerStartLights() {
 }
 
 void playBuzzerLap() {
-  // Wenn gerade die Startampel läuft, unterbrechen wir diese nicht
   if (isBuzzerPlaying && currentSeq == startLightsSeq) return;
   startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep));
 }
 
 void playBuzzerRecord() {
-  // Streckenrekord hat Vorrang vor normalem Lap-Tick
   startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep));
+}
+
+void playBuzzerGrandPrix() {
+  startSequence(gpcThemeSeq, sizeof(gpcThemeSeq) / sizeof(ToneStep));
+}
+
+void playBuzzerTestDrive() {
+  startSequence(tdThemeSeq, sizeof(tdThemeSeq) / sizeof(ToneStep));
+}
+
+void playBuzzerKart() {
+  startSequence(kartThemeSeq, sizeof(kartThemeSeq) / sizeof(ToneStep));
 }
 
 void stopBuzzer() {
