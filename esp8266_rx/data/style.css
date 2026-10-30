@@ -1254,6 +1254,10 @@ footer {
   min-width: 34px;
   display: inline-block;
 }
+.top5-rank-1 { color: var(--neon-gold); text-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+.top5-rank-2 { color: var(--neon-cyan); text-shadow: 0 0 6px rgba(0, 229, 255, 0.6); }
+.top5-rank-3 { color: var(--neon-purple); text-shadow: 0 0 6px rgba(181, 50, 255, 0.6); }
+.top5-rank-other { color: var(--text-muted); }
 .top5-del-btn {
   background: rgba(255, 51, 102, 0.15);
   border: 1px solid var(--neon-red);

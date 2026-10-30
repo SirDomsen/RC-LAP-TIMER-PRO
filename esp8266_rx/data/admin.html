@@ -265,7 +265,7 @@
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:8px;">
-        <button class="btn btn-purple" style="margin:0; font-size:11px;" onclick="closeTrackRecordsModal(); openStatsOverviewModal();">📊 Zur Gesamt-Statistik</button>
+        <button class="btn btn-purple" style="margin:0; font-size:11px;" onclick="closeTrackRecordsModal(); openStatsOverviewModal('records');">📊 Zur Rekord-Statistik</button>
         <button class="btn btn-warning" style="margin:0;" onclick="closeTrackRecordsModal()">Schließen</button>
       </div>
     </div>
@@ -298,6 +298,7 @@
       </div>
 
       <div class="tab-container">
+        <button class="tab-btn" id="tabRecordsBtn" onclick="switchStatsTab('records')">🏆 Rekorde</button>
         <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
         <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freies Training</button>
         <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifying</button>
@@ -306,6 +307,7 @@
         <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
       </div>
       
+      <div class="modal-body" id="statsTabRecords" style="display:none;"></div>
       <div class="modal-body" id="statsTabDrivers"></div>
       <div class="modal-body" id="statsTabTraining" style="display:none;"></div>
       <div class="modal-body" id="statsTabQuali" style="display:none;"></div>

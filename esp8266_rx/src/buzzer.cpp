@@ -43,6 +43,7 @@ static bool isLooping = false;
 static bool seqInGap = false;
 static bool currentIsExtracted = false;
 static bool hwToneActive = false;
+static uint32_t scheduledStartLightsAtMs = 0;
 static String currentTrackName = "";
 
 static inline void soundOn(uint16_t freq) {
@@ -71,6 +72,7 @@ void initBuzzer() {
   currentSeq = nullptr;
   currentSeqLen = 0;
   currentStepIdx = 0;
+  scheduledStartLightsAtMs = 0;
   currentTrackName = "";
 }
 
@@ -100,6 +102,14 @@ void playBuzzerStartLights() {
   startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep), false, false, "start_lights");
 }
 
+void scheduleBuzzerStartLights(uint32_t delayMs) {
+  scheduledStartLightsAtMs = millis() + delayMs;
+}
+
+void cancelBuzzerSchedule() {
+  scheduledStartLightsAtMs = 0;
+}
+
 void playBuzzerLap() {
   if (isBuzzerPlaying && currentSeq == startLightsSeq) return;
   startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep), false, false, "lap");
@@ -125,6 +135,7 @@ void playBuzzerMenu() {
 }
 
 void stopBuzzer() {
+  scheduledStartLightsAtMs = 0;
   isBuzzerPlaying = false;
   isLooping = false;
   seqInGap = false;
@@ -137,7 +148,7 @@ void stopBuzzer() {
 }
 
 bool isBuzzerActive() {
-  return isBuzzerPlaying;
+  return isBuzzerPlaying || (scheduledStartLightsAtMs > 0);
 }
 
 String getBuzzerCurrentTrack() {
@@ -145,6 +156,11 @@ String getBuzzerCurrentTrack() {
 }
 
 void updateBuzzer() {
+  if (scheduledStartLightsAtMs > 0 && millis() >= scheduledStartLightsAtMs) {
+    scheduledStartLightsAtMs = 0;
+    playBuzzerStartLights();
+  }
+
   if (!isBuzzerPlaying || currentSeq == nullptr) return;
 
   uint32_t now = millis();

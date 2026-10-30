@@ -5,6 +5,13 @@ let currentStatsTrackFilter = 'all';
 let driversSortCol = 'laps';
 let driversSortDir = 'desc';
 
+let recordsSortCol = 'lap';
+let recordsSortDir = 'asc';
+let recordsTimeScope = 'alltime'; // 'alltime' | 'daily'
+let recordsScope = 'all';         // 'all' (Offizielle Streckenrekorde) | 'sessions' (Aus Sessions berechnet)
+let recordsCarFilter = 'all';
+let recordsDriverFilter = 'all';
+
 let openSessionsMap = {};
 let openDriverDetailsMap = {};
 
@@ -169,7 +176,7 @@ async function fetchSessionsAndStorageInfo() {
   }
 }
 
-async function openStatsOverviewModal() {
+async function openStatsOverviewModal(initialTab) {
   let modal = document.getElementById('statsOverviewModal');
   if (modal) modal.style.display = 'block';
 
@@ -187,7 +194,11 @@ async function openStatsOverviewModal() {
 
   updateStatsModalDailyBest();
 
-  if (!currentTab || currentTab === 'race') currentTab = 'training';
+  if (initialTab) {
+    currentTab = initialTab;
+  } else if (!currentTab || currentTab === 'race') {
+    currentTab = 'records';
+  }
   switchStatsTab(currentTab);
 }
 
@@ -205,6 +216,7 @@ function switchStatsTab(tab) {
   currentTab = tab;
 
   const tabs = [
+    { key: 'records', btn: 'tabRecordsBtn', div: 'statsTabRecords' },
     { key: 'drivers', btn: 'tabDriversBtn', div: 'statsTabDrivers' },
     { key: 'training', btn: 'tabTrainingBtn', div: 'statsTabTraining' },
     { key: 'quali', btn: 'tabQualiBtn', div: 'statsTabQuali' },
@@ -220,7 +232,9 @@ function switchStatsTab(tab) {
     if (d) d.style.display = (t.key === tab) ? 'block' : 'none';
   });
 
-  if (tab === 'drivers') {
+  if (tab === 'records') {
+    renderRecordsOverview();
+  } else if (tab === 'drivers') {
     renderDriversOverview();
   } else {
     let mode = tabNameToMode(tab);
@@ -228,6 +242,305 @@ function switchStatsTab(tab) {
     let targetDiv = activeTabObj ? activeTabObj.div : ('statsTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
     renderSessionsByMode(mode, targetDiv);
   }
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[m]);
+}
+
+function setRecordsTimeScope(scope) {
+  recordsTimeScope = scope;
+  renderRecordsOverview();
+}
+
+function setRecordsScope(scope) {
+  recordsScope = scope;
+  renderRecordsOverview();
+}
+
+function onRecordsCarFilterChange(val) {
+  recordsCarFilter = val;
+  renderRecordsOverview();
+}
+
+function onRecordsDriverFilterChange(val) {
+  recordsDriverFilter = val;
+  renderRecordsOverview();
+}
+
+function toggleRecordsSort(col) {
+  if (recordsSortCol === col) {
+    recordsSortDir = (recordsSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    recordsSortCol = col;
+    recordsSortDir = (col === 'lap') ? 'asc' : 'asc';
+    if (col === 'date') recordsSortDir = 'desc';
+  }
+  renderRecordsOverview();
+}
+
+function openSessionFromRecord(mode, sessionId) {
+  let targetTab = modeToTabName(mode);
+  switchStatsTab(targetTab);
+  let safeId = sanitizeDomId(sessionId);
+  toggleSessionDetails(safeId, true);
+  let card = document.getElementById('session_card_' + safeId);
+  if (card) {
+    card.classList.remove('session-highlight-flash');
+    void card.offsetWidth;
+    card.classList.add('session-highlight-flash');
+    setTimeout(() => {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
+}
+
+function getAggregatedRecords() {
+  let records = [];
+
+  if (recordsScope === 'all') {
+    // Offizielle Streckenrekorde aus allTracksList
+    if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {
+      allTracksList.forEach(t => {
+        if (currentStatsTrackFilter !== 'all' && t.id !== currentStatsTrackFilter) return;
+
+        let list = (recordsTimeScope === 'daily') ? (t.dailyRecords || []) : (t.allTimeRecords || []);
+        if (list.length === 0) {
+          let legacyLap = (recordsTimeScope === 'daily') ? t.bestLap : (t.recordLap || t.bestLap);
+          if (legacyLap > 0) {
+            list = [{
+              lap: legacyLap,
+              carId: (recordsTimeScope === 'daily') ? t.bestCarId : (t.recordCarId || t.bestCarId || 0),
+              driver: (recordsTimeScope === 'daily') ? t.bestDriver : (t.recordDriver || t.bestDriver || ''),
+              car: (recordsTimeScope === 'daily') ? t.bestCar : (t.recordCar || t.bestCar || ''),
+              date: (recordsTimeScope === 'daily') ? t.bestDate : (t.recordDate || t.bestDate || '')
+            }];
+          }
+        }
+
+        list.forEach((entry, idx) => {
+          if (!entry || entry.lap <= 0) return;
+          let dName = entry.driver || (carNamesMap[entry.carId]?.driver) || ('Fahrer ' + (entry.carId || '?'));
+          let cName = entry.car || (carNamesMap[entry.carId]?.car) || ('Auto ' + (entry.carId || '?'));
+          records.push({
+            lap: entry.lap,
+            driver: dName,
+            car: cName,
+            carId: entry.carId,
+            date: entry.date || '',
+            prevLap: entry.prevLap || 0,
+            trackId: t.id,
+            trackName: t.name || t.id,
+            source: 'official',
+            index: idx
+          });
+        });
+      });
+    }
+  } else {
+    // Berechnet aus allen Sessions in allSessionsCache
+    let todayStr = '';
+    if (typeof getCurrentLocalDateStr === 'function') {
+      todayStr = getCurrentLocalDateStr();
+    }
+    let comboBestMap = {};
+
+    allSessionsCache.forEach(s => {
+      let tId = s.trackId || 'standard';
+      if (currentStatsTrackFilter !== 'all' && tId !== currentStatsTrackFilter) return;
+      let tName = getTrackNameById(tId, s.trackName);
+
+      let sDate = s.date || '';
+      if (recordsTimeScope === 'daily') {
+        let isToday = false;
+        if (s.startTs) {
+          let sD = new Date(s.startTs * 1000);
+          let now = new Date();
+          isToday = (sD.toDateString() === now.toDateString());
+        }
+        if (!isToday && sDate && todayStr && sDate !== todayStr) return;
+      }
+
+      (s.results || []).forEach(r => {
+        if (!r.bestLap || r.bestLap <= 0) return;
+        let dName = r.driver || (carNamesMap[r.id]?.driver) || ('Fahrer ' + r.id);
+        let cName = r.car || (carNamesMap[r.id]?.car) || ('Auto ' + r.id);
+        let comboKey = `${tId}_${dName.toLowerCase()}_${cName.toLowerCase()}`;
+
+        if (!comboBestMap[comboKey] || r.bestLap < comboBestMap[comboKey].lap) {
+          comboBestMap[comboKey] = {
+            lap: r.bestLap,
+            driver: dName,
+            car: cName,
+            carId: r.id,
+            date: sDate || (s.startTs ? new Date(s.startTs * 1000).toLocaleDateString() : ''),
+            trackId: tId,
+            trackName: tName,
+            source: 'session',
+            sessionId: s.id,
+            mode: s.mode
+          };
+        }
+      });
+    });
+
+    records = Object.values(comboBestMap);
+  }
+
+  return records;
+}
+
+function renderRecordsOverview() {
+  let container = document.getElementById('statsTabRecords');
+  if (!container) return;
+
+  let allRecords = getAggregatedRecords();
+
+  // Eindeutige Fahrzeug- und Fahrernamen sammeln
+  let carsSet = new Set();
+  let driversSet = new Set();
+  allRecords.forEach(r => {
+    if (r.car) carsSet.add(r.car);
+    if (r.driver) driversSet.add(r.driver);
+  });
+  let sortedCars = Array.from(carsSet).sort((a, b) => a.localeCompare(b));
+  let sortedDrivers = Array.from(driversSet).sort((a, b) => a.localeCompare(b));
+
+  // Filtern
+  let filtered = allRecords.filter(r => {
+    if (recordsCarFilter !== 'all' && r.car !== recordsCarFilter) return false;
+    if (recordsDriverFilter !== 'all' && r.driver !== recordsDriverFilter) return false;
+    return true;
+  });
+
+  // Sortieren
+  filtered.sort((a, b) => {
+    let res = 0;
+    if (recordsSortCol === 'lap') {
+      res = a.lap - b.lap;
+    } else if (recordsSortCol === 'driver') {
+      res = a.driver.localeCompare(b.driver);
+    } else if (recordsSortCol === 'car') {
+      res = a.car.localeCompare(b.car);
+    } else if (recordsSortCol === 'date') {
+      res = (a.date || '').localeCompare(b.date || '');
+    }
+    if (res === 0) res = a.lap - b.lap;
+    return (recordsSortDir === 'asc') ? res : -res;
+  });
+
+  let getPillClass = (col) => (recordsSortCol === col ? 'btn btn-purple' : 'btn');
+  let getArrow = (col) => (recordsSortCol === col ? (recordsSortDir === 'asc' ? ' ▲' : ' ▼') : '');
+  let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
+
+  let trackNameHeader = (currentStatsTrackFilter !== 'all') ? getTrackNameById(currentStatsTrackFilter) : 'Alle Strecken';
+
+  let html = `
+    <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:12px; border:1px solid rgba(255,255,255,0.08); margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn ${recordsTimeScope === 'alltime' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('alltime')">🏆 All-Time Rekorde</button>
+          <button class="btn ${recordsTimeScope === 'daily' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('daily')">⏱️ Tagesbestzeiten (Heute)</button>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn ${recordsScope === 'all' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('all')" title="Offizielle Strecken-Rekordliste">📌 Offizielle Rekorde</button>
+          <button class="btn ${recordsScope === 'sessions' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('sessions')" title="Aus allen Sessions ermittelt">📊 Aus Sessions</button>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">🏎️ FAHRZEUG:</span>
+          <select onchange="onRecordsCarFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
+            <option value="all">Alle Fahrzeuge (${sortedCars.length})</option>
+            ${sortedCars.map(c => `<option value="${escapeHtml(c)}" ${recordsCarFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">👤 FAHRER:</span>
+          <select onchange="onRecordsDriverFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
+            <option value="all">Alle Fahrer (${sortedDrivers.length})</option>
+            ${sortedDrivers.map(d => `<option value="${escapeHtml(d)}" ${recordsDriverFilter === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="${getPillClass('lap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('lap')">⚡ Zeit${getArrow('lap')}</button>
+          <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('driver')">👤 Fahrer${getArrow('driver')}</button>
+          <button class="${getPillClass('car')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('car')">🏎️ Fahrzeug${getArrow('car')}</button>
+          <button class="${getPillClass('date')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('date')">📅 Datum${getArrow('date')}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (filtered.length === 0) {
+    html += `
+      <div style="text-align:center; padding:30px 10px; color:var(--text-muted); background:rgba(0,0,0,0.2); border-radius:8px;">
+        <div style="font-size:24px; margin-bottom:8px;">⏱️</div>
+        <div>Keine Rekorde für die ausgewählten Kriterien auf <strong>${escapeHtml(trackNameHeader)}</strong> vorhanden.</div>
+      </div>`;
+    container.innerHTML = html;
+    return;
+  }
+
+  html += `<div style="display:flex; flex-direction:column; gap:6px;">`;
+
+  filtered.forEach((r, idx) => {
+    let rank = idx + 1;
+    let rankClass = rank === 1 ? 'top5-rank-1' : (rank === 2 ? 'top5-rank-2' : (rank === 3 ? 'top5-rank-3' : 'top5-rank-other'));
+    let timeColor = (rank === 1)
+      ? 'color:var(--neon-gold); text-shadow:0 0 8px rgba(255,215,0,0.5);'
+      : (rank === 2 ? 'color:var(--neon-cyan);' : (rank === 3 ? 'color:var(--neon-purple);' : 'color:var(--neon-green);'));
+
+    let dFmt = (typeof formatRecordDate === 'function') ? formatRecordDate(r.date) : r.date;
+    let dateHtml = dFmt ? `<span style="color:var(--text-muted);">📅 ${escapeHtml(dFmt)}</span>` : '';
+    let trackHtml = (currentStatsTrackFilter === 'all' && r.trackName) ? `<span style="color:var(--neon-purple);">📍 ${escapeHtml(r.trackName)}</span>` : '';
+    let sessionLinkHtml = r.sessionId
+      ? `<span style="color:var(--neon-cyan); cursor:pointer; text-decoration:underline;" onclick="openSessionFromRecord(${r.mode}, '${r.sessionId}')" title="Session öffnen">🔍 Session</span>`
+      : '';
+    let prevHint = (isAdmin && r.prevLap > 0)
+      ? `<span style="font-size:10px; color:var(--text-muted);">(vorher: ${(r.prevLap/1000).toFixed(2)}s)</span>`
+      : '';
+
+    let delBtnHtml = (isAdmin && r.source === 'official' && typeof deleteTrackRecordEntryUI === 'function')
+      ? `<button class="top5-del-btn" onclick="deleteTrackRecordEntryUI('${r.trackId}', '${recordsTimeScope === 'daily' ? 'daily' : 'alltime'}', ${r.index})" title="Diesen Rekordeintrag löschen">✕</button>`
+      : '';
+
+    html += `
+      <div class="top5-entry-row" style="background:#0d1117; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:8px 12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="top5-rank-badge ${rankClass}">P${rank}</span>
+          <div style="text-align:left;">
+            <div>
+              <strong style="color:var(--neon-cyan); font-size:13px;">${escapeHtml(r.driver)}</strong>
+              <span style="color:var(--text-muted); font-size:12px; margin-left:4px;">(${escapeHtml(r.car)})</span>
+            </div>
+            <div style="font-size:11px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:3px;">
+              ${dateHtml}
+              ${trackHtml}
+              ${prevHint}
+              ${sessionLinkHtml}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="${timeColor}; font-size:15px; font-weight:bold; font-family:var(--font-display);">${(r.lap/1000).toFixed(2)}s</span>
+          ${delBtnHtml}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  container.innerHTML = html;
 }
 
 function getTrackNameById(trackId, fallbackName) {

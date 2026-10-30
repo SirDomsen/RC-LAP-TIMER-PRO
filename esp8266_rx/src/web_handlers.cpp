@@ -743,7 +743,7 @@ void handlePostCountdown(AsyncWebServerRequest *request) {
     muteTts = (mVal == "1" || mVal == "true");
   }
 
-  playBuzzerStartLights();
+  scheduleBuzzerStartLights(6000);
 
   char buf[96];
   snprintf(buf, sizeof(buf), "{\"type\":\"countdown\",\"muteTts\":%s}", muteTts ? "true" : "false");

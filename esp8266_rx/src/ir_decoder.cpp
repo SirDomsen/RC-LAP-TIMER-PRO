@@ -1,4 +1,4 @@
-﻿#include "ir_decoder.h"
+#include "ir_decoder.h"
 
 volatile uint32_t irBuffer = 0;
 volatile uint8_t  bitIndex = 0;

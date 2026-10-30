@@ -1,4 +1,4 @@
-﻿#ifndef BUZZER_H
+#ifndef BUZZER_H
 #define BUZZER_H
 
 #include <Arduino.h>
@@ -11,6 +11,8 @@ void updateBuzzer();
 
 // Startampel nach Grand Prix Circuit: 2x Rot (260 Hz) -> Grün (1050 Hz)
 void playBuzzerStartLights();
+void scheduleBuzzerStartLights(uint32_t delayMs = 6000);
+void cancelBuzzerSchedule();
 
 // Kurzer Bestätigungston bei Zieldurchfahrt
 void playBuzzerLap();

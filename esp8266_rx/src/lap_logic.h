@@ -1,4 +1,4 @@
-﻿#ifndef LAP_LOGIC_H
+#ifndef LAP_LOGIC_H
 #define LAP_LOGIC_H
 
 #include "config.h"
