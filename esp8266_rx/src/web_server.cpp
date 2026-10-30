@@ -146,6 +146,40 @@ void triggerWifiSwitch(uint8_t mode) {
   pendingWifiSwitch = true;
 }
 
+// --- WEBSOCKET CLIENT-LIFECYCLE & ZOMBIE-KILLER ---
+struct WsClientTracker {
+  uint32_t id;
+  uint32_t lastSeen;
+};
+static const size_t MAX_WS_TRACKERS = 8;
+static WsClientTracker wsTrackers[MAX_WS_TRACKERS] = {};
+
+static void updateWsClientActivity(uint32_t id) {
+  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
+    if (wsTrackers[i].id == id) {
+      wsTrackers[i].lastSeen = millis();
+      return;
+    }
+  }
+  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
+    if (wsTrackers[i].id == 0) {
+      wsTrackers[i].id = id;
+      wsTrackers[i].lastSeen = millis();
+      return;
+    }
+  }
+}
+
+static void removeWsClientTracker(uint32_t id) {
+  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
+    if (wsTrackers[i].id == id) {
+      wsTrackers[i].id = 0;
+      wsTrackers[i].lastSeen = 0;
+      return;
+    }
+  }
+}
+
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     if (isHeapCriticalForFileTransfer()) {
@@ -153,7 +187,25 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
       return;
     }
     triggerGhostWlanEarlyShutdown();
+    // Hebel 1A: Gleiche IP-Erkennung -> Sofortige Zombie-Exekution bei Smartphone-Reload
+    IPAddress newIp = client->remoteIP();
+    uint32_t newId = client->id();
+    for (const auto& c : ws.getClients()) {
+      if (c.id() != newId && c.status() == WS_CONNECTED && c.remoteIP() == newIp) {
+        uint32_t oldId = c.id();
+        ws.close(oldId, 1000, "Replaced");
+        removeWsClientTracker(oldId);
+      }
+    }
+
+    // Hebel 1C: ESPAsyncTCP RX-Timeout auf Socket-Ebene (15s Inaktivitaets-Schranke)
+    if (client->client()) {
+      client->client()->setRxTimeout(15);
+    }
+
+    updateWsClientActivity(newId);
   } else if (type == WS_EVT_DATA) {
+    updateWsClientActivity(client->id());
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
@@ -161,6 +213,10 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
         client->text((char*)data);
       }
     }
+  } else if (type == WS_EVT_PONG) {
+    updateWsClientActivity(client->id());
+  } else if (type == WS_EVT_DISCONNECT) {
+    removeWsClientTracker(client->id());
   }
 }
 
@@ -557,12 +613,22 @@ void initNetworkAndServer() {
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(204);
   });
+  server.on("/apple-touch-icon.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(204);
+  });
+  server.on("/apple-touch-icon-precomposed.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(204);
+  });
 
   server.onNotFound([](AsyncWebServerRequest *request) {
     String url = request->url();
 
     if (url.startsWith("/api/")) {
       request->send(404, "application/json", "{\"error\":\"Not Found\"}");
+      return;
+    }
+    if (url.startsWith("/apple-touch-icon") || url.endsWith(".map")) {
+      request->send(204);
       return;
     }
 
@@ -614,7 +680,27 @@ void handleNetworkTasks() {
   MDNS.update();
 #endif
   ArduinoOTA.handle();
-  ws.cleanupClients();
+  // Hebel 1B: Zyklischer RFC-6455 Ping/Pong Heartbeat & Inaktivitaets-Timeout
+  static uint32_t lastWsHeartbeat = 0;
+  uint32_t now = millis();
+  if (now - lastWsHeartbeat >= 5000) {
+    lastWsHeartbeat = now;
+    if (ws.count() > 0) {
+      for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
+        if (wsTrackers[i].id != 0) {
+          if (now - wsTrackers[i].lastSeen >= 12000) {
+            uint32_t deadId = wsTrackers[i].id;
+            ws.close(deadId, 1001, "Timeout");
+            wsTrackers[i].id = 0;
+            wsTrackers[i].lastSeen = 0;
+          }
+        }
+      }
+      ws.pingAll((const uint8_t*)"LT", 2);
+    }
+  }
+
+  ws.cleanupClients(4);
 }
 
 void broadcastWebSocket(const String& msg) {

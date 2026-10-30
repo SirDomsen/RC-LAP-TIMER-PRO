@@ -1,4 +1,7 @@
 function initWebSocket() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   let wsUrl = wsProtocol + '//' + window.location.host + '/ws';
   try {
@@ -33,6 +36,26 @@ function initWebSocket() {
     console.error("[WebSocket] Setup-Fehler:", e);
   }
 }
+
+// Hebel 2: Frontend-Lifecycle-Hooks für sauberes Socket-Teardown bei Reload & Standby
+function closeWebSocketOnUnload() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    try {
+      socket.close(1000, "pagehide");
+    } catch (e) {}
+  }
+}
+window.addEventListener('pagehide', closeWebSocketOnUnload);
+window.addEventListener('beforeunload', closeWebSocketOnUnload);
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+      console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
+      initWebSocket();
+    }
+  }
+});
 
 function showConnectionNotice(text) {
   let notice = document.getElementById('connectionNoticeBanner');
