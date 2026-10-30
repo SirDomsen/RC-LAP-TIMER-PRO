@@ -1186,19 +1186,64 @@ function renderTrackRecordsModalContent(trackId) {
 }
 
 async function deleteTrackRecordEntryUI(trackId, type, index) {
-  let title = (type === 'daily') ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
+  let targetId = trackId || activeTrackId;
+  let trackObj = allTracksList.find(t => t.id === targetId);
+  let isDaily = (type === 'daily');
+  let title = isDaily ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
   let desc = '';
   let boxInfo = '';
+  let cascadeInfo = '';
+
+  let allTimeArr = Array.isArray(trackObj?.allTimeRecords) ? trackObj.allTimeRecords : [];
+  if (allTimeArr.length === 0 && trackObj?.recordLap > 0) {
+    allTimeArr = [{ lap: trackObj.recordLap, carId: trackObj.recordCarId || 0, driver: trackObj.recordDriver || '', car: trackObj.recordCar || '', date: trackObj.recordDate || '' }];
+  }
+
+  let dailyArr = Array.isArray(trackObj?.dailyRecords) ? trackObj.dailyRecords : [];
+  if (dailyArr.length === 0 && trackObj?.bestLap > 0) {
+    dailyArr = [{ lap: trackObj.bestLap, carId: trackObj.bestCarId || 0, driver: trackObj.bestDriver || '', car: trackObj.bestCar || '', date: trackObj.bestDate || '' }];
+  }
+
   if (index < 0) {
-    desc = (type === 'daily')
+    desc = isDaily
       ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?'
       : 'Wirklich <strong>ALLE All-Time Streckenrekorde</strong> dieser Strecke löschen?';
-    boxInfo = (type === 'daily') ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
+    boxInfo = isDaily ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
   } else {
-    desc = (type === 'daily')
-      ? `Platz ${index + 1} der Tagesbestzeit löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`
-      : `Platz ${index + 1} des Streckenrekords löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
-    boxInfo = `Platz ${index + 1}`;
+    let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
+    if (targetEntry) {
+      let driverName = targetEntry.driver || (carNamesMap[targetEntry.carId]?.driver) || ('Fahrer ' + (targetEntry.carId || '?'));
+      let timeStr = (targetEntry.lap / 1000).toFixed(2) + 's';
+      boxInfo = `Platz ${index + 1}: ${driverName} (${timeStr})`;
+    } else {
+      boxInfo = `Platz ${index + 1}`;
+    }
+
+    if (isDaily) {
+      desc = `Platz ${index + 1} der Tagesbestzeit löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
+      if (targetEntry) {
+        let matchInAllTime = allTimeArr.some(at =>
+          at.lap === targetEntry.lap &&
+          ((targetEntry.driver && at.driver && at.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && at.carId === targetEntry.carId))
+        );
+        if (matchInAllTime) {
+          cascadeInfo = `<span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Diese Zeit ist gleichzeitig als <strong>All-Time Streckenrekord</strong> eingetragen und wird auch dort automatisch entfernt (vorherige Bestzeit rückt nach).</span>`;
+        }
+      }
+    } else {
+      desc = `Platz ${index + 1} des Streckenrekords löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
+      if (targetEntry) {
+        let matchInDaily = dailyArr.some(d =>
+          d.lap === targetEntry.lap &&
+          ((targetEntry.driver && d.driver && d.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && d.carId === targetEntry.carId))
+        );
+        if (matchInDaily) {
+          cascadeInfo = `<span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Dieser Streckenrekord stammt von heute und steht in der <strong>Tagesbestzeit</strong>. Er wird auch dort automatisch entfernt.</span>`;
+        } else if (targetEntry.date) {
+          cascadeInfo = `<span style="color:var(--text-muted); font-size:12px; display:block; margin-top:8px;">ℹ️ Dieser Streckenrekord stammt vom <strong>${formatRecordDate(targetEntry.date)}</strong>. Die heutige Tagesbestzeit bleibt unberührt.</span>`;
+        }
+      }
+    }
   }
 
   let ok = await showConfirm({
@@ -1206,7 +1251,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     theme: "danger",
     boxLabel: "Eintrag:",
     boxContent: boxInfo,
-    message: desc + '<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Vorgang kann nicht rückgängig gemacht werden!</span>',
+    message: desc + cascadeInfo + '<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Vorgang kann nicht rückgängig gemacht werden!</span>',
     confirmText: "LÖSCHEN 🗑️",
     cancelText: "ABBRECHEN"
   });
