@@ -29,7 +29,7 @@
 
 ### 📡 Backend Sektorstationen (`esp8266_rx/src_sz/`)
 - **Hardware:** ESP-01S, TSOP4838 an **GPIO3 (RX)**, Akkumessung an **A0** (8k2/1k8 Teiler).
-- `main.cpp`: Smart-Parent Routing (Zero-Heap Unicast an nächsten Hop mit HW-ACK & 7 Retries) mit sofortigem Broadcast-Failover, 802.11b/g PHY-Modus (-98 dBm Empfindlichkeit), beruhigtes Kanal-Handling (15s Timeout, 1200ms Verweildauer), Pre-OTA Timeout (16s), Totmannschaltung (120s Inaktivität) und Arm-and-Confirm Bestätigung.
+- `main.cpp`: Dynamische Selbstheilung (Unicast zur Basis mit HW-ACK, 2,5s Basis-Lease Timeout auf Broadcast, sofortiger HW-ACK Failover im Loop), 802.11g PHY-Modus, beruhigtes Kanal-Handling (15s Timeout, 1200ms Verweildauer), 4-Stufen-Failsafe OTA (100% reines DHCP & automatischer Basis-AP Scan `RC-LapTimer*`), autarker Rettungs-AP `RescueSZ<ChipId>` auf 192.168.4.1.
 
 ### 🚗 Transponder (`attiny13_tx/`)
 - **Hardware:** ATtiny13A (9.6 MHz intern), IR-LED an **PB3** getrieben über **BC337-Transistor** (für hohe gepulste IR-Ströme), Spannungsversorgung stabilisiert mit Keramikkondensator (KerKo).
@@ -68,9 +68,9 @@ Diese Regeln resultieren aus einem fatalen OTA-Brick und sind **absolut unverhan
    - Kaskadierende Sends (z. B. Unicast + Broadcast direkt nacheinander) oder blockierende Delays im Callback führen sofort zum Heap-Crash oder Watchdog-Reset (WDT).
    - **Lösung:** Im Callback werden *ausschließlich* Flags gesetzt (z. B. `pendingOtaAck = true`). Das tatsächliche Senden der Antwortpakete passiert asynchron und sicher im `loop()`.
 
-2. **Die 3-stufige OTA-Rettungskaskade (Kein Restart!):**
+2. **Die 4-stufige OTA-Rettungskaskade (100% DHCP, Kein Restart!):**
    - Wenn eine Sektorstation den Wartungsmodus (`connectOtaNetwork()`) betritt, darf sie bei einem fehlgeschlagenen WLAN-Verbindungsversuch **niemals** über `ESP.restart()` neustarten. Ein Restart wirft sie zurück in den Rennbetrieb und sperrt sie dauerhaft aus, wenn die Basis falsche Credentials sendet.
-   - **Pflicht-Ablauf:** Stufe 1 (DHCP) ➔ Stufe 2 (Statische IP) ➔ **Stufe 3 (Notfall-AP `SZ-RESCUE-X`)**.
+   - **Pflicht-Ablauf:** Stufe 1 (Basis-Vorgabe per DHCP) ➔ Stufe 2 (Heimnetz secrets.h per DHCP) ➔ Stufe 3 (Automatischer Basis-AP Scan `RC-LapTimer*` per DHCP) ➔ **Stufe 4 (Autarker Notfall-AP `RescueSZ<ChipId>` auf 192.168.4.1)**.
    - Die Station MUSS als Fallback immer ihren eigenen Access Point aufspannen und endlos warten, bis der User sie per OTA rettet.
 
 3. **Kein PHY-Mode Zwang nach unten:**

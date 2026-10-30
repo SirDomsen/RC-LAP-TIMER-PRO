@@ -13,14 +13,14 @@ extern "C" {
 typedef uint8_t u8;
 #endif
 
-#ifndef WIFI_SSID
-  #define WIFI_SSID ""
+#ifndef HOME_SSID
+  #define HOME_SSID ""
 #endif
-#ifndef WIFI_PASSWORD
-  #define WIFI_PASSWORD ""
+#ifndef HOME_PASS
+  #define HOME_PASS ""
 #endif
-#ifndef BASE_AP_SSID
-  #define BASE_AP_SSID "LapTimer-Base"
+#ifndef BASE_AP_PREFIX
+  #define BASE_AP_PREFIX "RC-LapTimer"
 #endif
 #ifndef BASE_AP_PASS
   #define BASE_AP_PASS "12345678"
@@ -154,7 +154,7 @@ void updateEspNowChannel(uint8_t ch) {
   }
 }
 
-bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs, bool useStaticIp = false) {
+bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs) {
   if (!ssid || strlen(ssid) == 0) {
     return false;
   }
@@ -168,16 +168,7 @@ bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs, b
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.setOutputPower(20.5);
   WiFi.hostname("SZ-" + String(STATION_ID));
-
-  if (useStaticIp) {
-    IPAddress staticIp(192, 168, 0, 10 + STATION_ID);
-    IPAddress gateway(192, 168, 0, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    IPAddress dns(192, 168, 0, 1);
-    WiFi.config(staticIp, gateway, subnet, dns);
-  } else {
-    WiFi.config(0u, 0u, 0u);
-  }
+  WiFi.config(0u, 0u, 0u); // Immer reines DHCP fuer maximale Netzwerk-Kompatibilitaet
 
   WiFi.begin(ssid, pass);
 
@@ -192,7 +183,7 @@ bool tryConnectStation(const char* ssid, const char* pass, uint32_t timeoutMs, b
 }
 
 // ==========================================
-// 4-STUFEN-FAILSAFE WARTUNGSMODUS
+// 4-STUFEN-FAILSAFE WARTUNGSMODUS (REINES DHCP)
 // ==========================================
 
 void startMaintenanceNetwork() {
@@ -206,20 +197,28 @@ void startMaintenanceNetwork() {
 
   bool connected = false;
 
-  // Stufe 1: Vorgabe von der Basis (statisch falls Heimnetz-SSID)
+  // Stufe 1: Vorgabe von der Basis via ESP-NOW (DHCP)
   if (strlen(otaTargetSsid) > 0) {
-    bool isHomeNet = (strcmp(otaTargetSsid, WIFI_SSID) == 0);
-    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000, isHomeNet);
+    connected = tryConnectStation(otaTargetSsid, otaTargetPass, 6000);
   }
 
-  // Stufe 2: Heim-WLAN (secrets.h) -> immer statische IP
-  if (!connected && strlen(WIFI_SSID) > 0) {
-    connected = tryConnectStation(WIFI_SSID, WIFI_PASSWORD, 6000, true);
+  // Stufe 2: Heim-WLAN (secrets.h Fallback, DHCP)
+  if (!connected && strlen(HOME_SSID) > 0) {
+    connected = tryConnectStation(HOME_SSID, HOME_PASS, 6000);
   }
 
-  // Stufe 3: Basis-AP -> DHCP
-  if (!connected && strlen(BASE_AP_SSID) > 0) {
-    connected = tryConnectStation(BASE_AP_SSID, BASE_AP_PASS, 4000, false);
+  // Stufe 3: Basis-AP Scan (sucht dynamisch nach jedem "RC-LapTimer*")
+  if (!connected) {
+    WiFi.mode(WIFI_STA);
+    delay(50);
+    int n = WiFi.scanNetworks(false, false);
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i).startsWith(BASE_AP_PREFIX)) {
+        connected = tryConnectStation(WiFi.SSID(i).c_str(), BASE_AP_PASS, 4000);
+        if (connected) break;
+      }
+    }
+    WiFi.scanDelete();
   }
 
   // Stufe 4: Autarker Rettungs-AP
