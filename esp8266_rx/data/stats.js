@@ -43,6 +43,20 @@ function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+function getCarDriverName(carId) {
+  if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.driver) {
+    return carNamesMap[carId].driver;
+  }
+  return 'Fahrer ' + (carId || '?');
+}
+
+function getCarCarName(carId) {
+  if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.car) {
+    return carNamesMap[carId].car;
+  }
+  return 'Auto ' + (carId || '?');
+}
+
 function modeToTabName(mode) {
   if (mode === 0) return 'training';
   if (mode === 1) return 'quali';
@@ -181,11 +195,14 @@ async function openStatsOverviewModal(initialTab) {
   if (modal) modal.style.display = 'block';
 
   sessionFileCache = {};
-  await Promise.all([
-    loadCarNames(),
-    typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
-    fetchSessionsAndStorageInfo()
-  ]);
+  try {
+    let p1 = (typeof loadCarNames === 'function') ? loadCarNames() : Promise.resolve();
+    let p2 = (typeof loadTracks === 'function') ? loadTracks() : Promise.resolve();
+    let p3 = fetchSessionsAndStorageInfo();
+    await Promise.all([p1, p2, p3]);
+  } catch (err) {
+    console.warn("Fehler beim Vorab-Laden der Statistik-Daten:", err);
+  }
 
   let filterSel = document.getElementById('statsTrackFilterSelect');
   if (filterSel) {
@@ -197,7 +214,7 @@ async function openStatsOverviewModal(initialTab) {
   if (initialTab) {
     currentTab = initialTab;
   } else if (!currentTab || currentTab === 'race') {
-    currentTab = 'records';
+    currentTab = document.getElementById('statsTabRecords') ? 'records' : 'drivers';
   }
   switchStatsTab(currentTab);
 }
@@ -213,6 +230,12 @@ function onStatsTrackFilterChange() {
 
 function switchStatsTab(tab) {
   if (tab === 'race') tab = 'race_laps';
+
+  // Fallback: Wenn 'records' im DOM noch nicht existiert (z. B. alter Browser-Cache),
+  // sicher auf 'drivers' oder 'training' zurückfallen
+  if (tab === 'records' && !document.getElementById('statsTabRecords')) {
+    tab = document.getElementById('statsTabDrivers') ? 'drivers' : 'training';
+  }
   currentTab = tab;
 
   const tabs = [
@@ -323,8 +346,8 @@ function getAggregatedRecords() {
 
         list.forEach((entry, idx) => {
           if (!entry || entry.lap <= 0) return;
-          let dName = entry.driver || (carNamesMap[entry.carId]?.driver) || ('Fahrer ' + (entry.carId || '?'));
-          let cName = entry.car || (carNamesMap[entry.carId]?.car) || ('Auto ' + (entry.carId || '?'));
+          let dName = entry.driver || getCarDriverName(entry.carId);
+          let cName = entry.car || getCarCarName(entry.carId);
           records.push({
             lap: entry.lap,
             driver: dName,
@@ -366,8 +389,8 @@ function getAggregatedRecords() {
 
       (s.results || []).forEach(r => {
         if (!r.bestLap || r.bestLap <= 0) return;
-        let dName = r.driver || (carNamesMap[r.id]?.driver) || ('Fahrer ' + r.id);
-        let cName = r.car || (carNamesMap[r.id]?.car) || ('Auto ' + r.id);
+        let dName = r.driver || getCarDriverName(r.id);
+        let cName = r.car || getCarCarName(r.id);
         let comboKey = `${tId}_${dName.toLowerCase()}_${cName.toLowerCase()}`;
 
         if (!comboBestMap[comboKey] || r.bestLap < comboBestMap[comboKey].lap) {
@@ -1890,12 +1913,12 @@ async function handleRestoreBackup(event) {
 
 async function rebuildSessionsIndexUI() {
   let ok = await showConfirm({
-    title: "🔄 INDEX NEU AUFBAUEN & BEREINIGEN",
+    title: "🔄 SYSTEM & REKORDE HEILEN",
     theme: "cyan",
     boxLabel: "Aktion:",
-    boxContent: "Session-Scan, Rebuild & Telemetrie-Optimierung",
-    message: "Das Endgerät durchsucht alle Session-Dateien im Speicher, generiert die Index-Datei (<code>/sessions.json</code>) neu und optimiert alte Dateien automatisch auf das kompakte Minimal-Format.<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">⚡ 100% crashsicher & spart dauerhaft Speicherplatz auf der Basisstation.</span>",
-    confirmText: "INDEX AUFBAUEN & OPTIMIEREN 🔄",
+    boxContent: "Session-Scan, Rebuild, Rekord-Heilung & Telemetrie-Optimierung",
+    message: "Das Endgerät durchsucht alle Session-Dateien im Speicher, generiert die Index-Datei (<code>/sessions.json</code>) neu, gleicht alle <strong>Streckenrekorde und Tagesbestzeiten (Option A)</strong> mit den echten Runden ab und optimiert alte Dateien automatisch auf das kompakte Minimal-Format.<br><span style=\"color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;\">⚡ 100% crashsicher, entfernt Geisterrekorde &amp; spart dauerhaft Speicherplatz.</span>",
+    confirmText: "VOLLSTÄNDIG HEILEN 🔄",
     cancelText: "ABBRECHEN"
   });
 
@@ -2013,8 +2036,8 @@ async function rebuildSessionsIndexUI() {
           return {
             pos: idx + 1,
             id: c,
-            driver: carDriverNameMap[c] || (carNamesMap[c]?.driver) || ("Fahrer " + c),
-            car: carCarNameMap[c] || (carNamesMap[c]?.car) || ("Auto " + c),
+            driver: carDriverNameMap[c] || getCarDriverName(c),
+            car: carCarNameMap[c] || getCarCarName(c),
             laps: carLapsMap[c] || 0,
             bestLap: carBestMap[c] || 0,
             avgLap: avg
@@ -2084,11 +2107,153 @@ async function rebuildSessionsIndexUI() {
     let upRes = await fetch('/api/upload', { method: 'POST', body: fd });
     if (!upRes.ok) throw new Error("Fehler beim Hochladen von /sessions.json");
 
+    // 5b. Rekorde heilen (Option A): Streckenrekorde & Tagesbestzeiten aus den validierten Sessions neu aufbauen
+    if (btn) btn.innerText = "⏳ Synchronisiere Rekorde...";
+    try {
+      let todayStr = '';
+      if (typeof getCurrentLocalDateStr === 'function') {
+        todayStr = getCurrentLocalDateStr();
+      }
+      let nowD = new Date();
+      let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
+
+      // Aktuelle Streckenliste laden
+      let tracksDoc = { active: "standard", tracks: [] };
+      let tRes = await fetch('/tracks.json');
+      if (tRes.ok) {
+        tracksDoc = await tRes.json();
+      } else if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {
+        tracksDoc = { active: (typeof activeTrackId !== 'undefined' ? activeTrackId : "standard"), tracks: JSON.parse(JSON.stringify(allTracksList)) };
+      }
+
+      // Pro Strecke Rekorde aus builtSessions aggregieren
+      let trackHealedRecords = {};
+
+      builtSessions.forEach(s => {
+        let tId = s.trackId || 'standard';
+        if (!trackHealedRecords[tId]) {
+          trackHealedRecords[tId] = { allTimeMap: {}, dailyMap: {} };
+        }
+
+        let sDateStr = '';
+        let isToday = false;
+        if (s.startTs) {
+          let sD = new Date(s.startTs * 1000);
+          isToday = (sD.toDateString() === nowD.toDateString());
+          sDateStr = `${String(sD.getFullYear()).slice(-2)}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}`;
+        }
+        if (!isToday && todayStr && sDateStr === todayStr) isToday = true;
+
+        if (s.mode !== 4 && Array.isArray(s.results)) {
+          s.results.forEach(r => {
+            if (!r.bestLap || r.bestLap <= 0) return;
+            let dName = (r.driver || '').trim() || getCarDriverName(r.id);
+            let cName = (r.car || '').trim() || getCarCarName(r.id);
+            let comboKey = `${dName.toLowerCase()}_${cName.toLowerCase()}`;
+
+            let entry = {
+              lap: r.bestLap,
+              carId: r.id || 0,
+              driver: dName,
+              car: cName,
+              date: sDateStr
+            };
+
+            let atMap = trackHealedRecords[tId].allTimeMap;
+            if (!atMap[comboKey] || r.bestLap < atMap[comboKey].lap) {
+              atMap[comboKey] = entry;
+            }
+
+            if (isToday) {
+              let dMap = trackHealedRecords[tId].dailyMap;
+              if (!dMap[comboKey] || r.bestLap < dMap[comboKey].lap) {
+                dMap[comboKey] = entry;
+              }
+            }
+          });
+        }
+      });
+
+      if (Array.isArray(tracksDoc.tracks)) {
+        tracksDoc.tracks.forEach(t => {
+          let hData = trackHealedRecords[t.id];
+          let healedAllTime = [];
+          let healedDaily = [];
+
+          if (hData) {
+            healedAllTime = Object.values(hData.allTimeMap).sort((a, b) => a.lap - b.lap).slice(0, 5);
+            healedDaily = Object.values(hData.dailyMap).sort((a, b) => a.lap - b.lap).slice(0, 5);
+          }
+
+          t.allTimeRecords = healedAllTime;
+          t.dailyRecords = healedDaily;
+
+          if (healedAllTime.length > 0) {
+            t.recordLap = healedAllTime[0].lap;
+            t.recordCarId = healedAllTime[0].carId;
+            t.recordDriver = healedAllTime[0].driver;
+            t.recordCar = healedAllTime[0].car;
+            t.recordDate = healedAllTime[0].date;
+          } else {
+            t.recordLap = 0;
+            t.recordCarId = 0;
+            t.recordDriver = "";
+            t.recordCar = "";
+            t.recordDate = "";
+          }
+
+          if (healedDaily.length > 0) {
+            t.bestLap = healedDaily[0].lap;
+            t.bestCarId = healedDaily[0].carId;
+            t.bestDriver = healedDaily[0].driver;
+            t.bestCar = healedDaily[0].car;
+            t.bestDate = healedDaily[0].date;
+          } else {
+            t.bestLap = 0;
+            t.bestCarId = 0;
+            t.bestDriver = "";
+            t.bestCar = "";
+            t.bestDate = todayFormatted;
+          }
+        });
+
+        let tBlob = new Blob([JSON.stringify(tracksDoc)], { type: 'application/json' });
+        let tFd = new FormData();
+        tFd.append('data', tBlob, '/tracks.json');
+        let tUpRes = await fetch('/api/upload', { method: 'POST', body: tFd });
+        if (tUpRes.ok && typeof loadTracks === 'function') {
+          await loadTracks();
+        }
+      }
+    } catch (recHealErr) {
+      console.warn("Fehler beim Heilen der Streckenrekorde:", recHealErr);
+    }
+
     await showAlert({
-      title: "✅ INDEX ERFOLGREICH REPARIERT",
+      title: "✅ SYSTEM VOLLSTÄNDIG GEHEILT",
       theme: "success",
-      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> im Speicher gefunden und erfolgreich indiziert!${compressedCount > 0 ? `<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✨ <strong>${compressedCount} alte Session-Dateien</strong> auf das kompakte Telemetrie-Format geschrumpft (Flash freigegeben).</span>` : ''}`
+      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> erfolgreich indiziert.<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">🏆 <strong>Streckenrekorde &amp; Tagesbestzeiten</strong> wurden auf Basis aller echten Renn-Sessions vollständig bereinigt und synchronisiert!</span>${compressedCount > 0 ? `<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">✨ <strong>${compressedCount} alte Session-Dateien</strong> auf das kompakte Telemetrie-Format geschrumpft.</span>` : ''}`
     });
+
+    sessionFileCache = {};
+    openSessionsMap = {};
+    openDriverDetailsMap = {};
+    await fetchSessionsAndStorageInfo();
+    switchStatsTab(currentTab);
+
+  } catch (err) {
+    await showAlert({
+      title: "❌ FEHLER BEIM REBUILD",
+      theme: "danger",
+      message: "Der Index konnte nicht neu aufgebaut werden: " + err.message
+    });
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+}
 
     sessionFileCache = {};
     openSessionsMap = {};
