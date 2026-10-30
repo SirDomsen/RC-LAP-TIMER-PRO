@@ -77,10 +77,18 @@ function handleLiveEvent(msg) {
     }
   } else if (msg.type === 'track_record') {
     if (typeof loadTracks === 'function') loadTracks();
+  } else if (msg.type === 'session_start') {
+    onSessionStartLiveEvent(msg);
+  } else if (msg.type === 'countdown') {
+    if (typeof handleCountdownEvent === 'function') handleCountdownEvent(msg);
+  } else if (msg.type === 'countdown_cancel') {
+    if (typeof cancelRaceCountdown === 'function') cancelRaceCountdown(false);
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
       lastResetTimestamp = now;
+      isSessionFinished = false;
+      isSessionActive = false;
       if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
       if (typeof sectorFlashUntilMap !== 'undefined') sectorFlashUntilMap = {};
       if (typeof previousLaps !== 'undefined') previousLaps = {};
@@ -99,6 +107,32 @@ function handleLiveEvent(msg) {
       requestUpdateData(true, true);
     }
   }
+}
+
+function onSessionStartLiveEvent(msg) {
+  isSessionFinished = false;
+  isSessionActive = true;
+  if (msg.mode !== undefined) currentMode = msg.mode;
+  if (msg.laps !== undefined) targetLaps = msg.laps;
+  sessionBestLap = 0;
+  maxLapInRace = 0;
+  currentLeaderId = null;
+  qualiFinishedHold = false;
+  timeExpiredAnnounced = false;
+  announced60 = false;
+  announced30 = false;
+  announced10 = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
+  if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
+  if (typeof previousLaps !== 'undefined') previousLaps = {};
+  if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
+  if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
+  if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
+  if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
+  if (typeof loadTracks === 'function') loadTracks();
+  requestUpdateData(true, true);
 }
 
 function onOutlapLiveEvent(msg) {
@@ -186,25 +220,28 @@ function onSectorLiveEvent(msg) {
     requestUpdateData();
   }
 
-  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
-  if (isMyCar) {
-    let dimBox = document.getElementById(`dimmer-box-${msg.sector}`);
-    let dimVal = document.getElementById(`dimmer-sz${msg.sector}-val`);
-    if (dimBox && dimVal) {
-      if (currentMode === 4) {
-        let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
-        let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
-        dimVal.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splitDisp}</span><span>${valDisp}</span></div>`;
-      } else {
-        dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
+  // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer ausgewaehlte Fahrzeuge (Fahrer 1 & 2)
+  if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
+    let colIdx = (selectedTTSCars[0] === carId) ? 1 : ((selectedTTSCars.length > 1 && selectedTTSCars[1] === carId) ? 2 : 0);
+    if (colIdx > 0) {
+      let dimBox = document.getElementById(`dimmer${colIdx}-box-${msg.sector}`);
+      let dimVal = document.getElementById(`dimmer${colIdx}-sz${msg.sector}-val`);
+      if (dimBox && dimVal) {
+        if (currentMode === 4) {
+          let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
+          let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
+          dimVal.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splitDisp}</span><span>${valDisp}</span></div>`;
+        } else {
+          dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
+        }
+        dimBox.className = 'dimmer-sector-box'; 
+        void dimBox.offsetWidth; 
+        dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
+        
+        let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
+        dimVal.style.color = textCol;
+        dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
       }
-      dimBox.className = 'dimmer-sector-box'; 
-      void dimBox.offsetWidth; 
-      dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
-      
-      let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
-      dimVal.style.color = textCol;
-      dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
     }
   }
 
@@ -216,7 +253,7 @@ function onSectorLiveEvent(msg) {
     } else if (msg.isPB) {
       text = driver + ", Bestzeit Sektor " + msg.sector + "!";
     }
-    if (text) speak(text);
+    if (text) speak(text, false, carId);
   }
 }
 
@@ -242,21 +279,23 @@ function onLapLiveEvent(msg) {
     };
   }
 
-  // Live-Aktualisierung des Dashboards/OLED-Dimmers für das eigene Auto ohne auf HTTP zu warten
-  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
-  if (isMyCar) {
-    let dLast = document.getElementById('dimmerLast1Text');
-    let dPos = document.getElementById('dimmerPos1Text');
-    let dPb = document.getElementById('dimmerPb1Text');
-    let dStatus = document.getElementById('dimmerStatus1Badge');
-    if (dStatus) dStatus.style.display = isOutLapDone ? 'inline-block' : 'none';
-    if (dPos && position > 0) dPos.innerText = "P" + position;
-    if (dLast && msg.lapTime > 0) {
-      dLast.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
-      dLast.style.color = isAbsoluteBest ? 'var(--neon-purple)' : (isPersonalBest ? 'var(--neon-green)' : 'var(--text-main)');
-    }
-    if (dPb && isPersonalBest && msg.lapTime > 0) {
-      dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+  // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer das eigene Auto (Fahrer 1 & 2) ohne auf HTTP zu warten
+  if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
+    let colIdx = (selectedTTSCars[0] === carId) ? 1 : ((selectedTTSCars.length > 1 && selectedTTSCars[1] === carId) ? 2 : 0);
+    if (colIdx > 0) {
+      let dLast = document.getElementById(`dimmerLast${colIdx}Text`);
+      let dPos = document.getElementById(`dimmerPos${colIdx}Text`);
+      let dPb = document.getElementById(`dimmerPb${colIdx}Text`);
+      let dStatus = document.getElementById(`dimmerStatus${colIdx}Badge`);
+      if (dStatus) dStatus.style.display = isOutLapDone ? 'inline-block' : 'none';
+      if (dPos && position > 0) dPos.innerText = "P" + position;
+      if (dLast && msg.lapTime > 0) {
+        dLast.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+        dLast.style.color = isAbsoluteBest ? 'var(--neon-purple)' : (isPersonalBest ? 'var(--neon-green)' : 'var(--text-main)');
+      }
+      if (dPb && isPersonalBest && msg.lapTime > 0) {
+        dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+      }
     }
   }
 
@@ -303,7 +342,7 @@ function onLapLiveEvent(msg) {
   // 3. Rundenzeiten- & Outlap-Ansage (Echtzeit über WebSocket!)
   if (!raceFinishedByLeader && !isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
     if (isOutLapDone) {
-      speak(driverName + ", Outlap beendet!");
+      speak(driverName + ", Outlap beendet!", false, carId);
     } else if (msg.lapTime > 0) {
       let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.lapTime) : (msg.lapTime / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
@@ -326,7 +365,7 @@ function onLapLiveEvent(msg) {
         else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
         else lapAnnouncement = driverName + posText + timeSec;
       }
-      speak(lapAnnouncement);
+      speak(lapAnnouncement, false, carId);
     }
   }
 

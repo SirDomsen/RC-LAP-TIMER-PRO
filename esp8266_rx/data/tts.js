@@ -132,32 +132,77 @@ if ('speechSynthesis' in window) {
   } catch (e) {}
 }
 
-function cancelRaceCountdown() {
-  countdownTimeouts.forEach(t => clearTimeout(t));
-  countdownTimeouts = [];
+if (typeof countdownTimeouts === 'undefined') {
+  var countdownTimeouts = [];
+}
+
+function cancelRaceCountdown(notifyBackend = false) {
+  if (typeof countdownTimeouts !== 'undefined') {
+    countdownTimeouts.forEach(t => clearTimeout(t));
+    countdownTimeouts = [];
+  }
   if ('speechSynthesis' in window) {
-    synth.cancel();
+    try { synth.cancel(); } catch (e) {}
     speechQueue = [];
     isSpeaking = false;
   }
-  fetch('/api/buzzer?cmd=stop', { method: 'POST' }).catch(() => {});
+  if (notifyBackend) {
+    fetch('/api/countdown?cmd=cancel', { method: 'POST' }).catch(() => {});
+  }
 }
 
-function speak(text, cancelCurrent = false) {
-  if (!ttsEnabled || !('speechSynthesis' in window)) return;
+function handleCountdownEvent(msg) {
+  cancelRaceCountdown(false);
+
+  let muteTts = !!msg.muteTts;
+  if (muteTts) return; // Stummgeschaltet durch Rennleiter: Hardware-Buzzer aktiv, Sprache aus
+
+  speak("Achtung, das Rennen beginnt gleich!", true);
+
+  let t1 = setTimeout(() => {
+    speak("3");
+    let t2 = setTimeout(() => {
+      speak("2");
+      let t3 = setTimeout(() => {
+        speak("1");
+        let t4 = setTimeout(() => {
+          speak("Los!");
+        }, 1000);
+        countdownTimeouts.push(t4);
+      }, 1000);
+      countdownTimeouts.push(t3);
+    }, 1000);
+    countdownTimeouts.push(t2);
+  }, 5000);
+  countdownTimeouts.push(t1);
+}
+
+function speak(text, cancelCurrent = false, carId = null) {
+  if (typeof ttsEnabled !== 'undefined' && !ttsEnabled) return;
+  if (!('speechSynthesis' in window)) return;
   
   if (cancelCurrent) {
     try { synth.cancel(); } catch (e) {}
     speechQueue = [];
     isSpeaking = false;
     setTimeout(() => {
-      speechQueue.push(text);
+      speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
       processSpeechQueue();
     }, 50);
     return;
   }
   
-  speechQueue.push(text);
+  // Fahrzeug-spezifische Deduplizierung: Alte Rundenansage DIESES Autos verwerfen, andere Autos bleiben unberuehrt
+  if (carId) {
+    speechQueue = speechQueue.filter(item => !(typeof item === 'object' && item.carId === carId));
+  }
+
+  // Queue-Limit auf volles Starterfeld (15 Autos) anpassen, damit bei Pulkdurchfahrten kein Fahrzeug verschluckt wird
+  if (speechQueue.length >= 15) {
+    speechQueue.shift();
+  }
+
+  speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
   processSpeechQueue();
 }
 
@@ -166,8 +211,21 @@ let speechWatchdogTimeout = null;
 function processSpeechQueue() {
   if (isSpeaking || speechQueue.length === 0) return;
 
+  let now = Date.now();
+  // Veraltete Ansagen (aelter als 25s, z.B. nach Smartphone-Standby oder Pause) vor dem Sprechen aussortieren
+  while (speechQueue.length > 0) {
+    let first = speechQueue[0];
+    if (typeof first === 'object' && first.createdAt && (now - first.createdAt > 25000)) {
+      speechQueue.shift();
+    } else {
+      break;
+    }
+  }
+  if (speechQueue.length === 0) return;
+
   isSpeaking = true;
-  let rawText = speechQueue.shift();
+  let item = speechQueue.shift();
+  let rawText = (typeof item === 'object' && item !== null) ? item.text : item;
   let text = applyPhonetics(rawText);
   let utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'de-DE';
@@ -199,7 +257,7 @@ function processSpeechQueue() {
       isSpeaking = false;
       processSpeechQueue();
     }
-  }, 7000);
+  }, 5000);
 
   synth.speak(utterance);
 }
@@ -251,4 +309,47 @@ function updateTTSFilterDisplay() {
 function selectAllTTS(checkAll) {
   let cbs = document.querySelectorAll('.tts-car-cb');
   cbs.forEach(cb => cb.checked = checkAll);
+}
+
+function announceRaceResults() {
+  if (typeof lastLapsData === 'undefined' || !lastLapsData || lastLapsData.length === 0) return;
+
+  let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
+  if (activeCars.length === 0) {
+    speak("Das Rennen ist beendet!", true);
+    return;
+  }
+
+  activeCars.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
+
+  let winner = activeCars[0];
+  let p2 = activeCars[1];
+  let p3 = activeCars[2];
+
+  let cMap = (typeof carNamesMap !== 'undefined') ? carNamesMap : {};
+  let winnerDriver = winner.driver || (cMap[winner.id]?.driver || ("Fahrer " + winner.id));
+  let winnerCar = winner.car || (cMap[winner.id]?.car || ("Auto " + winner.id));
+
+  let podiumText = "Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an " + winnerDriver + " auf " + winnerCar + " zum Sieg!";
+
+  if (p2 && p3) {
+    let p2Driver = p2.driver || (cMap[p2.id]?.driver || ("Fahrer " + p2.id));
+    let p3Driver = p3.driver || (cMap[p3.id]?.driver || ("Fahrer " + p3.id));
+    podiumText += " Platz 2 geht an " + p2Driver + ", und Platz 3 an " + p3Driver + "!";
+  } else if (p2) {
+    let p2Driver = p2.driver || (cMap[p2.id]?.driver || ("Fahrer " + p2.id));
+    podiumText += " Platz 2 geht an " + p2Driver + "!";
+  }
+
+  speak(podiumText, true);
+
+  if (activeCars.length > 3) {
+    let restText = "Auf den weiteren Plätzen: ";
+    for (let i = 3; i < activeCars.length; i++) {
+      let pos = i + 1;
+      let driverName = activeCars[i].driver || (cMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
+      restText += "Platz " + pos + " " + driverName + ". ";
+    }
+    speak(restText, false);
+  }
 }

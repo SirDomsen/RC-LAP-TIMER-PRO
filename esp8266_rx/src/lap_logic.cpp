@@ -1,4 +1,4 @@
-﻿#include "lap_logic.h"
+#include "lap_logic.h"
 #include "ir_decoder.h"
 #include "storage.h"
 #include "web_server.h"
@@ -31,7 +31,7 @@ bool inPitOrPause[MAX_CARS + 1]      = {false};
 bool isOutLap[MAX_CARS + 1]          = {false};
 bool lastLapIsOutLap[MAX_CARS + 1]   = {false};
 
-// Ringpuffer fÃ¼r die letzten 3 gÃ¼ltigen Rundenzeiten pro Fahrzeug
+// Ringpuffer für die letzten 3 gültigen Rundenzeiten pro Fahrzeug
 static uint32_t recentValidLaps[MAX_CARS + 1][3] = {{0}};
 static uint8_t  recentValidLapCount[MAX_CARS + 1] = {0};
 static uint8_t  recentValidLapIdx[MAX_CARS + 1]   = {0};
@@ -132,7 +132,7 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
   char buffer[192];
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld}",
-    carId, driverNames[carId].c_str(), sectorNum, sectorTimeMs, splitTimeMs,
+    carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
     isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs);
   broadcastWebSocket(buffer);
 }
@@ -141,7 +141,7 @@ void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8
   char buffer[256];
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"pos\":%d,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
-    carId, driverNames[carId].c_str(), lapNum, lapTimeMs, pos, 
+    carId, driverNames[carId].c_str(), lapNum, (unsigned long)lapTimeMs, pos, 
     isPB ? "true" : "false", isOverallBest ? "true" : "false",
     isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false",
     isOutLap ? "true" : "false");
@@ -234,7 +234,7 @@ void resetAllLaps(bool isHardReset) {
   overallBestSz4Ms = 0;
   
   if (isHardReset) {
-    // Setzt die Tagesbestzeiten (Top 5 heute) zurÃ¼ck, erhÃ¤lt aber den ewigen Streckenrekord!
+    // Setzt die Tagesbestzeiten (Top 5 heute) zurück, erhält aber den ewigen Streckenrekord!
     deleteTrackRecordEntry(activeTrackId, true, -1);
   }
 
@@ -450,7 +450,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       char finishJson[192];
       snprintf(finishJson, sizeof(finishJson),
         "{\"type\":\"drag_finish\",\"carId\":%d,\"driver\":\"%s\",\"time\":%lu,\"isPB\":%s,\"isOverallBest\":%s}",
-        carId, driverNames[carId].c_str(), elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
+        carId, driverNames[carId].c_str(), (unsigned long)elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
       broadcastWebSocket(finishJson);
 
       broadcastLapEvent(carId, completedRun, elapsedMs, 1, isPB, isOverall, false, false, false);
@@ -809,13 +809,13 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
         isLapOverall = true;
       }
 
-      // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur fÃ¼r rundenbasierte Events!) ---
+      // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur für rundenbasierte Events!) ---
       if (currentMode != MODE_DRAGRACE && currentLapTimeMs > 100) {
         checkAndUpdateTrackRecords(carId, currentLapTimeMs, isNewTrackRecord, isNewDailyRecord);
       }
     }
     
-    // GÃ¼ltige Sektorzeiten dieser Runde fÃ¼r die Statistik sichern
+    // Gültige Sektorzeiten dieser Runde für die Statistik sichern
     uint32_t savedSz1 = (sectorPassedInLap[carId] & (1 << 1)) ? sz1TimeMs[carId] : 0;
     uint32_t savedSz2 = ((sectorPassedInLap[carId] & (1 << 2)) || finalSectorNum == 2) ? sz2TimeMs[carId] : 0;
     uint32_t savedSz3 = ((sectorPassedInLap[carId] & (1 << 3)) || finalSectorNum == 3) ? sz3TimeMs[carId] : 0;

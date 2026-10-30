@@ -50,11 +50,14 @@ void handleGetLaps(AsyncWebServerRequest *request) {
 
       response->printf("{\"id\":%d,\"driver\":\"%s\",\"car\":\"%s\",\"completedLaps\":%d,",
                        i, driverNames[i].c_str(), carNames[i].c_str(), (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0));
-      response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", sz1TimeMs[i], sz2TimeMs[i], sz3TimeMs[i], sz4TimeMs[i]);
-      response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", bestSz1TimeMs[i], bestSz2TimeMs[i], bestSz3TimeMs[i], bestSz4TimeMs[i]);
-      response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", split1TimeMs[i], split2TimeMs[i], split3TimeMs[i]);
+      response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", 
+                       (unsigned long)sz1TimeMs[i], (unsigned long)sz2TimeMs[i], (unsigned long)sz3TimeMs[i], (unsigned long)sz4TimeMs[i]);
+      response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", 
+                       (unsigned long)bestSz1TimeMs[i], (unsigned long)bestSz2TimeMs[i], (unsigned long)bestSz3TimeMs[i], (unsigned long)bestSz4TimeMs[i]);
+      response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", 
+                       (unsigned long)split1TimeMs[i], (unsigned long)split2TimeMs[i], (unsigned long)split3TimeMs[i]);
       response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastLapIsOutLap\":%s,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
-                       lastLapDuration[i], bestLapDuration[i], getAverageLapTimeMs(i), lastLapIsOutLap[i] ? "true" : "false", lastSeenMs[i], stateStr);
+                       (unsigned long)lastLapDuration[i], (unsigned long)bestLapDuration[i], (unsigned long)getAverageLapTimeMs(i), lastLapIsOutLap[i] ? "true" : "false", (unsigned long)lastSeenMs[i], stateStr);
       first = false;
     }
   }
@@ -85,9 +88,7 @@ void handlePostSession(AsyncWebServerRequest *request) {
     int mode = request->getParam("mode")->value().toInt();
     RaceMode newMode = (RaceMode)mode;
 
-    if (newMode != currentMode) {
-      resetAllLaps(false);
-    }
+    resetAllLaps(false);
 
     currentMode = newMode;
     startNewSessionFrame((uint8_t)newMode);
@@ -108,6 +109,12 @@ void handlePostSession(AsyncWebServerRequest *request) {
     }
     dragTrackOccupied = false;
     activeDragCarId = 0;
+
+    char startJson[128];
+    snprintf(startJson, sizeof(startJson),
+             "{\"type\":\"session_start\",\"mode\":%d,\"duration\":%d,\"laps\":%d}",
+             (int)currentMode, duration, targetRounds);
+    broadcastWebSocket(startJson);
   }
   request->send(200, "text/plain", "OK");
 }
@@ -679,7 +686,7 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request) {
   }
   delay(100);
 
-  uint8_t targetMode = 1; // Immer 1 senden, damit die SZ auch Stufe 2 (feste Notfall-IP 192.168.0.11-13) bei Bedarf ausfÃ¼hrt
+  uint8_t targetMode = 1; // Immer 1 senden, damit die SZ auch Stufe 2 (feste Notfall-IP 192.168.0.11-13) bei Bedarf ausführt
   sendSZOtaTrigger(targetMode, syncPkt.ssid, syncPkt.pass);
 
   request->send(200, "text/plain", "SZ OTA Trigger (Legacy & Neu) gesendet");
@@ -719,4 +726,28 @@ void handleGetBuzzer(AsyncWebServerRequest *request) {
                 ",\"playing\":" + String(isBuzzerActive() ? "true" : "false") +
                 ",\"track\":\"" + getBuzzerCurrentTrack() + "\"}";
   request->send(200, "application/json", json);
+}
+
+void handlePostCountdown(AsyncWebServerRequest *request) {
+  String cmd = request->hasParam("cmd") ? request->getParam("cmd")->value() : "start";
+  if (cmd == "cancel" || cmd == "stop") {
+    stopBuzzer();
+    broadcastWebSocket("{\"type\":\"countdown_cancel\"}");
+    request->send(200, "application/json", "{\"status\":\"cancelled\"}");
+    return;
+  }
+
+  bool muteTts = false;
+  if (request->hasParam("muteTts")) {
+    String mVal = request->getParam("muteTts")->value();
+    muteTts = (mVal == "1" || mVal == "true");
+  }
+
+  playBuzzerStartLights();
+
+  char buf[96];
+  snprintf(buf, sizeof(buf), "{\"type\":\"countdown\",\"muteTts\":%s}", muteTts ? "true" : "false");
+  broadcastWebSocket(buf);
+
+  request->send(200, "application/json", "{\"status\":\"ok\"}");
 }

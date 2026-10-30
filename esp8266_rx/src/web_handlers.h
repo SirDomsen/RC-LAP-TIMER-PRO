@@ -1,4 +1,4 @@
-﻿#ifndef WEB_HANDLERS_H
+#ifndef WEB_HANDLERS_H
 #define WEB_HANDLERS_H
 
 #include <ESPAsyncWebServer.h>
@@ -53,5 +53,6 @@ void handlePostTriggerSzOta(AsyncWebServerRequest *request);
 // Arcade Buzzer / Sound Handler
 void handlePostBuzzer(AsyncWebServerRequest *request);
 void handleGetBuzzer(AsyncWebServerRequest *request);
+void handlePostCountdown(AsyncWebServerRequest *request);
 
 #endif

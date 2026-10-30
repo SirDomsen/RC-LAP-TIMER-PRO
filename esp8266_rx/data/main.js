@@ -2149,7 +2149,7 @@ function finishSessionNow() {
     }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     if (timerElem) timerElem.innerText = "ZIEL";
-    announceRaceResults();
+    if (typeof announceRaceResults === 'function') announceRaceResults();
   } else {
     if (timerElem) timerElem.innerText = "ZIEL";
     speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);
@@ -2299,7 +2299,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
     if (currentMode === 2 && targetLaps > 0 && currentLaps >= targetLaps && !isSessionFinished) {
       isSessionFinished = true;
       isSessionActive = false;
-      announceRaceResults();
+      if (typeof announceRaceResults === 'function') announceRaceResults();
       return;
     }
 

@@ -1,10 +1,10 @@
-﻿#ifndef CONFIG_H
+#ifndef CONFIG_H
 #define CONFIG_H
 
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.4.0"
+#define FIRMWARE_VERSION  "v4.4.2"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif

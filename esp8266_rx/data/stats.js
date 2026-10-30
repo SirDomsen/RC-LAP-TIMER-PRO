@@ -59,47 +59,7 @@ function getSortIconHtml(state, col) {
   return `<span class="sort-icon" style="color:var(--neon-cyan); font-weight:bold; margin-left:3px;">${state.dir === 'asc' ? '▲' : '▼'}</span>`;
 }
 
-function announceRaceResults() {
-  if (!lastLapsData || lastLapsData.length === 0) return;
-
-  let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
-  if (activeCars.length === 0) {
-    speak("Das Rennen ist beendet!", true);
-    return;
-  }
-
-  activeCars.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
-
-  let winner = activeCars[0];
-  let p2 = activeCars[1];
-  let p3 = activeCars[2];
-
-  let winnerDriver = winner.driver || (carNamesMap[winner.id]?.driver || ("Fahrer " + winner.id));
-  let winnerCar = winner.car || (carNamesMap[winner.id]?.car || ("Auto " + winner.id));
-
-  let podiumText = "Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an " + winnerDriver + " auf " + winnerCar + " zum Sieg!";
-
-  if (p2 && p3) {
-    let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
-    let p3Driver = p3.driver || (carNamesMap[p3.id]?.driver || ("Fahrer " + p3.id));
-    podiumText += " Platz 2 geht an " + p2Driver + ", und Platz 3 an " + p3Driver + "!";
-  } else if (p2) {
-    let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
-    podiumText += " Platz 2 geht an " + p2Driver + "!";
-  }
-
-  speak(podiumText, true);
-
-  if (activeCars.length > 3) {
-    let restText = "Auf den weiteren Plätzen: ";
-    for (let i = 3; i < activeCars.length; i++) {
-      let pos = i + 1;
-      let driverName = activeCars[i].driver || (carNamesMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
-      restText += "Platz " + pos + " " + driverName + ". ";
-    }
-    speak(restText, false);
-  }
-}
+// announceRaceResults() wurde nach tts.js verlagert (global fuer Admin und Fahrer verfuegbar)
 
 function updateStatsModalDailyBest() {
   let allTimeElem = document.getElementById('statsAllTimeBestVal');

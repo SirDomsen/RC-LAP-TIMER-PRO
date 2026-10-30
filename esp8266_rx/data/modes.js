@@ -1,27 +1,16 @@
 function startRaceCountdown(onComplete) {
-  cancelRaceCountdown();
-  speak("Achtung, das Rennen beginnt gleich!", true);
+  cancelRaceCountdown(false);
 
-  let t1 = setTimeout(() => {
-    if (!muteCountdownTts) speak("3");
-    let t2 = setTimeout(() => {
-      fetch('/api/buzzer?cmd=start', { method: 'POST' }).catch(() => {});
-      if (!muteCountdownTts) speak("2");
-      let t3 = setTimeout(() => {
-        if (!muteCountdownTts) speak("1");
-        let t4 = setTimeout(() => {
-          if (!muteCountdownTts) speak("Los!");
-          if (typeof onComplete === 'function') {
-            onComplete();
-          }
-        }, 1000);
-        countdownTimeouts.push(t4);
-      }, 1000);
-      countdownTimeouts.push(t3);
-    }, 1000);
-    countdownTimeouts.push(t2);
-  }, 5000);
-  countdownTimeouts.push(t1);
+  // Countdown und Startampel zentral ueber Basis triggern (synchronisiert Sprache fuer alle Clients)
+  let muteParam = (typeof muteCountdownTts !== 'undefined' && muteCountdownTts) ? "1" : "0";
+  fetch('/api/countdown?cmd=start&muteTts=' + muteParam, { method: 'POST' }).catch(() => {});
+
+  let tComplete = setTimeout(() => {
+    if (typeof onComplete === 'function') {
+      onComplete();
+    }
+  }, 8000);
+  countdownTimeouts.push(tComplete);
 }
 
 function hidePoleBanner() {
@@ -30,13 +19,13 @@ function hidePoleBanner() {
 }
 
 function startPractice() { 
-  cancelRaceCountdown();
+  cancelRaceCountdown(true);
   hidePoleBanner();
   sendSession(0, 0, 0, "Freies Training gestartet"); 
 }
 
 function startQuali() {
-  cancelRaceCountdown();
+  cancelRaceCountdown(true);
   hidePoleBanner();
   let mins = parseInt(document.getElementById('qualiTimeInput').value);
   if (isNaN(mins) || mins < 1) return;
@@ -65,7 +54,7 @@ function startRaceTime() {
 }
 
 function startDragrace() {
-  cancelRaceCountdown();
+  cancelRaceCountdown(true);
   hidePoleBanner();
   sendSession(4, 0, 0, "Dragrace gestartet! Zeiterfassung startet bei Überfahrt der Basis.");
 }
@@ -105,7 +94,7 @@ function sendSession(mode, duration, laps, speakText) {
 }
 
 function stopSession() {
-  cancelRaceCountdown();
+  cancelRaceCountdown(true);
   hidePoleBanner();
 
   currentMode = 0;
@@ -143,7 +132,7 @@ function confirmResetModal() {
   let hardCb = document.getElementById('resetDailyBestCheckbox');
   let isHard = hardCb ? hardCb.checked : true;
   closeResetModal();
-  cancelRaceCountdown();
+  cancelRaceCountdown(true);
   hidePoleBanner();
   qualiFinishedHold = false;
   timeExpiredAnnounced = false;

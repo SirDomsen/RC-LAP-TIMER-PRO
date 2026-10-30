@@ -224,7 +224,7 @@ static void addOrUpdateBroadcastPeer(uint8_t channel) {
 }
 
 void initESPNowBase() {
-  esp_err_t initRes = esp_now_init();
+  int initRes = esp_now_init();
   if (initRes != 0) {
     Serial.printf("[ESP-NOW] Init fehlgeschlagen: Code %d\n", initRes);
     return;
@@ -267,7 +267,7 @@ void handleTimeSyncBroadcast() {
     syncPkt.channel = currentCh;
     syncPkt.stratum = 0;
 
-    esp_err_t sendRes = esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
+    int sendRes = esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
 
 #if defined(ESP32)
     static uint32_t lastBeaconLog = 0;
