@@ -45,20 +45,6 @@ void setup() {
   initNetworkAndServer();
   initESPNowBase();
   initBuzzer();
-
-  Serial.println();
-  Serial.println(F("========================================="));
-  Serial.println(F("   RC LAP TIMER PRO - v4.4.0"));
-  Serial.println(F("   Arcade Sound & Grand Prix Circuit Audio"));
-  Serial.println(F("   Tasten im Terminal:"));
-  Serial.println(F("   [1] Startampel (2-1-GO)"));
-  Serial.println(F("   [2] Zieldurchfahrt (Lap-Tick)"));
-  Serial.println(F("   [3] Streckenrekord Fanfare"));
-  Serial.println(F("   [4] Grand Prix Circuit - Title Theme (Original MIDI)"));
-  Serial.println(F("   [5] Grand Prix Circuit - Menu Theme (Original MIDI)"));
-  Serial.println(F("   [s] Sound Stoppen"));
-  Serial.println(F("========================================="));
-  Serial.println();
 }
 
 void loop() {
@@ -71,32 +57,6 @@ void loop() {
   updateBuzzer();
   handleNetworkTasks();
   handleTimeSyncBroadcast();
-
-  // Serielles Test-Interface für D1-Mini / Desktop-Testing
-  if (Serial.available()) {
-    char c = Serial.read();
-    if (c != '\r' && c != '\n') {
-      if (c == '1') {
-        Serial.println(F("[BUZZER] ▶ Startampel (2-1-GO)"));
-        playBuzzerStartLights();
-      } else if (c == '2') {
-        Serial.println(F("[BUZZER] ▶ Lap Tick"));
-        playBuzzerLap();
-      } else if (c == '3') {
-        Serial.println(F("[BUZZER] ▶ Bestzeit Fanfare"));
-        playBuzzerRecord();
-      } else if (c == '4') {
-        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit - Title Theme (Original MIDI)"));
-        playBuzzerTitle();
-      } else if (c == '5') {
-        Serial.println(F("[BUZZER] ▶ Grand Prix Circuit - Menu Theme (Original MIDI)"));
-        playBuzzerMenu();
-      } else if (c == 's') {
-        Serial.println(F("[BUZZER] ⏹ Sound gestoppt"));
-        stopBuzzer();
-      }
-    }
-  }
 
   uint32_t loopDuration = micros() - loopStart;
   if (loopDuration > perfMaxLoopUs) {
