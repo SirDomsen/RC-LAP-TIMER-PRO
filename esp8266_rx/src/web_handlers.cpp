@@ -686,6 +686,10 @@ void handlePostBuzzer(AsyncWebServerRequest *request) {
       playBuzzerLap();
     } else if (cmd == "record") {
       playBuzzerRecord();
+    } else if (cmd == "play" || cmd == "track") {
+      String track = request->hasParam("track") ? request->getParam("track")->value() : "";
+      bool loop = request->hasParam("loop") ? (request->getParam("loop")->value() == "1" || request->getParam("loop")->value() == "true") : false;
+      playBuzzerTrack(track, loop);
     } else if (cmd == "title" || cmd == "gpc" || cmd == "grandprix") {
       playBuzzerTitle();
     } else if (cmd == "menu") {
@@ -702,5 +706,8 @@ void handlePostBuzzer(AsyncWebServerRequest *request) {
 }
 
 void handleGetBuzzer(AsyncWebServerRequest *request) {
-  request->send(200, "application/json", buzzerEnabled ? "{\"enabled\":true}" : "{\"enabled\":false}");
+  String json = "{\"enabled\":" + String(buzzerEnabled ? "true" : "false") +
+                ",\"playing\":" + String(isBuzzerActive() ? "true" : "false") +
+                ",\"track\":\"" + getBuzzerCurrentTrack() + "\"}";
+  request->send(200, "application/json", json);
 }

@@ -412,9 +412,85 @@ function saveDriverAudioConfig() {
   fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
 }
 
-// Easter Egg: Grand Prix Circuit Melodien auf dem Hardware-Speaker abspielen
+// Accolade Arcade Audio Jukebox: Steuerung des Hardware-Speakers
 function playGpcWebBuzzer(cmd) {
   fetch('/api/buzzer?cmd=' + encodeURIComponent(cmd), { method: 'POST' }).catch(() => {});
+}
+
+function openArcadeModal() {
+  const modal = document.getElementById('arcadeModal');
+  if (!modal) return;
+  modal.style.display = 'block';
+  updateArcadeBuzzerStatus();
+}
+
+function closeArcadeModal() {
+  const modal = document.getElementById('arcadeModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateArcadeBuzzerStatus() {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (!statusEl) return;
+  fetch('/api/buzzer')
+    .then(r => r.json())
+    .then(data => {
+      if (data.playing) {
+        statusEl.innerHTML = `Status: <span style="color:var(--neon-green); font-weight:bold;">▶ Spielt (${data.track || 'Track'})</span>`;
+      } else {
+        statusEl.innerHTML = 'Status: <span style="color:var(--text-muted);">Bereit</span>';
+      }
+    })
+    .catch(() => {
+      statusEl.innerHTML = 'Status: <span style="color:var(--text-muted);">Bereit</span>';
+    });
+}
+
+function playSelectedArcadeTrack() {
+  const trackSel = document.getElementById('arcadeTrackSelect');
+  const loopCb = document.getElementById('arcadeLoopCheckbox');
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (!trackSel) return;
+
+  const track = trackSel.value;
+  const loop = loopCb ? (loopCb.checked ? '1' : '0') : '1';
+
+  if (statusEl) {
+    const trackName = trackSel.options[trackSel.selectedIndex]?.text || track;
+    statusEl.innerHTML = `Status: <span style="color:var(--neon-cyan);">Starte ${trackName}...</span>`;
+  }
+
+  fetch(`/api/buzzer?cmd=play&track=${encodeURIComponent(track)}&loop=${loop}`, { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 250);
+    })
+    .catch(() => {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--neon-red);">Fehler beim Starten</span>`;
+    });
+}
+
+function stopArcadeTrack() {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (statusEl) {
+    statusEl.innerHTML = 'Status: <span style="color:var(--neon-gold);">Stoppe...</span>';
+  }
+  fetch('/api/buzzer?cmd=stop', { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 200);
+    })
+    .catch(() => {});
+}
+
+function playArcadeFx(fxCmd) {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (statusEl) {
+    statusEl.innerHTML = `Status: <span style="color:var(--neon-gold);">Soundeffekt gesendet...</span>`;
+  }
+  fetch(`/api/buzzer?cmd=${encodeURIComponent(fxCmd)}`, { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 400);
+    })
+    .catch(() => {});
 }
 
 // Aktualisiert eine einzelne Fahrer-Spalte im Dashboard (colIdx = 1 oder 2)
@@ -2374,6 +2450,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
   if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
   if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
+  if (event.target === document.getElementById('arcadeModal')) closeArcadeModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {
     document.getElementById('roleSelectModal').style.display = 'none';
   }
@@ -2394,6 +2471,7 @@ document.addEventListener('keydown', function(e) {
     closeNewTrackModal();
     closeStorageFullModal();
     closeTrackRecordsModal();
+    closeArcadeModal();
     if (userRole && document.getElementById('roleSelectModal')) {
       document.getElementById('roleSelectModal').style.display = 'none';
     }

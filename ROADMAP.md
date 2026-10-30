@@ -76,14 +76,21 @@
   * `PendingLap lapQueue[30]`: Rundenzeiten werden im RAM gepuffert und asynchron weggeschrieben, um den Loop nicht zu blockieren.
   * **95%-Flash-Schutz (`storageFullLocked`):** Verhindert das Einfrieren des ESP8266 bei vollem Speicher.
 
-### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h`)
+### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h` / `Sound/`)
 * **Hardware:** 32Ω Mylar- oder PC-Lautsprecher an **D1 (GPIO5)**, getrieben über **BC337-Transistor** (1kΩ Basiswiderstand) an 5V/VIN.
-* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM`).
-* **Sound-Events:**
+* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM` unter `esp8266_rx/Sound/`), dynamische Staccato-Artikulation für klassische MIDI- und `wav2c`-extrahierte Notenfolgen.
+* **Sound-Events & Soundtracks:**
   * **Startampel:** Original Grand Prix Circuit (1988) Sequenz (2x Rot 260 Hz à 300 ms, 650 ms Pause ➔ Grün 1050 Hz à 450 ms), synchronisiert mit Renn-Countdown in `modes.js`.
   * **Zieldurchfahrt:** Kurzer, trockener Bestätigungs-Impuls (1760 Hz, 35 ms) direkt bei Zieldurchfahrt in `lap_logic.cpp`.
   * **Streckenrekord:** Aufsteigende 4-Ton Arcade-Fanfare bei neuem Streckenrekord / absoluter Bestzeit.
-  * **Themes:** Optionale Chiptune-Riffs (Grand Prix Circuit & Test Drive 1) abrufbar via Serial Monitor oder Web-API (`/api/buzzer`).
+  * **Accolade Arcade Jukebox (8 Original MS-DOS Chiptunes):**
+    * *Grand Prix Circuit (1988):* Title Theme (180 Noten, 32s) & Menu Theme (448 Noten, 54s).
+    * *Test Drive 1 (1987):* Intro / Title Theme & Menu Beat (authentischer Synth-Groove).
+    * *Test Drive 3: The Passion (1990):* The Passion Theme, Radio 1 (Synth-Rock), Radio 2 (Synth-Bass), Radio 3 (Melodic Groove).
+* **Steuerung & UI-Integration:**
+  * **Rennleiter Jukebox-Modal (`admin.html`):** Button `📼 Arcade Audio` öffnet dedizierten Player mit Soundtrack-Dropdown, Loop-Schalter, Play/Stop und Sound FX Tests.
+  * **Countdown-Stummschaltung:** Einstellbar im Fahrer-Setup (`index.html`) und direkt im Arcade-Modal des Rennleiters (`admin.html`) für 100% synchronen Startampel-Buzzer ohne Sprach-Latenz.
+  * **Web-API:** `/api/buzzer` (`cmd=play&track=<id>&loop=1|0`, `cmd=start|lap|record|title|menu|stop`, `enable=1|0`).
 * **Ruhestrom-Schutz:** Pin wird im Standby fest auf `LOW` gehalten, sodass der Transistor komplett sperrt und kein Strom fließt.
 
 ### 4.4 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)

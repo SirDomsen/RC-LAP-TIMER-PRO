@@ -1,13 +1,9 @@
 #include "buzzer.h"
 #include "config.h"
+#include "../Sound/soundtracks.h"
 
 // Aktivierungsstatus (Standard: aktiv)
 bool buzzerEnabled = true;
-
-struct ToneStep {
-  uint16_t freq;      // Frequenz in Hz (0 = Pause)
-  uint16_t duration;  // Dauer in Millisekunden
-};
 
 // 1. Startampel (Grand Prix Circuit: 2-1-GO!)
 static const ToneStep startLightsSeq[] PROGMEM = {
@@ -37,378 +33,6 @@ static const ToneStep recordSeq[] PROGMEM = {
   { 0,     50 }
 };
 
-// Accolade Grand Prix Circuit - Title Theme (Original MIDI)
-static const ToneStep gpcTitleSeq[172] PROGMEM = {
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 185, 200 },
-    { 277, 200 },
-    { 370, 200 },
-    { 185, 200 },
-    { 330, 200 },
-    { 185, 100 },
-    { 311, 200 },
-    { 185, 100 },
-    { 277, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 494, 200 },
-    { 740, 200 },
-    { 988, 200 },
-    { 494, 200 },
-    { 880, 200 },
-    { 494, 100 },
-    { 831, 200 },
-    { 494, 100 },
-    { 740, 200 },
-    { 494, 200 },
-    { 740, 200 },
-    { 988, 200 },
-    { 494, 200 },
-    { 880, 200 },
-    { 494, 100 },
-    { 831, 200 },
-    { 494, 100 },
-    { 740, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 277, 200 },
-    { 415, 200 },
-    { 554, 200 },
-    { 277, 200 },
-    { 494, 200 },
-    { 277, 100 },
-    { 466, 200 },
-    { 277, 100 },
-    { 415, 200 },
-    { 494, 200 },
-    { 740, 200 },
-    { 988, 200 },
-    { 494, 200 },
-    { 880, 200 },
-    { 494, 100 },
-    { 831, 200 },
-    { 494, 100 },
-    { 740, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 },
-    { 554, 200 },
-    { 740, 200 },
-    { 370, 200 },
-    { 659, 200 },
-    { 370, 100 },
-    { 622, 200 },
-    { 370, 100 },
-    { 554, 200 },
-    { 370, 200 }
-};
-
-// Accolade Grand Prix Circuit - Menu Theme (Original MIDI)
-static const ToneStep gpcMenuSeq[191] PROGMEM = {
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 },
-    { 87, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 },
-    { 87, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 220, 120 },
-    { 110, 120 },
-    { 262, 120 },
-    { 110, 120 },
-    { 330, 120 },
-    { 110, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 294, 120 },
-    { 147, 120 },
-    { 349, 120 },
-    { 147, 120 },
-    { 440, 120 },
-    { 147, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 196, 120 },
-    { 98, 120 },
-    { 262, 120 },
-    { 98, 120 },
-    { 294, 120 },
-    { 98, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 175, 120 },
-    { 87, 120 },
-    { 233, 120 },
-    { 87, 120 },
-    { 262, 120 }
-};
-
-
 // Status-Variablen für Ton-Sequenzen
 static const ToneStep* currentSeq = nullptr;
 static uint16_t currentSeqLen = 0;
@@ -417,6 +41,8 @@ static uint32_t stepStartMs = 0;
 static bool isBuzzerPlaying = false;
 static bool isLooping = false;
 static bool seqInGap = false;
+static bool currentIsExtracted = false;
+static String currentTrackName = "";
 
 void initBuzzer() {
   pinMode(SPEAKER_PIN, OUTPUT);
@@ -425,12 +51,14 @@ void initBuzzer() {
   isBuzzerPlaying = false;
   isLooping = false;
   seqInGap = false;
+  currentIsExtracted = false;
   currentSeq = nullptr;
   currentSeqLen = 0;
   currentStepIdx = 0;
+  currentTrackName = "";
 }
 
-static void startSequence(const ToneStep* seq, uint16_t length, bool loop = false) {
+static void startSequence(const ToneStep* seq, uint16_t length, bool loop = false, bool isExtracted = false, const String& name = "") {
   if (!buzzerEnabled || seq == nullptr || length == 0) return;
 
   stopBuzzer();
@@ -440,6 +68,8 @@ static void startSequence(const ToneStep* seq, uint16_t length, bool loop = fals
   isBuzzerPlaying = true;
   isLooping = loop;
   seqInGap = false;
+  currentIsExtracted = isExtracted;
+  currentTrackName = name;
   stepStartMs = millis();
 
   uint16_t freq = pgm_read_word(&(currentSeq[0].freq));
@@ -452,35 +82,52 @@ static void startSequence(const ToneStep* seq, uint16_t length, bool loop = fals
 }
 
 void playBuzzerStartLights() {
-  startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep), false);
+  startSequence(startLightsSeq, sizeof(startLightsSeq) / sizeof(ToneStep), false, false, "start_lights");
 }
 
 void playBuzzerLap() {
   if (isBuzzerPlaying && currentSeq == startLightsSeq) return;
-  startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep), false);
+  startSequence(lapSeq, sizeof(lapSeq) / sizeof(ToneStep), false, false, "lap");
 }
 
 void playBuzzerRecord() {
-  startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep), false);
+  startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep), false, false, "record");
+}
+
+bool playBuzzerTrack(const String& trackId, bool loop) {
+  const ArcadeTrack* t = findArcadeTrack(trackId);
+  if (!t) return false;
+  startSequence(t->seq, t->len, loop, t->isExtracted, t->id);
+  return true;
 }
 
 void playBuzzerTitle() {
-  startSequence(gpcTitleSeq, sizeof(gpcTitleSeq) / sizeof(ToneStep), true);
+  playBuzzerTrack("gpc_title", true);
 }
 
 void playBuzzerMenu() {
-  startSequence(gpcMenuSeq, sizeof(gpcMenuSeq) / sizeof(ToneStep), true);
+  playBuzzerTrack("gpc_menu", true);
 }
 
 void stopBuzzer() {
   isBuzzerPlaying = false;
   isLooping = false;
   seqInGap = false;
+  currentIsExtracted = false;
   currentSeq = nullptr;
   currentSeqLen = 0;
   currentStepIdx = 0;
+  currentTrackName = "";
   noTone(SPEAKER_PIN);
   digitalWrite(SPEAKER_PIN, LOW);
+}
+
+bool isBuzzerActive() {
+  return isBuzzerPlaying;
+}
+
+String getBuzzerCurrentTrack() {
+  return currentTrackName;
 }
 
 void updateBuzzer() {
@@ -494,10 +141,19 @@ void updateBuzzer() {
   if (!seqInGap) {
     uint32_t toneMs = stepDur;
     if (stepFreq > 0) {
-      if (stepDur >= 50) {
-        toneMs = (stepDur * 85) / 100;
-      } else if (stepDur > 12) {
-        toneMs = stepDur - 8;
+      if (currentIsExtracted) {
+        // wav2c-extrahierte Tracks haben bereits explizite Pausen ({0, ms})
+        // Nur bei längeren Einzeltönen (>=60ms) einen minimalen Schnitt von 6ms für sauberen Attack lassen
+        if (stepDur >= 60) {
+          toneMs = stepDur - 6;
+        }
+      } else {
+        // Klassische Sequenzen ohne explizite Ruhetakte
+        if (stepDur >= 50) {
+          toneMs = (stepDur * 85) / 100;
+        } else if (stepDur > 12) {
+          toneMs = stepDur - 8;
+        }
       }
     }
     if (now - stepStartMs >= toneMs) {

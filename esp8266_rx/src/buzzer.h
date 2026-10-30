@@ -18,12 +18,19 @@ void playBuzzerLap();
 // Retro-Arcade Fanfare bei neuem Streckenrekord / Bestzeit
 void playBuzzerRecord();
 
-// Accolade Grand Prix Circuit Themes (Original 1-Voice MIDI)
+// Accolade Arcade Audio Jukebox: Spielt einen Track per ID ab
+bool playBuzzerTrack(const String& trackId, bool loop = false);
+
+// Accolade Grand Prix Circuit Themes (Kompatibilität)
 void playBuzzerTitle();
 void playBuzzerMenu();
 
 // Sofortiger Not-Aus / Ton stoppen
 void stopBuzzer();
+
+// Statusabfragen
+bool isBuzzerActive();
+String getBuzzerCurrentTrack();
 
 // Globaler Schalter (kann per API/Config aktiviert/deaktiviert werden)
 extern bool buzzerEnabled;
