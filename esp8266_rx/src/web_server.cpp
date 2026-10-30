@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "esp_now_base.h"
 
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <ESP8266mDNS.h>
@@ -11,10 +12,20 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-
 extern "C" {
   #include <espnow.h>
 }
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <ESPmDNS.h>
+#include <ArduinoOTA.h>
+#include <Update.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
+#include <esp_now.h>
+#endif
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -53,7 +64,11 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<p style='color:#f0f6fc;font-size:14px;'>Mehrere GerÃ¤te laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
+#if defined(ESP8266)
   return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
+#elif defined(ESP32)
+  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES);
+#endif
 }
 
 static const char* getContentType(const String& path) {
@@ -85,7 +100,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
 
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
-      AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
+      AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
       res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
@@ -155,10 +170,15 @@ static void blinkGreenLED(int count) {
 
 static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
+#if defined(ESP8266)
   WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+#elif defined(ESP32)
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+#endif
   
   String ipStr = currentActiveIP.toString();
   String connectedSsid = WiFi.SSID();
@@ -181,10 +201,15 @@ static void setupFallbackAP() {
   ghostWlanActive = false;
   WiFi.disconnect(true);
   delay(50);
+#if defined(ESP8266)
   WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+#elif defined(ESP32)
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleep(false);
+#endif
   
   IPAddress local_IP(192, 168, 0, 8);
   if (learnedApIP.length() > 0) {
@@ -214,12 +239,19 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
+#if defined(ESP8266)
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
     WiFi.hostname(getDeviceHostname());
+#elif defined(ESP32)
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(getDeviceHostname().c_str());
+#endif
     
     WiFi.begin(s.c_str(), p.c_str());
     uint32_t startMs = millis();
@@ -243,12 +275,19 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
+#if defined(ESP8266)
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
     WiFi.hostname(getDeviceHostname());
+#elif defined(ESP32)
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(getDeviceHostname().c_str());
+#endif
     
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
@@ -268,6 +307,7 @@ static void connectNetworkCascade(uint8_t startMode) {
   setupFallbackAP();
 }
 
+#if defined(ESP8266)
 static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
   Dir dir = LittleFS.openDir(basePath);
   while (dir.next()) {
@@ -284,6 +324,26 @@ static void listFilesRecursive(const String& basePath, AsyncResponseStream *resp
     }
   }
 }
+#elif defined(ESP32)
+static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
+  File dir = LittleFS.open(basePath);
+  if (!dir || !dir.isDirectory()) return;
+  File file = dir.openNextFile();
+  while (file) {
+    String fullPath = file.path();
+    if (file.isDirectory()) {
+      listFilesRecursive(fullPath, response, first);
+    } else {
+      if (!first) response->print(",");
+      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
+      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                       relName.c_str(), (unsigned int)file.size(), (unsigned long)file.getLastWrite());
+      first = false;
+    }
+    file = dir.openNextFile();
+  }
+}
+#endif
 
 void initNetworkAndServer() {
   connectNetworkCascade(activeWifiMode);
@@ -319,8 +379,12 @@ void initNetworkAndServer() {
     }
   }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
     if (!index) {
+#if defined(ESP8266)
       Update.runAsync(true);
       size_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+#elif defined(ESP32)
+      size_t maxSketchSpace = UPDATE_SIZE_UNKNOWN;
+#endif
       if (!Update.begin(maxSketchSpace, U_FLASH)) {
         Update.printError(Serial);
       }
@@ -339,13 +403,20 @@ void initNetworkAndServer() {
 
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     flushCurrentSessionToIndex();
+#if defined(ESP8266)
     FSInfo fs_info;
     LittleFS.info(fs_info);
+    size_t totalBytes = fs_info.totalBytes;
+    size_t usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
+#endif
     updateFsUsageCache();
 
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
-                     (unsigned int)fs_info.totalBytes, (unsigned int)fs_info.usedBytes);
+                     (unsigned int)totalBytes, (unsigned int)usedBytes);
 
     bool first = true;
     listFilesRecursive("/", response, first);
@@ -404,7 +475,11 @@ void initNetworkAndServer() {
     json = "{\"freeHeap\":";
     json += ESP.getFreeHeap();
     json += ",\"frag\":";
+#if defined(ESP8266)
     json += ESP.getHeapFragmentation();
+#else
+    json += 0;
+#endif
     json += ",\"maxLoopUs\":";
     json += perfMaxLoopUs;
     json += ",\"avgLoopUs\":";
@@ -514,7 +589,11 @@ void handleNetworkTasks() {
     ghostWlanActive = false;
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
+#if defined(ESP8266)
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
+#elif defined(ESP32)
+    WiFi.setSleep(false);
+#endif
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
@@ -525,7 +604,9 @@ void handleNetworkTasks() {
     ESP.restart(); 
   }
 
+#if defined(ESP8266)
   MDNS.update();
+#endif
   ArduinoOTA.handle();
   ws.cleanupClients();
 }

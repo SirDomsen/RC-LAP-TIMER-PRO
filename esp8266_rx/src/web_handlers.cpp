@@ -4,6 +4,7 @@
 #include "esp_now_base.h"
 #include "web_server.h"
 #include "buzzer.h"
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -12,6 +13,14 @@
 extern "C" {
   #include <espnow.h>
 }
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
+#include <sys/time.h>
+#include <utime.h>
+#include <esp_now.h>
+#endif
 
 void handleGetLaps(AsyncWebServerRequest *request) {
   if (isHeapCriticalForFileTransfer()) {

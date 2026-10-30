@@ -14,10 +14,12 @@
 
 ### ⚙️ PlatformIO Build-Environments (`platformio.ini`)
 - `basisstation`: NodeMCU V2 (`nodemcuv2`, 160 MHz, LittleFS, LWIP2 Low Memory), AsyncWebServer, ArduinoJson 7.
+- `basisstation_s3`: ESP32-S3 DevKitC-1 N16R8 (240 MHz Dual-Core, 16MB Flash Quad, 8MB PSRAM Octal SPI `qio_opi`, USB-CDC), AsyncWebServer, AsyncTCP, ArduinoJson 7.
 - `sz1`, `sz2`, `sz3`: ESP-01S (`esp01_1m`, 160 MHz), Flags `-DSECTOR_STATION -DSTATION_ID=1/2/3`.
 
 ### 🔧 Backend Basisstation (`esp8266_rx/src/`)
-- **Hardware:** TSOP4838 IR-Empfänger an **D2 (GPIO4)**, Status-LEDs an **D5 (Grün)** & **D6 (Gelb/Signal)**, **Arcade-Speaker an D1 (GPIO5)** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand).
+- **Hardware ESP8266:** TSOP4838 IR-Empfänger an **D2 (GPIO4)**, Status-LEDs an **D5 (Grün)** & **D6 (Gelb/Signal)**, **Arcade-Speaker an D1 (GPIO5)** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand).
+- **Hardware ESP32-S3:** TSOP4838 IR-Empfänger an **GPIO 4**, Status-LEDs an **GPIO 5 (Grün)** & **GPIO 6 (Gelb/Signal)**, **Arcade-Speaker an GPIO 7** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand). *(Hinweis: GPIO 33–37 sind für Octal-PSRAM/Flash reserviert, GPIO 19/20 für USB-CDC).*
 - `ir_decoder.cpp`: Interrupt an D2, strikte Flanken- & Timingprüfung (Leader 1.8–4.2 ms, Bitgrenze 950 µs) mit kompromisslosem Reset bei Störsignalen.
 - `buzzer.cpp` / `buzzer.h` / `Sound/`: Non-blocking Chiptune-Soundtreiber (0 Byte dynamischer Heap, alle Sequenzen in `PROGMEM` in `Sound/soundtracks.h`) an **D1 (GPIO5)** via BC337-Transistor. GPC Startampel (Rot 260 Hz ➔ Grün 1050 Hz), Lap-Tick (1760 Hz, 35 ms), Streckenrekord-Fanfare sowie Accolade Arcade Audio Jukebox mit 8 Original-Soundtracks (Grand Prix Circuit Title & Menu, Test Drive 1 Intro & Menu Beat, Test Drive 3 Passion Theme & Radiosender 1–3) im nahtlosen Dauerloop mit adaptiver Staccato-Artikulation. Web-API `/api/buzzer` (`cmd=play&track=<id>&loop=1|0`, `cmd=start|lap|record|stop`, `enable=1|0`). Rennleiter-Modal mit Kassetten-Icon `📼 Arcade Audio` in `admin.html`.
 - `lap_logic.cpp`: Live-Zeitmessung für 5 Rennmodi (0=Training, 1=Quali, 2=Rundenrennen, 3=Zeitrennen, 4=Dragrace). Erfasst Sektorzeiten SZ1–SZ4, PBs und Purple Sectors. 2-Frame-Validierungsfilter (85 ms), einstellbare Deadtime (Standard 2 s), dynamische Boxen-/Outlap-Erkennung (Schwellenwert 250% von AvgLap).

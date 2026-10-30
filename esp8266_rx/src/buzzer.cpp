@@ -42,12 +42,28 @@ static bool isBuzzerPlaying = false;
 static bool isLooping = false;
 static bool seqInGap = false;
 static bool currentIsExtracted = false;
+static bool hwToneActive = false;
 static String currentTrackName = "";
+
+static inline void soundOn(uint16_t freq) {
+  if (freq > 0) {
+    tone(SPEAKER_PIN, freq);
+    hwToneActive = true;
+  }
+}
+
+static inline void soundOff() {
+  if (hwToneActive) {
+    noTone(SPEAKER_PIN);
+    hwToneActive = false;
+  }
+  digitalWrite(SPEAKER_PIN, LOW);
+}
 
 void initBuzzer() {
   pinMode(SPEAKER_PIN, OUTPUT);
   digitalWrite(SPEAKER_PIN, LOW);
-  noTone(SPEAKER_PIN);
+  hwToneActive = false;
   isBuzzerPlaying = false;
   isLooping = false;
   seqInGap = false;
@@ -74,10 +90,9 @@ static void startSequence(const ToneStep* seq, uint16_t length, bool loop = fals
 
   uint16_t freq = pgm_read_word(&(currentSeq[0].freq));
   if (freq > 0) {
-    tone(SPEAKER_PIN, freq);
+    soundOn(freq);
   } else {
-    noTone(SPEAKER_PIN);
-    digitalWrite(SPEAKER_PIN, LOW);
+    soundOff();
   }
 }
 
@@ -118,8 +133,7 @@ void stopBuzzer() {
   currentSeqLen = 0;
   currentStepIdx = 0;
   currentTrackName = "";
-  noTone(SPEAKER_PIN);
-  digitalWrite(SPEAKER_PIN, LOW);
+  soundOff();
 }
 
 bool isBuzzerActive() {
@@ -157,8 +171,7 @@ void updateBuzzer() {
       }
     }
     if (now - stepStartMs >= toneMs) {
-      noTone(SPEAKER_PIN);
-      digitalWrite(SPEAKER_PIN, LOW);
+      soundOff();
       seqInGap = true;
     }
   }
@@ -178,10 +191,9 @@ void updateBuzzer() {
     stepStartMs = now;
     uint16_t nextFreq = pgm_read_word(&(currentSeq[currentStepIdx].freq));
     if (buzzerEnabled && nextFreq > 0) {
-      tone(SPEAKER_PIN, nextFreq);
+      soundOn(nextFreq);
     } else {
-      noTone(SPEAKER_PIN);
-      digitalWrite(SPEAKER_PIN, LOW);
+      soundOff();
     }
   }
 }

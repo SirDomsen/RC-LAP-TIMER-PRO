@@ -23,7 +23,11 @@ uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 // Eindeutige Hardware-Identifikatoren
 String getChipIdSuffix() {
   char buf[8];
+#if defined(ESP8266)
   snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getChipId() & 0xFFFF));
+#elif defined(ESP32)
+  snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getEfuseMac() & 0xFFFF));
+#endif
   return String(buf);
 }
 
@@ -547,6 +551,7 @@ static String escapeJsonStr(const String& s) {
 }
 
 void updateFsUsageCache() {
+#if defined(ESP8266)
   FSInfo fs_info;
   if (LittleFS.info(fs_info) && fs_info.totalBytes > 0) {
     cachedFsTotalBytes = fs_info.totalBytes;
@@ -556,12 +561,30 @@ void updateFsUsageCache() {
       storageFullLocked = false;
     }
   }
+#elif defined(ESP32)
+  size_t total = LittleFS.totalBytes();
+  size_t used = LittleFS.usedBytes();
+  if (total > 0) {
+    cachedFsTotalBytes = total;
+    cachedFsUsedBytes = used;
+    cachedFsUsedPct = (uint8_t)((used * 100ULL) / total);
+    if (cachedFsUsedPct < 95) {
+      storageFullLocked = false;
+    }
+  }
+#endif
 }
 
 void initFS() {
+#if defined(ESP8266)
   if (LittleFS.begin()) {
     updateFsUsageCache();
   }
+#elif defined(ESP32)
+  if (LittleFS.begin(true)) {
+    updateFsUsageCache();
+  }
+#endif
 }
 
 // --- STRECKEN-VERWALTUNG (/tracks.json) ---
@@ -796,6 +819,7 @@ bool addOrSelectTrack(const String& rawName) {
 }
 
 static void removeDirectoryRecursive(const String& dirPath) {
+#if defined(ESP8266)
   Dir dir = LittleFS.openDir(dirPath);
   while (dir.next()) {
     String subPath = dirPath + "/" + dir.fileName();
@@ -806,6 +830,21 @@ static void removeDirectoryRecursive(const String& dirPath) {
     }
   }
   LittleFS.rmdir(dirPath);
+#elif defined(ESP32)
+  File dir = LittleFS.open(dirPath);
+  if (!dir || !dir.isDirectory()) return;
+  File file = dir.openNextFile();
+  while (file) {
+    String subPath = file.path();
+    if (file.isDirectory()) {
+      removeDirectoryRecursive(subPath);
+    } else {
+      LittleFS.remove(subPath);
+    }
+    file = dir.openNextFile();
+  }
+  LittleFS.rmdir(dirPath);
+#endif
 }
 
 // Hilfsfunktion: Filtert /sessions.json im Streaming-Verfahren ohne RAM-Spitzen
@@ -1757,6 +1796,7 @@ void deleteAllHistory() {
   }
 
   // Alle Unterordner im Root (Strecken-Ordner) leeren & entfernen
+#if defined(ESP8266)
   Dir root = LittleFS.openDir("/");
   std::vector<String> dirsToRemove;
   while (root.next()) {
@@ -1769,6 +1809,24 @@ void deleteAllHistory() {
       }
     }
   }
+#elif defined(ESP32)
+  File root = LittleFS.open("/");
+  std::vector<String> dirsToRemove;
+  if (root && root.isDirectory()) {
+    File f = root.openNextFile();
+    while (f) {
+      if (f.isDirectory()) {
+        dirsToRemove.push_back(f.path());
+      } else {
+        String fn = f.name();
+        if (fn.startsWith("stats_") && fn.endsWith(".json")) {
+          LittleFS.remove(f.path());
+        }
+      }
+      f = root.openNextFile();
+    }
+  }
+#endif
   for (const String& d : dirsToRemove) {
     removeDirectoryRecursive(d);
   }

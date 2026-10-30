@@ -1,4 +1,4 @@
-#ifndef IR_DECODER_H
+﻿#ifndef IR_DECODER_H
 #define IR_DECODER_H
 
 #include "config.h"

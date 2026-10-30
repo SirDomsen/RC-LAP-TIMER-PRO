@@ -1,4 +1,4 @@
-#include "ir_decoder.h"
+﻿#include "ir_decoder.h"
 
 volatile uint32_t irBuffer = 0;
 volatile uint8_t  bitIndex = 0;
@@ -40,7 +40,17 @@ void IRAM_ATTR handleIRInterrupt() {
       bitIndex = 0;
 
       // Gelbe LED sofort schalten
+#if defined(ESP8266)
       GPOS = (1 << LED_SIGNAL);
+#elif defined(ESP32)
+      #if (LED_SIGNAL < 32)
+        GPIO.out_w1ts = (1UL << LED_SIGNAL);
+      #else
+        GPIO.out1_w1ts.val = (1UL << (LED_SIGNAL - 32));
+      #endif
+#else
+      digitalWrite(LED_SIGNAL, HIGH);
+#endif
     }
     return;
   }
