@@ -28,7 +28,9 @@ typedef uint8_t u8;
 
 uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t baseStationMac[6] = {0};
-bool baseMacKnown = false;
+volatile bool baseMacKnown = false;
+uint32_t lastDirectBaseBeaconMs = 0;
+const uint32_t DIRECT_BASE_TIMEOUT_MS = 2500;
 
 // ==========================================
 // PAKETSTRUKTUREN
@@ -41,6 +43,9 @@ struct __attribute__((packed)) SectorPacket {
   uint16_t seqNumber;
   uint8_t  ttl;
 };
+
+static SectorPacket lastUnicastPkt;
+volatile bool pendingBroadcastFallback = false;
 
 #define BEACON_SYNC_MAGIC 0x53594E43 // "SYNC"
 struct __attribute__((packed)) BeaconSyncPacket {
@@ -80,7 +85,7 @@ const uint32_t CHANNEL_HOP_INTERVAL_MS = 1200;
 
 uint32_t localSyncOffsetMs = 0;
 bool timeSynced = false;
-uint8_t currentStratum = 255;
+volatile uint8_t currentStratum = 255;
 uint32_t lastBeaconReceivedMs = 0;
 uint32_t lastStratumResetMs = 0;
 
@@ -259,7 +264,17 @@ void startMaintenanceNetwork() {
 // ESP-NOW CALLBACKS
 // ==========================================
 
-void onDataSent(u8 *mac_addr, u8 sendStatus) {}
+void onDataSent(u8 *mac_addr, u8 sendStatus) {
+  if (sendStatus != 0 && baseMacKnown && mac_addr != NULL) {
+    if (memcmp(mac_addr, baseStationMac, 6) == 0) {
+      baseMacKnown = false;
+      if (currentStratum <= 1) {
+        currentStratum = 255;
+      }
+      pendingBroadcastFallback = true;
+    }
+  }
+}
 
 void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
   // 1. BEACON
@@ -275,6 +290,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
       }
       
       if (sync.stratum == 0 && mac != NULL) {
+        lastDirectBaseBeaconMs = millis();
         if (!baseMacKnown || memcmp(baseStationMac, mac, 6) != 0) {
           if (baseMacKnown && esp_now_is_peer_exist(baseStationMac)) {
             esp_now_del_peer(baseStationMac);
@@ -285,7 +301,7 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
         }
       }
       
-      if (sync.stratum < currentStratum || !timeSynced || (millis() - lastStratumResetMs > 5000)) {
+      if (sync.stratum < currentStratum || !timeSynced || (!baseMacKnown && (millis() - lastStratumResetMs > 5000))) {
         localSyncOffsetMs = (sync.baseTimeMs + ESPNOW_HOP_LATENCY_MS) - millis();
         timeSynced = true;
         currentStratum = sync.stratum + 1;
@@ -417,11 +433,26 @@ void loop() {
     return;
   }
 
+  // --- 3b. DIRECT BASE LEASE TIMEOUT ---
+  if (baseMacKnown && (nowMs - lastDirectBaseBeaconMs > DIRECT_BASE_TIMEOUT_MS)) {
+    baseMacKnown = false;
+    if (currentStratum <= 1) {
+      currentStratum = 255;
+    }
+  }
+
+  // --- 3c. FAILOVER FALLBACK SENDEN ---
+  if (pendingBroadcastFallback) {
+    pendingBroadcastFallback = false;
+    esp_now_send(broadcastMac, (uint8_t *)&lastUnicastPkt, sizeof(lastUnicastPkt));
+  }
+
   // --- 4. KANAL-HOPPING ---
   if (nowMs - lastBeaconReceivedMs > BEACON_TIMEOUT_MS) {
     channelLocked = false;
     timeSynced = false;
     currentStratum = 255;
+    baseMacKnown = false;
     if (nowMs - lastChannelHopMs >= CHANNEL_HOP_INTERVAL_MS) {
       lastChannelHopMs = nowMs;
       uint8_t nextCh = (currentChannel % 13) + 1;
@@ -505,6 +536,8 @@ void loop() {
         isAlreadyRelayed(eventId); 
 
         if (baseMacKnown) {
+          lastUnicastPkt = pkt;
+          pendingBroadcastFallback = false;
           esp_now_send(baseStationMac, (uint8_t *)&pkt, sizeof(pkt));
         } else {
           esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt));
