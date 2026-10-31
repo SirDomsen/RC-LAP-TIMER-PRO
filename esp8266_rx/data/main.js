@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.4.13'; 
+window.UI_VERSION = '4.5.0'; 
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -21,6 +21,9 @@ function formatLapTime(ms, fallback = '---') {
 }
 window.formatLapTime = formatLapTime; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
+let ghostTtsDeltaEnabled = JSON.parse(localStorage.getItem('ghostTtsDeltaEnabled') ?? 'true');
+let ghostAudioBeepsEnabled = JSON.parse(localStorage.getItem('ghostAudioBeepsEnabled') ?? 'true');
+let currentGhostTarget = { type: 0, lap: 0, s1: 0, s2: 0, s3: 0, s4: 0, szMask: 0, driver: "", car: "" };
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 
@@ -261,7 +264,7 @@ function updateSortIcons() {
 
 function sortLapData(data) {
   let defaultSorted = [...data];
-  if (currentMode === 1 || currentMode === 4) {
+  if (currentMode === 1 || currentMode === 4 || currentMode === 5) {
     defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
   } else {
     defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -400,6 +403,12 @@ function openDriverConfigModal() {
 
   let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
   if (muteCdownCb) muteCdownCb.checked = muteCountdownTts;
+
+  let gAudioCb = document.getElementById('driver_cfg_ghost_audio');
+  if (gAudioCb) gAudioCb.checked = ghostAudioBeepsEnabled;
+
+  let gTtsCb = document.getElementById('driver_cfg_ghost_tts');
+  if (gTtsCb) gTtsCb.checked = ghostTtsDeltaEnabled;
 }
 
 function closeDriverConfigModal() {
@@ -426,7 +435,166 @@ function saveDriverAudioConfig() {
     localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
   }
 
-  fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
+  let gAudioCb = document.getElementById('driver_cfg_ghost_audio');
+  if (gAudioCb) {
+    ghostAudioBeepsEnabled = gAudioCb.checked;
+    localStorage.setItem('ghostAudioBeepsEnabled', JSON.stringify(ghostAudioBeepsEnabled));
+  }
+
+  let gTtsCb = document.getElementById('driver_cfg_ghost_tts');
+  if (gTtsCb) {
+    ghostTtsDeltaEnabled = gTtsCb.checked;
+    localStorage.setItem('ghostTtsDeltaEnabled', JSON.stringify(ghostTtsDeltaEnabled));
+  }
+
+  let gAudioVal = (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) ? "1" : "0";
+  fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0") + '&ghostAudio=' + gAudioVal, { method: 'POST' }).catch(() => {});
+}
+
+// --- GEISTERJAGD (GHOST HUD & LIVE EVENTS) ---
+function onGhostTargetLiveEvent(msg) {
+  if (!msg) return;
+  currentGhostTarget = {
+    type: msg.targetType || 0,
+    lap: msg.lap || 0,
+    s1: msg.s1 || 0,
+    s2: msg.s2 || 0,
+    s3: msg.s3 || 0,
+    s4: msg.s4 || 0,
+    szMask: msg.szMask || 0,
+    driver: msg.driver || "Geist",
+    car: msg.car || ""
+  };
+  renderGhostHud();
+}
+
+function onGhostBeatenLiveEvent(msg) {
+  if (!msg) return;
+  currentGhostTarget.lap = msg.lapTime;
+  currentGhostTarget.s1 = msg.s1 || 0;
+  currentGhostTarget.s2 = msg.s2 || 0;
+  currentGhostTarget.s3 = msg.s3 || 0;
+  currentGhostTarget.s4 = msg.s4 || 0;
+  currentGhostTarget.szMask = msg.szMask || 0;
+  currentGhostTarget.driver = msg.driver || "Neuer Geist";
+
+  let banner = document.getElementById('ghostBeatenBanner');
+  let bannerText = document.getElementById('ghostBeatenBannerText');
+  if (banner && bannerText) {
+    bannerText.innerText = `${formatLapTime(msg.lapTime)} von ${msg.driver}`;
+    banner.style.display = 'block';
+    setTimeout(() => {
+      if (banner) banner.style.display = 'none';
+    }, 8000);
+  }
+
+  let pill = document.getElementById('ghostLiveDeltaPill');
+  if (pill) {
+    pill.style.display = 'inline-block';
+    pill.innerText = (msg.delta <= 0 ? '' : '+') + (msg.delta / 1000).toFixed(2) + 's';
+    pill.className = 'ghost-delta-pill ghost-delta-minus';
+  }
+
+  if (typeof speak === 'function') {
+    speak("Geist geschlagen! Neue Bestzeit!", true);
+  }
+
+  renderGhostHud();
+}
+
+function updateGhostHudSector(msg) {
+  if (!msg) return;
+  let sec = msg.sector;
+  let cell = document.getElementById(`ghostHunterCell${sec}`);
+  let valEl = document.getElementById(`ghostHunterSz${sec}`);
+  let deltaEl = document.getElementById(`ghostDeltaSz${sec}`);
+
+  if (valEl && msg.time > 0) {
+    valEl.innerText = formatLapTime(msg.time);
+  }
+
+  if (deltaEl && msg.ghostDelta !== undefined) {
+    let dSec = (msg.ghostDelta / 1000).toFixed(2);
+    let isAhead = (msg.ghostDelta <= 0);
+    deltaEl.innerText = (isAhead ? '' : '+') + dSec + 's';
+    deltaEl.style.color = isAhead ? 'var(--neon-green)' : 'var(--neon-orange)';
+    
+    if (cell) {
+      let flashClass = isAhead ? 'sector-flash-green' : 'sector-flash-yellow';
+      cell.className = 'ghost-sector-cell';
+      void cell.offsetWidth;
+      cell.className = `ghost-sector-cell ${flashClass}`;
+    }
+
+    let pill = document.getElementById('ghostLiveDeltaPill');
+    if (pill) {
+      pill.style.display = 'inline-block';
+      pill.innerText = (isAhead ? '' : '+') + dSec + 's';
+      pill.className = 'ghost-delta-pill ' + (isAhead ? 'ghost-delta-minus' : 'ghost-delta-plus');
+    }
+  }
+}
+
+function renderGhostHud() {
+  let hud = document.getElementById('ghostHudContainer');
+  if (!hud) return;
+
+  if (currentMode !== 5) {
+    hud.style.display = 'none';
+    return;
+  }
+
+  hud.style.display = 'block';
+
+  // 1. Geist-Karte
+  let gName = document.getElementById('ghostTargetName');
+  let gTime = document.getElementById('ghostTargetTime');
+  if (gName) {
+    let typeLabels = ["Streckenrekord", "Tagesbestzeit", "Persönliche Bestzeit", "Zielzeit"];
+    let prefix = typeLabels[currentGhostTarget.type] || "Geist";
+    gName.innerText = currentGhostTarget.driver ? `${prefix} (${currentGhostTarget.driver})` : prefix;
+  }
+  if (gTime) {
+    gTime.innerText = currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : "--:--";
+  }
+
+  let s1El = document.getElementById('ghostTargetSz1');
+  let s2El = document.getElementById('ghostTargetSz2');
+  let s3El = document.getElementById('ghostTargetSz3');
+  let s4El = document.getElementById('ghostTargetSz4');
+  if (s1El) s1El.innerText = `SZ1: ${currentGhostTarget.s1 > 0 ? formatLapTime(currentGhostTarget.s1) : '---'}`;
+  if (s2El) s2El.innerText = `SZ2: ${currentGhostTarget.s2 > 0 ? formatLapTime(currentGhostTarget.s2) : '---'}`;
+  if (s3El) s3El.innerText = `SZ3: ${currentGhostTarget.s3 > 0 ? formatLapTime(currentGhostTarget.s3) : '---'}`;
+  if (s4El) s4El.innerText = `Ziel: ${currentGhostTarget.s4 > 0 ? formatLapTime(currentGhostTarget.s4) : (currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : '---')}`;
+
+  // 2. Jäger-Karte
+  let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+  let hName = document.getElementById('ghostHunterName');
+  let hLapNum = document.getElementById('ghostHunterLapNum');
+  let hLastTime = document.getElementById('ghostHunterLastTime');
+
+  if (hName) {
+    let dName = (row && row.driver) || (typeof carNamesMap !== 'undefined' && carNamesMap[activeCarId]?.driver) || (`Fahrer ${activeCarId}`);
+    let cName = (row && row.car) || (typeof carNamesMap !== 'undefined' && carNamesMap[activeCarId]?.car) || "";
+    hName.innerText = cName ? `${dName} (${cName})` : dName;
+  }
+  if (hLapNum) {
+    hLapNum.innerText = `Runde ${row ? row.completedLaps : 0}`;
+  }
+  if (hLastTime) {
+    if (row && row.lastLap > 0) {
+      hLastTime.innerText = formatLapTime(row.lastLap);
+      if (row.bestLap > 0 && row.lastLap <= row.bestLap) {
+        hLastTime.style.color = 'var(--neon-green)';
+      } else {
+        hLastTime.style.color = 'var(--neon-cyan)';
+      }
+    } else {
+      hLastTime.innerText = "--:--";
+      hLastTime.style.color = 'var(--neon-cyan)';
+    }
+  }
 }
 
 // Accolade Arcade Audio Jukebox: Steuerung des Hardware-Speakers
@@ -547,7 +715,10 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   }
 
   let pos = rowData._defaultPos || "-";
-  if (dPos) dPos.innerText = `P${pos}`;
+  if (dPos) dPos.innerText = (currentMode === 5) ? "GHOST" : `P${pos}`;
+
+  let pbLabel = dPb && dPb.parentElement ? dPb.parentElement.querySelector('.dimmer-label') : null;
+  if (pbLabel) pbLabel.innerText = (currentMode === 5) ? "GEIST (ZIELZEIT)" : "Persönliche Bestzeit";
 
   let carState = rowData.state || statusCarsMap[carId] || null;
   if (awaitingBaseCrossMap[carId]) carState = 'outlap';
@@ -562,7 +733,13 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     }
   }
 
-  if (dPb) dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
+  if (dPb) {
+    if (currentMode === 5 && currentGhostTarget && currentGhostTarget.lap > 0) {
+      dPb.innerText = formatLapTime(currentGhostTarget.lap, '--:--');
+    } else {
+      dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
+    }
+  }
 
   if (dLast) {
     if (rowData.lastLapIsOutLap) {
@@ -581,6 +758,16 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   if (dDelta) {
     if (rowData.lastLapIsOutLap) {
       dDelta.innerText = '';
+    } else if (currentMode === 5 && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
+      let gDiff = rowData.lastLap - currentGhostTarget.lap;
+      let gSec = (Math.abs(gDiff) / 1000).toFixed(2).replace('.', ',');
+      if (gDiff <= 0) {
+        dDelta.innerText = `-${gSec}s (GEIST GESCHLAGEN!)`;
+        dDelta.style.color = 'var(--neon-green)';
+      } else {
+        dDelta.innerText = `+${gSec}s (HINTER GEIST)`;
+        dDelta.style.color = 'var(--neon-red)';
+      }
     } else {
       let deltaInfo = lastLapDeltaMap[carId];
     if (deltaInfo && deltaInfo.diffMs !== null && rowData.lastLap > 0) {
@@ -1014,6 +1201,46 @@ async function loadTracks() {
         activeTrackId = data.active || data.tracks[0].id;
         let found = allTracksList.find(t => t.id === activeTrackId) || allTracksList[0];
         activeTrackName = found.name;
+        if (found.allTimeRecords && found.allTimeRecords.length > 0) {
+          let topRec = found.allTimeRecords[0];
+          window.allTimeBestLap = topRec.lap;
+          window.allTimeBestDriver = topRec.driver;
+          window.allTimeBestCar = topRec.car;
+          window.allTimeBestSzMask = topRec.szMask || 0;
+          window.allTimeBestS1 = topRec.s1 || 0;
+          window.allTimeBestS2 = topRec.s2 || 0;
+          window.allTimeBestS3 = topRec.s3 || 0;
+          window.allTimeBestS4 = topRec.s4 || 0;
+        } else {
+          window.allTimeBestLap = found.recordLap || 0;
+          window.allTimeBestDriver = found.recordDriver || "";
+          window.allTimeBestCar = found.recordCar || "";
+          window.allTimeBestSzMask = 0;
+          window.allTimeBestS1 = 0;
+          window.allTimeBestS2 = 0;
+          window.allTimeBestS3 = 0;
+          window.allTimeBestS4 = 0;
+        }
+        if (found.dailyRecords && found.dailyRecords.length > 0) {
+          let topDaily = found.dailyRecords[0];
+          window.dailyBestLap = topDaily.lap;
+          window.dailyBestDriver = topDaily.driver;
+          window.dailyBestCar = topDaily.car;
+          window.dailyBestSzMask = topDaily.szMask || 0;
+          window.dailyBestS1 = topDaily.s1 || 0;
+          window.dailyBestS2 = topDaily.s2 || 0;
+          window.dailyBestS3 = topDaily.s3 || 0;
+          window.dailyBestS4 = topDaily.s4 || 0;
+        } else {
+          window.dailyBestLap = found.bestLap || 0;
+          window.dailyBestDriver = found.bestDriver || "";
+          window.dailyBestCar = found.bestCar || "";
+          window.dailyBestSzMask = 0;
+          window.dailyBestS1 = 0;
+          window.dailyBestS2 = 0;
+          window.dailyBestS3 = 0;
+          window.dailyBestS4 = 0;
+        }
       }
       populateTrackSelectDropdowns();
       updateTrackRecordBar();
@@ -2019,6 +2246,33 @@ function updateTrackRecordBar(info) {
   let hasAllTime = (recLap && recLap > 0);
   let hasDailyBest = (dailyLap && dailyLap > 0);
 
+  if (info) {
+    if (info.recordLap !== undefined) window.allTimeBestLap = info.recordLap;
+    if (info.recordDriver !== undefined) window.allTimeBestDriver = info.recordDriver;
+    if (info.recordCar !== undefined) window.allTimeBestCar = info.recordCar;
+    if (info.recordSzMask !== undefined) window.allTimeBestSzMask = info.recordSzMask;
+    if (info.recordS1 !== undefined) window.allTimeBestS1 = info.recordS1;
+    if (info.recordS2 !== undefined) window.allTimeBestS2 = info.recordS2;
+    if (info.recordS3 !== undefined) window.allTimeBestS3 = info.recordS3;
+    if (info.recordS4 !== undefined) window.allTimeBestS4 = info.recordS4;
+
+    if (info.dailyBestLap !== undefined) window.dailyBestLap = info.dailyBestLap;
+    if (info.dailyBestDriver !== undefined) window.dailyBestDriver = info.dailyBestDriver;
+    if (info.dailyBestCar !== undefined) window.dailyBestCar = info.dailyBestCar;
+    if (info.dailySzMask !== undefined) window.dailyBestSzMask = info.dailySzMask;
+    if (info.dailyS1 !== undefined) window.dailyBestS1 = info.dailyS1;
+    if (info.dailyS2 !== undefined) window.dailyBestS2 = info.dailyS2;
+    if (info.dailyS3 !== undefined) window.dailyBestS3 = info.dailyS3;
+    if (info.dailyS4 !== undefined) window.dailyBestS4 = info.dailyS4;
+  }
+
+  if (typeof updateGhostHuntModalDisplay === 'function') {
+    let ghModal = document.getElementById('ghostHuntModal');
+    if (ghModal && ghModal.style.display === 'block') {
+      updateGhostHuntModalDisplay();
+    }
+  }
+
   let bar = document.getElementById('trackRecordBar');
   let allTimeDisp = document.getElementById('allTimeRecordDisplay');
   let dailyDisp = document.getElementById('trackRecordDisplay');
@@ -2262,7 +2516,7 @@ async function updateData(fullSync = false) {
       currentLeaderId = null;
     } else {
       let leaderSearch = [...data];
-      if (currentMode === 1 || currentMode === 4) {
+      if (currentMode === 1 || currentMode === 4 || currentMode === 5) {
         leaderSearch.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
       } else {
         leaderSearch.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -2412,6 +2666,7 @@ async function updateData(fullSync = false) {
       else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? `RENNEN (${leaderLaps}/${targetLaps} RND)` : "RENNEN (RUNDEN)";
       else if (currentMode === 3) dMode.innerText = "RENNEN (ZEIT)";
       else if (currentMode === 4) dMode.innerText = "DRAGRACE";
+      else if (currentMode === 5) dMode.innerText = "GEISTERJAGD 👻";
     }
 
     let dLeaderLap = document.getElementById('dimmerLeaderLapText');
@@ -2485,8 +2740,29 @@ async function updateData(fullSync = false) {
       if (currentMode === 2) modeText = "Rennen (Runden)";
       if (currentMode === 3) modeText = "Rennen (Zeit)";
       if (currentMode === 4) modeText = "Dragrace";
+      if (currentMode === 5) modeText = "Geisterjagd 👻";
       let modeElem = document.getElementById('modeDisplay');
       if (modeElem) modeElem.innerText = modeText;
+
+      if (currentMode === 5 && info.ghostLap !== undefined) {
+        currentGhostTarget = {
+          type: info.ghostType || 0,
+          lap: info.ghostLap || 0,
+          s1: info.ghostS1 || 0,
+          s2: info.ghostS2 || 0,
+          s3: info.ghostS3 || 0,
+          s4: info.ghostS4 || 0,
+          szMask: info.ghostSzMask || 0,
+          driver: info.ghostDriver || "Geist",
+          car: info.ghostCar || ""
+        };
+        renderGhostHud();
+      } else if (currentMode !== 5) {
+        let ghHud = document.getElementById('ghostHudContainer');
+        if (ghHud) ghHud.style.display = 'none';
+        let ghBanner = document.getElementById('ghostBeatenBanner');
+        if (ghBanner) ghBanner.style.display = 'none';
+      }
 
       let serverSecondsLeft = info.secondsLeft;
       if (qualiFinishedHold) {

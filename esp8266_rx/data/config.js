@@ -142,6 +142,10 @@ function openConfigModal() {
         localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
       }
       if (audio) audio.checked = sectorAudioEnabled;
+      let gAudio = document.getElementById('cfg_ghost_audio');
+      if (gAudio) gAudio.checked = (typeof ghostAudioBeepsEnabled !== 'undefined') ? ghostAudioBeepsEnabled : true;
+      let gTts = document.getElementById('cfg_ghost_tts');
+      if (gTts) gTts.checked = (typeof ghostTtsDeltaEnabled !== 'undefined') ? ghostTtsDeltaEnabled : true;
     }
 
     // 6. Names (falls serverseitig anders als im lokalen Cache)
@@ -241,7 +245,19 @@ async function saveConfig() {
     }
     let audio = sectorAudioEnabled ? "1" : "0";
 
-    await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}`, { method: 'POST' });
+    let gAudioCb = document.getElementById('cfg_ghost_audio');
+    if (gAudioCb) {
+      ghostAudioBeepsEnabled = gAudioCb.checked;
+      localStorage.setItem('ghostAudioBeepsEnabled', JSON.stringify(ghostAudioBeepsEnabled));
+    }
+    let gTtsCb = document.getElementById('cfg_ghost_tts');
+    if (gTtsCb) {
+      ghostTtsDeltaEnabled = gTtsCb.checked;
+      localStorage.setItem('ghostTtsDeltaEnabled', JSON.stringify(ghostTtsDeltaEnabled));
+    }
+    let gAudioVal = (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) ? "1" : "0";
+
+    await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}&ghostAudio=${gAudioVal}`, { method: 'POST' });
 
     for (let i = 1; i <= MAX_CARS; i++) {
       let driverElem = document.getElementById('cfg_driver_' + i);

@@ -9,7 +9,8 @@ enum RaceMode {
   MODE_QUALIFYING, // Qualifying (Zeitbasiert)
   MODE_RACE_LAPS,  // Rennen (Rundenbasiert)
   MODE_RACE_TIME,  // Rennen (Zeitbasiert)
-  MODE_DRAGRACE    // Dragrace-Modus (Modus 4)
+  MODE_DRAGRACE,   // Dragrace-Modus (Modus 4)
+  MODE_GHOST_HUNT  // Geisterjagd / Ghost Hunt (Modus 5)
 };
 
 extern RaceMode currentMode;
@@ -23,6 +24,7 @@ extern bool useSz3;
 extern bool checkpointMode;
 extern bool dragraceMode;
 extern bool sectorAudioFeedback;
+extern bool ghostAudioEnabled;
 
 // Status-Flags
 extern bool awaitingBaseCross[MAX_CARS + 1];
@@ -83,6 +85,11 @@ extern uint8_t allTimeBestCarId;
 extern String allTimeBestDriver;
 extern String allTimeBestCar;
 extern String allTimeBestDate;
+extern uint32_t allTimeBestS1Ms;
+extern uint32_t allTimeBestS2Ms;
+extern uint32_t allTimeBestS3Ms;
+extern uint32_t allTimeBestS4Ms;
+extern uint8_t allTimeBestSzMask;
 
 // TAGESBESTZEIT (P1 heute der aktiven Strecke)
 extern uint32_t dailyBestLapMs;
@@ -90,6 +97,27 @@ extern uint8_t dailyBestCarId;
 extern String dailyBestDriver;
 extern String dailyBestCar;
 extern String dailyBestDate;
+extern uint32_t dailyBestS1Ms;
+extern uint32_t dailyBestS2Ms;
+extern uint32_t dailyBestS3Ms;
+extern uint32_t dailyBestS4Ms;
+extern uint8_t dailyBestSzMask;
+
+// GEISTERJAGD (MODUS 5)
+extern uint8_t ghostTargetType;
+extern uint8_t ghostCarId;
+extern uint32_t ghostLapMs;
+extern uint32_t ghostS1Ms;
+extern uint32_t ghostS2Ms;
+extern uint32_t ghostS3Ms;
+extern uint32_t ghostS4Ms;
+extern uint32_t ghostSplit1Ms;
+extern uint32_t ghostSplit2Ms;
+extern uint32_t ghostSplit3Ms;
+extern uint8_t ghostSzMask;
+extern String ghostDriverName;
+extern String ghostCarName;
+void setGhostTarget(uint8_t targetType, uint32_t lapMs, uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint8_t szMask, const String& driver, const String& car, uint8_t carId = 0);
 
 void initLapLogic();
 void loadDailyBest();

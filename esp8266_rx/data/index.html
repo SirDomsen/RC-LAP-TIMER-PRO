@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.4.13">
+  <link rel="stylesheet" href="style.css?v=4.5.0">
 </head>
 <body class="role-driver">
 
@@ -251,6 +251,74 @@
         <div id="poleBannerText" class="pole-banner-val">---</div>
       </div>
 
+      <!-- GEISTERJAGD BANNER (BEATEN) -->
+      <div id="ghostBeatenBanner" class="ghost-beaten-banner" style="display:none;">
+        <div class="ghost-beaten-title">👑 GEIST GESCHLAGEN – NEUE BESTZEIT! 👑</div>
+        <div id="ghostBeatenBannerText" class="ghost-beaten-val">---</div>
+      </div>
+
+      <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
+      <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
+        <div class="ghost-card-wrapper">
+          <!-- GEIST KARTE -->
+          <div class="ghost-card ghost-target-card">
+            <div class="ghost-card-header">
+              <span class="ghost-icon">👻</span>
+              <div>
+                <div class="ghost-card-subtitle">DER GEIST (ZIEL)</div>
+                <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
+              </div>
+            </div>
+            <div class="ghost-time-box">
+              <span id="ghostTargetTime" class="ghost-time-val">--:--</span>
+            </div>
+            <div class="ghost-sectors-mini" id="ghostTargetSectors">
+              <span id="ghostTargetSz1">SZ1: ---</span>
+              <span id="ghostTargetSz2">SZ2: ---</span>
+              <span id="ghostTargetSz3">SZ3: ---</span>
+              <span id="ghostTargetSz4">Ziel: ---</span>
+            </div>
+          </div>
+
+          <!-- JÄGER KARTE -->
+          <div class="ghost-card ghost-hunter-card">
+            <div class="ghost-card-header">
+              <span class="ghost-icon">🏎️</span>
+              <div>
+                <div class="ghost-card-subtitle">DEINE RUNDE (<span id="ghostHunterLapNum">Runde 0</span>)</div>
+                <div id="ghostHunterName" class="ghost-card-title">Fahrer 1</div>
+              </div>
+            </div>
+            <div class="ghost-time-box">
+              <span id="ghostHunterLastTime" class="ghost-time-val">--:--</span>
+              <span id="ghostLiveDeltaPill" class="ghost-delta-pill" style="display:none;">±0.00</span>
+            </div>
+            <div class="ghost-sectors-grid" id="ghostHunterSectors">
+              <div class="ghost-sector-cell" id="ghostHunterCell1">
+                <span class="ghost-sec-lbl">SZ 1</span>
+                <span id="ghostHunterSz1" class="ghost-sec-val">---</span>
+                <span id="ghostDeltaSz1" class="ghost-sec-delta"></span>
+              </div>
+              <div class="ghost-sector-cell" id="ghostHunterCell2">
+                <span class="ghost-sec-lbl">SZ 2</span>
+                <span id="ghostHunterSz2" class="ghost-sec-val">---</span>
+                <span id="ghostDeltaSz2" class="ghost-sec-delta"></span>
+              </div>
+              <div class="ghost-sector-cell" id="ghostHunterCell3">
+                <span class="ghost-sec-lbl">SZ 3</span>
+                <span id="ghostHunterSz3" class="ghost-sec-val">---</span>
+                <span id="ghostDeltaSz3" class="ghost-sec-delta"></span>
+              </div>
+              <div class="ghost-sector-cell" id="ghostHunterCell4">
+                <span class="ghost-sec-lbl">Ziel</span>
+                <span id="ghostHunterSz4" class="ghost-sec-val">---</span>
+                <span id="ghostDeltaSz4" class="ghost-sec-delta"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="driver-quick-panel">
         <div style="text-align:center;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 FAHRZEUGE FÜR SPRACHANSAGE & DASHBOARD:</strong>
@@ -341,6 +409,16 @@
             <input type="checkbox" id="driver_cfg_sector_audio" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
             <strong>📢 Sektor-Bestzeiten Sprachansage</strong>
             <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Sagt neue absolute und persönliche Sektor-Bestzeiten an</div>
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 12px;">
+            <input type="checkbox" id="driver_cfg_ghost_audio" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
+            <strong>👻 Geisterjagd Sektor-Pieptöne (Buzzer & Beeps)</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Hoher Ton bei Vorsprung, tiefer Ton bei Rückstand</div>
+          </label>
+          <label style="cursor:pointer; display: block; margin-bottom: 12px;">
+            <input type="checkbox" id="driver_cfg_ghost_tts" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
+            <strong>🗣️ Geisterjagd Sektor-Sprachausgabe (Delta)</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Sagt Vorsprung/Rückstand auf Hundertstel an (z. B. „Minus eins-fünfundzwanzig“)</div>
           </label>
           <label style="cursor:pointer; display: block; margin-bottom: 12px;">
             <input type="checkbox" id="driver_cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
@@ -474,14 +552,14 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.4.13</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.0</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.4.13"></script>
-  <script src="websocket.js?v=4.4.13"></script>
-  <script src="main.js?v=4.4.13"></script>
+  <script src="tts.js?v=4.5.0"></script>
+  <script src="websocket.js?v=4.5.0"></script>
+  <script src="main.js?v=4.5.0"></script>
 </body>
 </html>

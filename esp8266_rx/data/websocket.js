@@ -226,7 +226,11 @@ let lastResetTimestamp = 0;
 let lastDragStartTs = {};
 
 function handleLiveEvent(msg) {
-  if (msg.type === 'sector') {
+  if (msg.type === 'ghost_target') {
+    if (typeof onGhostTargetLiveEvent === 'function') onGhostTargetLiveEvent(msg);
+  } else if (msg.type === 'ghost_beaten') {
+    if (typeof onGhostBeatenLiveEvent === 'function') onGhostBeatenLiveEvent(msg);
+  } else if (msg.type === 'sector') {
     onSectorLiveEvent(msg);
   } else if (msg.type === 'outlap') {
     onOutlapLiveEvent(msg);
@@ -411,11 +415,30 @@ function onSectorLiveEvent(msg) {
         let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
         dimVal.style.color = textCol;
         dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
+
+        let dimDelta = document.getElementById(`dimmer${colIdx}-sz${msg.sector}-delta`);
+        if (dimDelta) {
+          if (currentMode === 5 && msg.ghostDelta !== undefined) {
+            let isAhead = (msg.ghostDelta <= 0);
+            dimDelta.innerText = (isAhead ? '' : '+') + (msg.ghostDelta / 1000).toFixed(2) + 's';
+            dimDelta.className = 'dimmer-sz-delta ' + (isAhead ? 'delta-green' : 'delta-orange');
+          }
+        }
       }
     }
   }
 
-  if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
+  if (currentMode === 5 || msg.ghostDelta !== undefined) {
+    if (typeof updateGhostHudSector === 'function') {
+      updateGhostHudSector(msg);
+    }
+    if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled && isCarAllowedForTTS(carId) && msg.ghostDelta !== undefined) {
+      if (typeof formatGhostDeltaForTTS === 'function') {
+        let ttsText = formatGhostDeltaForTTS(msg.ghostDelta);
+        if (ttsText) speak(ttsText, false, carId);
+      }
+    }
+  } else if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
     let driver = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
     let text = "";
     if (msg.isOverallBest) {

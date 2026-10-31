@@ -83,6 +83,11 @@ uint8_t allTimeBestCarId = 0;
 String allTimeBestDriver = "";
 String allTimeBestCar = "";
 String allTimeBestDate = "";
+uint32_t allTimeBestS1Ms = 0;
+uint32_t allTimeBestS2Ms = 0;
+uint32_t allTimeBestS3Ms = 0;
+uint32_t allTimeBestS4Ms = 0;
+uint8_t allTimeBestSzMask = 0;
 
 // Tagesbestzeit-Variablen (P1 heute der aktiven Strecke)
 uint32_t dailyBestLapMs = 0;
@@ -90,6 +95,27 @@ uint8_t dailyBestCarId = 0;
 String dailyBestDriver = "";
 String dailyBestCar = "";
 String dailyBestDate = "";
+uint32_t dailyBestS1Ms = 0;
+uint32_t dailyBestS2Ms = 0;
+uint32_t dailyBestS3Ms = 0;
+uint32_t dailyBestS4Ms = 0;
+uint8_t dailyBestSzMask = 0;
+
+// Geisterjagd (Modus 5)
+uint8_t ghostTargetType = 0;
+uint8_t ghostCarId = 0;
+uint32_t ghostLapMs = 0;
+uint32_t ghostS1Ms = 0;
+uint32_t ghostS2Ms = 0;
+uint32_t ghostS3Ms = 0;
+uint32_t ghostS4Ms = 0;
+uint32_t ghostSplit1Ms = 0;
+uint32_t ghostSplit2Ms = 0;
+uint32_t ghostSplit3Ms = 0;
+uint8_t ghostSzMask = 0;
+String ghostDriverName = "";
+String ghostCarName = "";
+bool ghostAudioEnabled = true;
 
 const uint16_t CLEARANCE_TIMEOUT_MS = 1000; 
 
@@ -128,8 +154,60 @@ static void addValidLapToAverage(uint8_t carId, uint32_t lapTimeMs) {
   }
 }
 
+void setGhostTarget(uint8_t targetType, uint32_t lapMs, uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint8_t szMask, const String& driver, const String& car, uint8_t carId) {
+  ghostTargetType = targetType;
+  ghostCarId = carId;
+  ghostLapMs = lapMs;
+  ghostS1Ms = s1;
+  ghostS2Ms = s2;
+  ghostS3Ms = s3;
+  ghostS4Ms = s4;
+  ghostSzMask = szMask;
+  ghostDriverName = driver.length() > 0 ? driver : "Geist";
+  ghostCarName = car.length() > 0 ? car : "";
+
+  ghostSplit1Ms = (s1 > 0) ? s1 : 0;
+  ghostSplit2Ms = (s2 > 0) ? (ghostSplit1Ms + s2) : 0;
+  ghostSplit3Ms = (s3 > 0) ? (ghostSplit2Ms + s3) : 0;
+
+  char ghostBuf[256];
+  snprintf(ghostBuf, sizeof(ghostBuf),
+    "{\"type\":\"ghost_target\",\"targetType\":%d,\"lap\":%lu,\"s1\":%lu,\"s2\":%lu,\"s3\":%lu,\"s4\":%lu,\"szMask\":%d,\"driver\":\"%s\",\"car\":\"%s\"}",
+    ghostTargetType, (unsigned long)ghostLapMs, (unsigned long)ghostS1Ms, (unsigned long)ghostS2Ms, (unsigned long)ghostS3Ms, (unsigned long)ghostS4Ms,
+    ghostSzMask, ghostDriverName.c_str(), ghostCarName.c_str());
+  broadcastWebSocket(ghostBuf);
+}
+
 void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeMs, uint32_t splitTimeMs, bool isPB, bool isOverallBest, int32_t deltaMs) {
-  char buffer[192];
+  int32_t ghostDeltaMs = 0;
+  bool hasGhostDelta = false;
+
+  if (currentMode == MODE_GHOST_HUNT) {
+    uint32_t refGhostSplit = 0;
+    if (sectorNum == 1) refGhostSplit = ghostSplit1Ms;
+    else if (sectorNum == 2) refGhostSplit = ghostSplit2Ms;
+    else if (sectorNum == 3) refGhostSplit = ghostSplit3Ms;
+
+    if (refGhostSplit > 0) {
+      ghostDeltaMs = (int32_t)splitTimeMs - (int32_t)refGhostSplit;
+      hasGhostDelta = true;
+      if (ghostAudioEnabled) {
+        if (ghostDeltaMs <= 0) playBuzzerGhostAhead();
+        else playBuzzerGhostBehind();
+      }
+    }
+  }
+
+  char buffer[240];
+  if (hasGhostDelta) {
+    snprintf(buffer, sizeof(buffer), 
+      "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld,\"ghostDelta\":%ld}",
+      carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
+      isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs, (long)ghostDeltaMs);
+    broadcastWebSocket(buffer);
+    return;
+  }
+
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld}",
     carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
@@ -811,7 +889,12 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
       // --- STRECKENREKORD (TOP 5) & TAGESBESTZEIT (TOP 5) CHECK (Nur für rundenbasierte Events!) ---
       if (currentMode != MODE_DRAGRACE && currentLapTimeMs > 100) {
-        checkAndUpdateTrackRecords(carId, currentLapTimeMs, isNewTrackRecord, isNewDailyRecord);
+        uint32_t tempSz1 = (sectorPassedInLap[carId] & (1 << 1)) ? sz1TimeMs[carId] : 0;
+        uint32_t tempSz2 = ((sectorPassedInLap[carId] & (1 << 2)) || finalSectorNum == 2) ? sz2TimeMs[carId] : 0;
+        uint32_t tempSz3 = ((sectorPassedInLap[carId] & (1 << 3)) || finalSectorNum == 3) ? sz3TimeMs[carId] : 0;
+        uint32_t tempSz4 = (finalSectorNum == 4) ? sz4TimeMs[carId] : 0;
+        uint8_t curSzMask = (tempSz1 > 0 ? 1 : 0) | (tempSz2 > 0 ? 2 : 0) | (tempSz3 > 0 ? 4 : 0) | (tempSz4 > 0 ? 8 : 0);
+        checkAndUpdateTrackRecords(carId, currentLapTimeMs, isNewTrackRecord, isNewDailyRecord, tempSz1, tempSz2, tempSz3, tempSz4, curSzMask);
       }
     }
     
@@ -845,8 +928,39 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs, currentLapIsOutLap);
 
+    bool ghostBeaten = false;
+    int32_t ghostDelta = 0;
+    if (currentMode == MODE_GHOST_HUNT && !currentLapIsOutLap && currentLapTimeMs > 100) {
+      uint8_t curSzMask = (savedSz1 > 0 ? 1 : 0) | (savedSz2 > 0 ? 2 : 0) | (savedSz3 > 0 ? 4 : 0) | (savedSz4 > 0 ? 8 : 0);
+      if (ghostLapMs == 0) {
+        setGhostTarget(ghostTargetType, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, curSzMask, driverNames[carId], carNames[carId], carId);
+        ghostBeaten = true;
+      } else if (currentLapTimeMs < ghostLapMs) {
+        ghostDelta = (int32_t)currentLapTimeMs - (int32_t)ghostLapMs;
+        setGhostTarget(ghostTargetType, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, curSzMask, driverNames[carId], carNames[carId], carId);
+        ghostBeaten = true;
+      } else {
+        ghostDelta = (int32_t)currentLapTimeMs - (int32_t)ghostLapMs;
+      }
+    }
     broadcastLapEvent(carId, completedLap, currentLapTimeMs, pos, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
-    if (isNewTrackRecord || isLapOverall) {
+    if (currentMode == MODE_GHOST_HUNT) {
+      if (ghostBeaten) {
+        playBuzzerGhostVictory();
+        char gBeatenBuf[240];
+        uint8_t curSzMask = (savedSz1 > 0 ? 1 : 0) | (savedSz2 > 0 ? 2 : 0) | (savedSz3 > 0 ? 4 : 0) | (savedSz4 > 0 ? 8 : 0);
+        snprintf(gBeatenBuf, sizeof(gBeatenBuf),
+          "{\"type\":\"ghost_beaten\",\"carId\":%d,\"driver\":\"%s\",\"lapTime\":%lu,\"ghostLap\":%lu,\"delta\":%ld,\"s1\":%lu,\"s2\":%lu,\"s3\":%lu,\"s4\":%lu,\"szMask\":%d}",
+          carId, driverNames[carId].c_str(), (unsigned long)currentLapTimeMs, (unsigned long)ghostLapMs, (long)ghostDelta,
+          (unsigned long)savedSz1, (unsigned long)savedSz2, (unsigned long)savedSz3, (unsigned long)savedSz4, curSzMask);
+        broadcastWebSocket(gBeatenBuf);
+      } else if (ghostAudioEnabled) {
+        if (ghostDelta <= 0) playBuzzerGhostAhead();
+        else playBuzzerGhostBehind();
+      } else {
+        playBuzzerLap();
+      }
+    } else if (isNewTrackRecord || isLapOverall) {
       playBuzzerRecord();
     } else {
       playBuzzerLap();

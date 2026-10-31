@@ -118,7 +118,7 @@ static const char* getModeDisplayName(uint8_t mode) {
 static String formatTimestampId(uint64_t tsSec) {
   time_t localT = (time_t)(tsSec + clientTzOffsetSec);
   struct tm *tm_info = gmtime(&localT);
-  char buf[24];
+  char buf[32];
   if (tm_info) {
     snprintf(buf, sizeof(buf), "%02d-%02d-%02d_%02d-%02d-%02d",
              (tm_info->tm_year + 1900) % 100,
@@ -139,7 +139,7 @@ String getCurrentLocalDateStr() {
   time_t localT = (time_t)(nowSec + clientTzOffsetSec);
   struct tm *tm_info = gmtime(&localT);
   if (!tm_info) return "";
-  char buf[16];
+  char buf[32];
   snprintf(buf, sizeof(buf), "%02d-%02d-%02d",
            (tm_info->tm_year + 1900) % 100,
            tm_info->tm_mon + 1,
@@ -157,6 +157,11 @@ static void clearRecordList(RecordEntry* list, uint8_t& count) {
     list[i].date = "";
     list[i].prevLapMs = 0;
     list[i].prevDate = "";
+    list[i].s1 = 0;
+    list[i].s2 = 0;
+    list[i].s3 = 0;
+    list[i].s4 = 0;
+    list[i].szMask = 0;
   }
 }
 
@@ -182,12 +187,22 @@ void syncTopRecordVars() {
     allTimeBestDriver = activeAllTimeRecords[0].driver;
     allTimeBestCar = activeAllTimeRecords[0].car;
     allTimeBestDate = activeAllTimeRecords[0].date;
+    allTimeBestS1Ms = activeAllTimeRecords[0].s1;
+    allTimeBestS2Ms = activeAllTimeRecords[0].s2;
+    allTimeBestS3Ms = activeAllTimeRecords[0].s3;
+    allTimeBestS4Ms = activeAllTimeRecords[0].s4;
+    allTimeBestSzMask = activeAllTimeRecords[0].szMask;
   } else {
     allTimeBestLapMs = 0;
     allTimeBestCarId = 0;
     allTimeBestDriver = "";
     allTimeBestCar = "";
     allTimeBestDate = "";
+    allTimeBestS1Ms = 0;
+    allTimeBestS2Ms = 0;
+    allTimeBestS3Ms = 0;
+    allTimeBestS4Ms = 0;
+    allTimeBestSzMask = 0;
   }
 
   if (activeDailyCount > 0 && activeDailyRecords[0].lapMs > 0) {
@@ -196,17 +211,27 @@ void syncTopRecordVars() {
     dailyBestDriver = activeDailyRecords[0].driver;
     dailyBestCar = activeDailyRecords[0].car;
     dailyBestDate = activeDailyRecords[0].date;
+    dailyBestS1Ms = activeDailyRecords[0].s1;
+    dailyBestS2Ms = activeDailyRecords[0].s2;
+    dailyBestS3Ms = activeDailyRecords[0].s3;
+    dailyBestS4Ms = activeDailyRecords[0].s4;
+    dailyBestSzMask = activeDailyRecords[0].szMask;
   } else {
     dailyBestLapMs = 0;
     dailyBestCarId = 0;
     dailyBestDriver = "";
     dailyBestCar = "";
+    dailyBestS1Ms = 0;
+    dailyBestS2Ms = 0;
+    dailyBestS3Ms = 0;
+    dailyBestS4Ms = 0;
+    dailyBestSzMask = 0;
     String today = getCurrentLocalDateStr();
     if (today.length() > 0) dailyBestDate = today;
   }
 }
 
-static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, uint8_t carId, const String& driver, const String& car, const String& date) {
+static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, uint8_t carId, const String& driver, const String& car, const String& date, uint32_t s1 = 0, uint32_t s2 = 0, uint32_t s3 = 0, uint32_t s4 = 0, uint8_t szMask = 0) {
   if (lapMs == 0) return false;
 
   // 1. Prüfen, ob Kombination (Fahrer + Fahrzeug) bereits in der Liste existiert
@@ -227,6 +252,11 @@ static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, 
       list[existingIdx].driver = driver;
       list[existingIdx].car = car;
       list[existingIdx].date = date;
+      list[existingIdx].s1 = s1;
+      list[existingIdx].s2 = s2;
+      list[existingIdx].s3 = s3;
+      list[existingIdx].s4 = s4;
+      list[existingIdx].szMask = szMask;
       sortRecordList(list, count);
       return true;
     }
@@ -242,6 +272,11 @@ static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, 
     list[count].date = date;
     list[count].prevLapMs = 0;
     list[count].prevDate = "";
+    list[count].s1 = s1;
+    list[count].s2 = s2;
+    list[count].s3 = s3;
+    list[count].s4 = s4;
+    list[count].szMask = szMask;
     count++;
     sortRecordList(list, count);
     return true;
@@ -253,6 +288,11 @@ static bool updateRecordList(RecordEntry* list, uint8_t& count, uint32_t lapMs, 
     list[MAX_TRACK_RECORDS - 1].date = date;
     list[MAX_TRACK_RECORDS - 1].prevLapMs = 0;
     list[MAX_TRACK_RECORDS - 1].prevDate = "";
+    list[MAX_TRACK_RECORDS - 1].s1 = s1;
+    list[MAX_TRACK_RECORDS - 1].s2 = s2;
+    list[MAX_TRACK_RECORDS - 1].s3 = s3;
+    list[MAX_TRACK_RECORDS - 1].s4 = s4;
+    list[MAX_TRACK_RECORDS - 1].szMask = szMask;
     sortRecordList(list, count);
     return true;
   }
@@ -275,6 +315,11 @@ static void loadRecordArrayFromJson(JsonObject trackObj, const char* key, Record
       list[count].date = item["date"] | "";
       list[count].prevLapMs = item["prevLap"] | 0;
       list[count].prevDate = item["prevDate"] | "";
+      list[count].s1 = item["s1"] | 0;
+      list[count].s2 = item["s2"] | 0;
+      list[count].s3 = item["s3"] | 0;
+      list[count].s4 = item["s4"] | 0;
+      list[count].szMask = item["szMask"] | 0;
       count++;
     }
     sortRecordList(list, count);
@@ -294,6 +339,13 @@ static void saveRecordArrayToJson(JsonObject trackObj, const char* key, const Re
     if (list[i].prevLapMs > 0) {
       item["prevLap"] = list[i].prevLapMs;
       item["prevDate"] = list[i].prevDate;
+    }
+    if (list[i].szMask > 0 || list[i].s1 > 0) {
+      item["s1"] = list[i].s1;
+      item["s2"] = list[i].s2;
+      item["s3"] = list[i].s3;
+      item["s4"] = list[i].s4;
+      item["szMask"] = list[i].szMask;
     }
   }
 }
@@ -384,7 +436,7 @@ void checkDailyBestDateRollover() {
   }
 }
 
-void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest) {
+void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest, uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint8_t szMask) {
   isNewAllTimeBest = false;
   isNewDailyBest = false;
   if (lapTimeMs == 0 || carId < 1 || carId > MAX_CARS) return;
@@ -402,8 +454,8 @@ void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAl
   bool wasNewP1AllTime = (activeAllTimeCount == 0 || lapTimeMs < activeAllTimeRecords[0].lapMs);
   bool wasNewP1Daily = (activeDailyCount == 0 || lapTimeMs < activeDailyRecords[0].lapMs);
 
-  bool changedAllTime = updateRecordList(activeAllTimeRecords, activeAllTimeCount, lapTimeMs, carId, dName, cName, today);
-  bool changedDaily = updateRecordList(activeDailyRecords, activeDailyCount, lapTimeMs, carId, dName, cName, today);
+  bool changedAllTime = updateRecordList(activeAllTimeRecords, activeAllTimeCount, lapTimeMs, carId, dName, cName, today, s1, s2, s3, s4, szMask);
+  bool changedDaily = updateRecordList(activeDailyRecords, activeDailyCount, lapTimeMs, carId, dName, cName, today, s1, s2, s3, s4, szMask);
 
   if (changedAllTime || changedDaily) {
     if (changedAllTime && wasNewP1AllTime) isNewAllTimeBest = true;
@@ -413,7 +465,7 @@ void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAl
 
     char buf[160];
     snprintf(buf, sizeof(buf), "{\"type\":\"track_record\",\"trackId\":\"%s\",\"recordLap\":%lu,\"bestLap\":%lu}",
-             activeTrackId.c_str(), allTimeBestLapMs, dailyBestLapMs);
+             activeTrackId.c_str(), (unsigned long)allTimeBestLapMs, (unsigned long)dailyBestLapMs);
     broadcastWebSocket(buf);
   }
 }
@@ -624,7 +676,7 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
 
   char buf[160];
   snprintf(buf, sizeof(buf), "{\"type\":\"track_record\",\"trackId\":\"%s\",\"recordLap\":%lu,\"bestLap\":%lu}",
-           activeTrackId.c_str(), allTimeBestLapMs, dailyBestLapMs);
+           activeTrackId.c_str(), (unsigned long)allTimeBestLapMs, (unsigned long)dailyBestLapMs);
   broadcastWebSocket(buf);
   return true;
 }
@@ -1578,7 +1630,7 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
   char newLapJson[160];
   int len = snprintf(newLapJson, sizeof(newLapJson),
                      "{\"c\":%u,\"l\":%u,\"t\":%lu,\"p\":%u,\"s\":%llu",
-                     carId, lapNum, lapTimeMs, position, timestampMs);
+                     carId, lapNum, (unsigned long)lapTimeMs, position, timestampMs);
   if (sz1 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s1\":%lu", (unsigned long)sz1);
   if (sz2 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s2\":%lu", (unsigned long)sz2);
   if (sz3 > 0) len += snprintf(newLapJson + len, sizeof(newLapJson) - len, ",\"s3\":%lu", (unsigned long)sz3);

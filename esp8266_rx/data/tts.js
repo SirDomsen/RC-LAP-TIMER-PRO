@@ -125,6 +125,30 @@ function formatTimeForTTS(ms) {
   }
 }
 
+function formatGhostDeltaForTTS(deltaMs) {
+  if (deltaMs === undefined || deltaMs === null || isNaN(deltaMs)) return "";
+  let isMinus = deltaMs <= 0;
+  let absMs = Math.abs(deltaMs);
+  let totalHundredths = Math.round(absMs / 10);
+  let hundredths = totalHundredths % 100;
+  let seconds = Math.floor(totalHundredths / 100);
+
+  let prefix = isMinus ? "Minus " : "Plus ";
+  let hStr = "";
+  if (hundredths < 10) {
+    hStr = (hundredths === 0) ? "null" : ("null " + hundredths);
+  } else {
+    hStr = String(hundredths);
+  }
+
+  if (seconds > 0) {
+    let secWord = (seconds === 1) ? "eins" : String(seconds);
+    return `${prefix}${secWord}-${hStr}`;
+  } else {
+    return `${prefix}${hStr}`;
+  }
+}
+
 // Beim Laden/Aktualisieren der Seite eventuelle Reste aus dem Browser-Sprachpuffer verwerfen
 if ('speechSynthesis' in window) {
   try {
