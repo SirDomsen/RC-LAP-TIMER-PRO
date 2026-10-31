@@ -152,6 +152,36 @@
       </div>
     </div>
 
+    <!-- FRONTEND & ASSET LIVE-DIAGNOSE -->
+    <div class="card" style="border: 1px solid var(--neon-cyan); box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-cyan);">🔍 Frontend &amp; Asset Live-Diagnose</h3>
+        <button class="btn btn-green" onclick="runFrontendAssetDiagnostics()" style="margin:0; font-weight:bold;">🚀 Alle Assets jetzt testen</button>
+      </div>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+        Prüft HTTP-Status, GZIP-Kompression, WebSocket-Handshake und parst JavaScript live im Browser auf Syntax- und Encoding-Fehler.
+      </div>
+      <div id="diagResults" style="display:none;">
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-muted);">
+                <th style="padding:6px;">Asset</th>
+                <th style="padding:6px;">Status</th>
+                <th style="padding:6px;">Encoding</th>
+                <th style="padding:6px;">Größe</th>
+                <th style="padding:6px;">Syntax- &amp; Header-Prüfung</th>
+              </tr>
+            </thead>
+            <tbody id="diagTableBody"></tbody>
+          </table>
+        </div>
+        <div id="diagWsBox" style="margin-top:12px; padding:10px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); font-family:monospace; font-size:12px;">
+          <strong>WebSocket (/ws):</strong> <span id="diagWsStatus">Nicht getestet</span>
+        </div>
+      </div>
+    </div>
+
     <!-- FUNKPAKETE LOG -->
     <div class="card">
       <h3 style="font-family: 'Orbitron'; margin-top:0; color: var(--neon-orange);">ESP-NOW Funkpakete (Lokale Historie)</h3>
@@ -454,6 +484,121 @@
         fetch('/api/debug/set?active=0', { method: 'POST' });
       }
     });
+
+    async function runFrontendAssetDiagnostics() {
+      let box = document.getElementById('diagResults');
+      let tbody = document.getElementById('diagTableBody');
+      let wsStatus = document.getElementById('diagWsStatus');
+      box.style.display = 'block';
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:var(--neon-cyan);">⏳ Starte Diagnose aller Web-Assets...</td></tr>';
+      wsStatus.innerHTML = '<span style="color:var(--neon-cyan);">⏳ Teste Verbindung...</span>';
+
+      const assets = [
+        { url: '/index.html?v=4.4.6', type: 'html' },
+        { url: '/admin.html?v=4.4.6', type: 'html' },
+        { url: '/style.css?v=4.4.6', type: 'css' },
+        { url: '/tts.js?v=4.4.6', type: 'js' },
+        { url: '/websocket.js?v=4.4.6', type: 'js' },
+        { url: '/modes.js?v=4.4.6', type: 'js' },
+        { url: '/stats.js?v=4.4.6', type: 'js' },
+        { url: '/config.js?v=4.4.6', type: 'js' },
+        { url: '/main.js?v=4.4.6', type: 'js' },
+        { url: '/api/version', type: 'api' }
+      ];
+
+      let rowsHtml = '';
+
+      for (let asset of assets) {
+        let statusBadge = '';
+        let encBadge = '';
+        let sizeBadge = '';
+        let checkResult = '';
+
+        try {
+          let t0 = performance.now();
+          let res = await fetch(asset.url, { cache: 'no-store' });
+          let ms = Math.round(performance.now() - t0);
+          let enc = res.headers.get('content-encoding') || 'none';
+          let cType = res.headers.get('content-type') || '--';
+
+          if (res.status === 200) {
+            statusBadge = `<span style="color:var(--neon-green); font-weight:bold;">200 OK (${ms}ms)</span>`;
+          } else if (res.status === 503) {
+            statusBadge = `<span style="color:var(--neon-orange); font-weight:bold;">503 BUSY GUARD (${ms}ms)</span>`;
+          } else {
+            statusBadge = `<span style="color:var(--neon-red); font-weight:bold;">${res.status} (${ms}ms)</span>`;
+          }
+
+          encBadge = (enc === 'gzip') ? `<span style="color:var(--neon-green);">gzip ⚡</span>` : `<span style="color:var(--text-muted);">${enc}</span>`;
+
+          let text = await res.text();
+          let kb = (text.length / 1024).toFixed(1);
+          sizeBadge = `${kb} KB (${text.length} B)`;
+
+          // Inhalt validieren
+          if (asset.type === 'js') {
+            // Erste Zeichen inspizieren
+            let snippet = text.substring(0, 60).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            try {
+              new Function(text);
+              checkResult = `<span style="color:var(--neon-green);">✅ Valides JS</span> <span style="color:var(--text-muted); font-size:10px;">[${snippet}...]</span>`;
+            } catch (syntaxErr) {
+              checkResult = `<span style="color:var(--neon-red); font-weight:bold;">❌ SYNTAX-FEHLER:</span> <span style="color:#ff6666;">${syntaxErr.message}</span><br><code style="color:var(--neon-orange); font-size:11px;">Start: ${snippet}</code>`;
+            }
+          } else if (asset.type === 'html') {
+            if (text.includes('Verbindungs-Warteschlange') || text.includes('503')) {
+              checkResult = `<span style="color:var(--neon-orange);">⚠️ 503 Busy Guard HTML empfangen!</span>`;
+            } else if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+              checkResult = `<span style="color:var(--neon-green);">✅ Valides HTML</span>`;
+            } else {
+              checkResult = `<span style="color:var(--neon-orange);">Unbekanntes Format</span>`;
+            }
+          } else {
+            checkResult = `<span style="color:var(--neon-green);">Geladen (${cType})</span>`;
+          }
+        } catch (fetchErr) {
+          statusBadge = `<span style="color:var(--neon-red); font-weight:bold;">FEHLER</span>`;
+          checkResult = `<span style="color:var(--neon-red);">${fetchErr.message}</span>`;
+        }
+
+        rowsHtml += `
+          <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+            <td style="padding:6px; font-family:monospace; color:var(--neon-cyan);">${asset.url}</td>
+            <td style="padding:6px;">${statusBadge}</td>
+            <td style="padding:6px;">${encBadge}</td>
+            <td style="padding:6px; color:var(--text-muted);">${sizeBadge}</td>
+            <td style="padding:6px;">${checkResult}</td>
+          </tr>
+        `;
+        tbody.innerHTML = rowsHtml;
+        await new Promise(r => setTimeout(r, 60));
+      }
+
+      // WebSocket Test
+      let wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let wsTestUrl = wsProto + '//' + location.host + '/ws';
+      let ws = new WebSocket(wsTestUrl);
+      let wsTimer = setTimeout(() => {
+        wsStatus.innerHTML = '<span style="color:var(--neon-red);">❌ TIMEOUT nach 4s (Kein Handshake)</span>';
+        try { ws.close(); } catch(e){}
+      }, 4000);
+
+      ws.onopen = () => {
+        clearTimeout(wsTimer);
+        wsStatus.innerHTML = '<span style="color:var(--neon-green);">✅ 100% OK (Handshake erfolgreich)</span>';
+        try { ws.send(JSON.stringify({ cmd: "hello", tab: "diag" })); } catch(e){}
+        setTimeout(() => { try { ws.close(); } catch(e){} }, 1000);
+      };
+      ws.onerror = (e) => {
+        clearTimeout(wsTimer);
+        wsStatus.innerHTML = `<span style="color:var(--neon-red);">❌ Fehler beim Verbinden</span>`;
+      };
+      ws.onclose = (ev) => {
+        if (!wsStatus.innerText.includes('OK')) {
+          wsStatus.innerHTML += ` <span style="color:var(--neon-orange);">(Code ${ev.code}: ${ev.reason || 'Closed'})</span>`;
+        }
+      };
+    }
 
     function goBackToMain() {
       location.href = '/admin.html';
