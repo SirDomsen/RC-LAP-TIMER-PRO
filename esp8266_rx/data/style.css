@@ -47,22 +47,29 @@ body {
 .hero-header {
   position: relative;
   width: 100%;
-  margin: 0 auto 12px auto;
+  margin: 0 auto 15px auto;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
   border: 1px solid var(--card-border);
-  background: #0b111a;
-  line-height: 0;
+  background: linear-gradient(135deg, rgba(22, 27, 34, 0.95), rgba(10, 12, 16, 0.95));
+  padding: 25px 15px;
 }
 
-.hero-banner-picture,
-.hero-banner-img {
-  width: 100%;
-  height: auto;
-  display: block;
-  aspect-ratio: 1024 / 434;
-  object-fit: cover;
+h1 {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 900;
+  margin: 0;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px var(--neon-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  word-break: break-word;
 }
 
 .role-badge-bar {
@@ -70,29 +77,24 @@ body {
   justify-content: center;
   align-items: center;
   gap: 10px;
-  margin: 0 auto 16px auto;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 
 .role-pill {
   font-family: var(--font-display);
   font-size: 11px;
-  padding: 5px 14px;
+  padding: 4px 10px;
   border-radius: 20px;
-  background: rgba(10, 14, 20, 0.85);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0, 229, 255, 0.15);
   border: 1px solid var(--neon-cyan);
   color: var(--neon-cyan);
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 .role-pill:hover {
   background: var(--neon-cyan);
   color: #000;
-  transform: translateY(-1px);
-}
 }
 
 body.role-driver .admin-only {
