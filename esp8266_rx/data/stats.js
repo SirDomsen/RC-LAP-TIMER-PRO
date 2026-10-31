@@ -2222,6 +2222,8 @@ async function rebuildSessionsIndexUI() {
 
     // 5b. Rekorde heilen (Option A): Streckenrekorde & Tagesbestzeiten aus den validierten Sessions neu aufbauen
     if (btn) btn.innerText = "⏳ Synchronisiere Rekorde...";
+    let tracksDoc = { active: "standard", tracks: [] };
+    let newTracksCount = 0;
     try {
       let todayStr = '';
       if (typeof getCurrentLocalDateStr === 'function') {
@@ -2231,7 +2233,6 @@ async function rebuildSessionsIndexUI() {
       let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
 
       // Aktuelle Streckenliste laden
-      let tracksDoc = { active: "standard", tracks: [] };
       let tRes = await fetch('/tracks.json');
       if (tRes.ok) {
         tracksDoc = await tRes.json();
@@ -2318,7 +2319,7 @@ async function rebuildSessionsIndexUI() {
       }
 
       // Neue Strecken aus den Session-Dateien automatisch zur tracks.json hinzufügen
-      let newTracksCount = 0;
+      newTracksCount = 0;
       Object.keys(trackHealedRecords).forEach(tId => {
         let existing = tracksDoc.tracks.find(t => t.id === tId);
         if (!existing) {
