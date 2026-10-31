@@ -36,6 +36,9 @@ function openConfigModal() {
   let lapTimeCb = document.getElementById('cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
 
+  let muteCdownCb = document.getElementById('cfg_mute_countdown_tts');
+  if (muteCdownCb) muteCdownCb.checked = !!muteCountdownTts;
+
   // Sofortige Darstellung aus dem Speicher (0ms Latenz)
   renderDriverAndTtsInputs();
 
@@ -187,6 +190,12 @@ async function saveConfig() {
     if (lapTimeCb) {
       announceLapTimesInRace = lapTimeCb.checked;
       localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
+    }
+
+    let muteCdownCb = document.getElementById('cfg_mute_countdown_tts');
+    if (muteCdownCb) {
+      muteCountdownTts = muteCdownCb.checked;
+      localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
     }
 
     let hS = document.getElementById('cfg_home_ssid')?.value || '';

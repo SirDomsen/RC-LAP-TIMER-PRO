@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.3.6 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.4.13 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 
@@ -76,11 +76,36 @@
   * `PendingLap lapQueue[30]`: Rundenzeiten werden im RAM gepuffert und asynchron weggeschrieben, um den Loop nicht zu blockieren.
   * **95%-Flash-Schutz (`storageFullLocked`):** Verhindert das Einfrieren des ESP8266 bei vollem Speicher.
 
-### 4.3 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
+### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h` / `Sound/`)
+* **Hardware:** 32Ω Mylar- oder PC-Lautsprecher an **D1 (GPIO5)**, getrieben über **BC337-Transistor** (1kΩ Basiswiderstand) an 5V/VIN.
+* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM` unter `esp8266_rx/Sound/`), dynamische Staccato-Artikulation für klassische MIDI- und `wav2c`-extrahierte Notenfolgen.
+* **Sound-Events & Soundtracks:**
+  * **Startampel:** Original Grand Prix Circuit (1988) Sequenz (2x Rot 260 Hz à 300 ms, 650 ms Pause ➔ Grün 1050 Hz à 450 ms), synchronisiert mit Renn-Countdown in `modes.js`.
+  * **Zieldurchfahrt:** Kurzer, trockener Bestätigungs-Impuls (1760 Hz, 35 ms) direkt bei Zieldurchfahrt in `lap_logic.cpp`.
+  * **Streckenrekord:** Aufsteigende 4-Ton Arcade-Fanfare bei neuem Streckenrekord / absoluter Bestzeit.
+  * **Accolade Arcade Jukebox (8 Original MS-DOS Chiptunes):**
+    * *Grand Prix Circuit (1988):* Title Theme (180 Noten, 32s) & Menu Theme (448 Noten, 54s).
+    * *Test Drive 1 (1987):* Intro / Title Theme & Menu Beat (authentischer Synth-Groove).
+    * *Test Drive 3: The Passion (1990):* The Passion Theme, Radio 1 (Synth-Rock), Radio 2 (Synth-Bass), Radio 3 (Melodic Groove).
+* **Steuerung & UI-Integration:**
+  * **Rennleiter Jukebox-Modal (`admin.html`):** Button `📼 Arcade Audio` öffnet dedizierten Player mit Soundtrack-Dropdown, Loop-Schalter, Play/Stop und Sound FX Tests.
+  * **Countdown-Stummschaltung:** Einstellbar im Fahrer-Setup (`index.html`) und direkt im Arcade-Modal des Rennleiters (`admin.html`) für 100% synchronen Startampel-Buzzer ohne Sprach-Latenz.
+  * **Web-API:** `/api/buzzer` (`cmd=play&track=<id>&loop=1|0`, `cmd=start|lap|record|title|menu|stop`, `enable=1|0`).
+* **Ruhestrom-Schutz:** Pin wird im Standby fest auf `LOW` gehalten, sodass der Transistor komplett sperrt und kein Strom fließt.
+
+### 4.4 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
 * **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`, hartes Limit auf 4 Clients).
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.
 * **Dynamischer Heap-Schutz:** Weist Verbindungen und `/api/laps`-Anfragen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der freie RAM unter 16 kB sinkt, die Fragmentierung 55 % übersteigt oder der freie Block < 3 kB ist.
+* **4-Säulen Client-Lifecycle:** Verhindert TCP-PCB-Erschöpfung auf dem ESP8266 im AP-Modus:
+  1. `tabId`-Zuordnung via `sessionStorage` (Reloads im selben Browser-Tab ersetzen alte Sockets gezielt).
+  2. TCP-Sendestau-Erkennung (`queueLen() > 0` für $\ge 8\,\text{s}$) für gesperrte Handys im Standby.
+  3. `ws.cleanupClients(3)` garantiert stets min. 2 freie lwIP-PCBs für HTTP-Assets.
+  4. Sauberes Teardown via `pagehide` / `beforeunload` ohne Reconnect-Stürme.
+* **Grand Prix Circuit Startampel & Standby-Re-Sync:**
+  * Visuelle Ampel-Heartbeat-Anzeige (Rot=Standby, Gelb=Sync, Grün=Live) auf Fahrer- und Admin-Seite sowie im OLED-Dimmer.
+  * Automatischer Reconnect mit 500 ms WLAN-Stabilisierungspuffer beim Entsperren des Smartphones ohne manuelles Neuladen.
 
 ---
 
@@ -109,6 +134,11 @@
   * LittleFS-Dateimanager (Ordner-Ansicht, ZIP-Download einzelner Ordner oder des gesamten Speichers) und Firmware-OTA-Upload.
 * **`debug.html`:**
   * Live-Monitoring von ESP-Loop-Zeiten, Heap, ESP-NOW Funkpaketen und Signalstärken.
+  * Integrierte **Frontend- & Asset-Live-Diagnose** (HTTP-Status, GZIP-Prüfung, Syntax-Check, WebSocket-Handshake).
+* **`banner.jpg` / `banner.webp` & `style.css`:**
+  * Original Synthwave/Arcade Hero-Banner (1024×434 px, 2,36:1 Breitwandformat) mit Zielflaggen-Muster und integriertem "RC LAP TIMER" Logo im `.hero-header`.
+  * Perfekt proportionierte, unverzerrte Skalierung (`aspect-ratio: 1024 / 434`) ohne HTML-Textüberlagerung.
+  * Schmale, zentrierte Rollen-Umschaltleiste (`.role-badge-bar`) direkt unter dem Banner vor den Funktions-Cards.
 
 ---
 

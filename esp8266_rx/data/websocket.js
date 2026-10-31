@@ -1,38 +1,208 @@
+let socket = null;
+let isPageUnloading = false;
+
+// Eindeutige, tab-spezifische ID im sessionStorage (bleibt bei Page-Reloads im selben Tab erhalten)
+let wsTabId = sessionStorage.getItem('lp_tab_id');
+if (!wsTabId) {
+  wsTabId = 't_' + Math.random().toString(36).substring(2, 8);
+  sessionStorage.setItem('lp_tab_id', wsTabId);
+}
+
+// --- GRAND PRIX CIRCUIT STARTAMPEL (WEBSITE STATUS HEARTBEAT) ---
+let lastHeartbeatPacketTs = 0;
+let lastPingSentTs = 0;
+let heartbeatWatchdogTimer = null;
+
+function setStartampelStatus(state, latencyMs = null, customText = null) {
+  const redLamps = document.querySelectorAll('.lamp-red');
+  const yellowLamps = document.querySelectorAll('.lamp-yellow');
+  const greenLamps = document.querySelectorAll('.lamp-green');
+  const textElem = document.getElementById('heartbeatStatusText');
+  const dimmerText = document.getElementById('dimmerStatusText');
+
+  redLamps.forEach(l => l.classList.toggle('active', state === 'red'));
+  yellowLamps.forEach(l => l.classList.toggle('active', state === 'yellow'));
+  greenLamps.forEach(l => l.classList.toggle('active', state === 'green'));
+
+  let label = customText;
+  if (!label) {
+    if (state === 'green') {
+      label = (latencyMs !== null && latencyMs > 0) ? `LIVE ${latencyMs}ms` : 'LIVE';
+    } else if (state === 'yellow') {
+      label = 'SYNC...';
+    } else {
+      label = 'STANDBY';
+    }
+  }
+
+  const cls = (state === 'green') ? 'status-green' : (state === 'yellow') ? 'status-yellow' : 'status-red';
+
+  if (textElem) {
+    textElem.className = 'startampel-text ' + cls;
+    textElem.innerText = label;
+  }
+  if (dimmerText) {
+    dimmerText.className = 'startampel-text ' + cls;
+    dimmerText.innerText = label;
+  }
+}
+
+function startHeartbeatWatchdog() {
+  if (heartbeatWatchdogTimer) return;
+  heartbeatWatchdogTimer = setInterval(() => {
+    if (isPageUnloading || document.visibilityState === 'hidden') return;
+    let now = Date.now();
+    if (lastHeartbeatPacketTs > 0 && (now - lastHeartbeatPacketTs > 4500)) {
+      setStartampelStatus('red', null, (!socket || socket.readyState !== WebSocket.OPEN) ? 'OFFLINE' : 'STALL');
+    } else if (socket && socket.readyState === WebSocket.OPEN) {
+      if (now - lastHeartbeatPacketTs >= 2500) {
+        lastPingSentTs = now;
+        try {
+          socket.send(JSON.stringify({ ping: lastPingSentTs }));
+        } catch (e) {}
+      }
+    }
+  }, 1500);
+}
+
 function initWebSocket() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  startHeartbeatWatchdog();
   let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   let wsUrl = wsProtocol + '//' + window.location.host + '/ws';
   try {
     socket = new WebSocket(wsUrl);
     socket.onopen = function() {
       console.log("[WebSocket] Verbunden mit Basis");
+      lastHeartbeatPacketTs = Date.now();
+      setStartampelStatus('green', null, 'LIVE');
       hideConnectionNotice();
+      try {
+        socket.send(JSON.stringify({ cmd: "hello", tab: wsTabId }));
+        lastPingSentTs = Date.now();
+        socket.send(JSON.stringify({ ping: lastPingSentTs }));
+      } catch (e) {}
+      // Nach Verbindungsaufbau oder Wakeup sofort aktuelle Telemetrie abrufen
+      if (typeof requestUpdateData === 'function') {
+        requestUpdateData(true, true);
+      }
+      if (typeof loadTracks === 'function') {
+        loadTracks();
+      }
     };
     socket.onmessage = function(event) {
+      lastHeartbeatPacketTs = Date.now();
       try {
         let msg = JSON.parse(event.data);
+        if (msg.ping) {
+          let latency = Math.max(0, Date.now() - Number(msg.ping));
+          setStartampelStatus('green', latency);
+        } else {
+          setStartampelStatus('green', null, 'LIVE');
+        }
         handleLiveEvent(msg);
       } catch (e) {
+        setStartampelStatus('green', null, 'LIVE');
         console.error("[WebSocket] Parse-Fehler:", e);
       }
     };
     socket.onclose = function(event) {
+      if (isPageUnloading) return;
+      setStartampelStatus('yellow', null, 'SYNC...');
       if (event.code === 1013) {
         console.log("[WebSocket] Server überlastet (1013), warte auf Freigabe...");
         showConnectionNotice("⏳ Boxengasse voll: Verbinde in wenigen Sekunden...");
         setTimeout(initWebSocket, 3500);
       } else {
-        console.log("[WebSocket] Getrennt, verbinde neu in 2s...");
-        setTimeout(initWebSocket, 3000);
+        console.log("[WebSocket] Getrennt, verbinde neu...");
+        setTimeout(initWebSocket, 2500);
       }
     };
     socket.onerror = function(err) {
+      setStartampelStatus('yellow', null, 'SYNC...');
       console.error("[WebSocket] Fehler:", err);
-      socket.close();
+      try { socket.close(); } catch (e) {}
     };
   } catch (e) {
+    setStartampelStatus('red', null, 'OFFLINE');
     console.error("[WebSocket] Setup-Fehler:", e);
   }
 }
+
+// Sauberes Teardown bei Reload & Verlassen der Seite (ohne Geister-Reconnects)
+function closeWebSocketOnUnload() {
+  isPageUnloading = true;
+  if (heartbeatWatchdogTimer) clearInterval(heartbeatWatchdogTimer);
+  if (socket) {
+    socket.onclose = null; // Reconnect-Timer beim Verlassen der Seite unterbinden
+    try {
+      socket.close(1000, "page_unload");
+    } catch (e) {}
+  }
+}
+window.addEventListener('pagehide', closeWebSocketOnUnload);
+window.addEventListener('beforeunload', closeWebSocketOnUnload);
+
+// Standby-Wakeup bei entsperrtem Handy (Automatischer Re-Sync)
+let wakeupDebounceTimer = null;
+
+function handleWakeupFromStandby() {
+  if (isPageUnloading) return;
+  if (document.visibilityState === 'visible') {
+    // Hängengebliebene Netzwerk-Sperren aus vorherigem Standby auflösen
+    if (typeof isUpdatingData !== 'undefined') isUpdatingData = false;
+    if (typeof isPolling !== 'undefined') isPolling = false;
+
+    if (wakeupDebounceTimer) clearTimeout(wakeupDebounceTimer);
+
+    let now = Date.now();
+    // Wenn das Handy aus dem Schlaf kommt: Sofort Rot (STANDBY) anzeigen, wenn älter als 3.5s
+    if (lastHeartbeatPacketTs > 0 && (now - lastHeartbeatPacketTs > 3500)) {
+      setStartampelStatus('red', null, 'STANDBY');
+    }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      showConnectionNotice("🔄 Synchronisiere mit Basisstation...");
+    }
+
+    // 150ms nach Entsperren: Startampel schaltet auf GELB (SYNC...), während WLAN assoziiert
+    setTimeout(() => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        setStartampelStatus('yellow', null, 'SYNC...');
+      }
+    }, 150);
+
+    // 500ms Puffer: Dem Smartphone-WLAN Zeit geben, die Verbindung zur Basis nach Standby zu stabilisieren
+    wakeupDebounceTimer = setTimeout(() => {
+      if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+        console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
+        setStartampelStatus('yellow', null, 'SYNC...');
+        initWebSocket();
+      } else if (socket.readyState === WebSocket.OPEN) {
+        try {
+          lastPingSentTs = Date.now();
+          socket.send(JSON.stringify({ ping: lastPingSentTs }));
+          if (typeof requestUpdateData === 'function') {
+            requestUpdateData(true, true);
+          }
+          hideConnectionNotice();
+        } catch (e) {
+          if (socket) {
+            socket.onclose = null;
+            try { socket.close(); } catch (err) {}
+          }
+          setStartampelStatus('yellow', null, 'SYNC...');
+          initWebSocket();
+        }
+      }
+    }, 500);
+  }
+}
+
+document.addEventListener('visibilitychange', handleWakeupFromStandby);
+window.addEventListener('focus', handleWakeupFromStandby);
 
 function showConnectionNotice(text) {
   let notice = document.getElementById('connectionNoticeBanner');
@@ -77,10 +247,18 @@ function handleLiveEvent(msg) {
     }
   } else if (msg.type === 'track_record') {
     if (typeof loadTracks === 'function') loadTracks();
+  } else if (msg.type === 'session_start') {
+    onSessionStartLiveEvent(msg);
+  } else if (msg.type === 'countdown') {
+    if (typeof handleCountdownEvent === 'function') handleCountdownEvent(msg);
+  } else if (msg.type === 'countdown_cancel') {
+    if (typeof cancelRaceCountdown === 'function') cancelRaceCountdown(false);
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {
       lastResetTimestamp = now;
+      isSessionFinished = false;
+      isSessionActive = false;
       if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
       if (typeof sectorFlashUntilMap !== 'undefined') sectorFlashUntilMap = {};
       if (typeof previousLaps !== 'undefined') previousLaps = {};
@@ -99,6 +277,32 @@ function handleLiveEvent(msg) {
       requestUpdateData(true, true);
     }
   }
+}
+
+function onSessionStartLiveEvent(msg) {
+  isSessionFinished = false;
+  isSessionActive = true;
+  if (msg.mode !== undefined) currentMode = msg.mode;
+  if (msg.laps !== undefined) targetLaps = msg.laps;
+  sessionBestLap = 0;
+  maxLapInRace = 0;
+  currentLeaderId = null;
+  qualiFinishedHold = false;
+  timeExpiredAnnounced = false;
+  announced60 = false;
+  announced30 = false;
+  announced10 = false;
+  announcedLaps5 = false;
+  announcedLaps3 = false;
+  announcedLaps1 = false;
+  if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
+  if (typeof previousLaps !== 'undefined') previousLaps = {};
+  if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
+  if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
+  if (typeof previousBestSzMap !== 'undefined') previousBestSzMap = {};
+  if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
+  if (typeof loadTracks === 'function') loadTracks();
+  requestUpdateData(true, true);
 }
 
 function onOutlapLiveEvent(msg) {
@@ -186,25 +390,28 @@ function onSectorLiveEvent(msg) {
     requestUpdateData();
   }
 
-  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
-  if (isMyCar) {
-    let dimBox = document.getElementById(`dimmer-box-${msg.sector}`);
-    let dimVal = document.getElementById(`dimmer-sz${msg.sector}-val`);
-    if (dimBox && dimVal) {
-      if (currentMode === 4) {
-        let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
-        let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
-        dimVal.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splitDisp}</span><span>${valDisp}</span></div>`;
-      } else {
-        dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
+  // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer ausgewaehlte Fahrzeuge (Fahrer 1 & 2)
+  if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
+    let colIdx = (selectedTTSCars[0] === carId) ? 1 : ((selectedTTSCars.length > 1 && selectedTTSCars[1] === carId) ? 2 : 0);
+    if (colIdx > 0) {
+      let dimBox = document.getElementById(`dimmer${colIdx}-box-${msg.sector}`);
+      let dimVal = document.getElementById(`dimmer${colIdx}-sz${msg.sector}-val`);
+      if (dimBox && dimVal) {
+        if (currentMode === 4) {
+          let splitDisp = msg.split > 0 ? (msg.split / 1000).toFixed(2) + 's' : '---';
+          let valDisp = msg.time > 0 ? (msg.time / 1000).toFixed(2) + 's' : '---';
+          dimVal.innerHTML = `<div class="drag-cell"><span class="drag-split" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spl: ${splitDisp}</span><span>${valDisp}</span></div>`;
+        } else {
+          dimVal.innerText = (msg.time / 1000).toFixed(2) + 's';
+        }
+        dimBox.className = 'dimmer-sector-box'; 
+        void dimBox.offsetWidth; 
+        dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
+        
+        let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
+        dimVal.style.color = textCol;
+        dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
       }
-      dimBox.className = 'dimmer-sector-box'; 
-      void dimBox.offsetWidth; 
-      dimBox.className = `dimmer-sector-box sector-flash-${colorType}`;
-      
-      let textCol = (colorType === 'purple') ? 'var(--neon-purple)' : ((colorType === 'green') ? 'var(--neon-green)' : 'var(--neon-orange)');
-      dimVal.style.color = textCol;
-      dimVal.style.textShadow = (colorType === 'purple') ? '0 0 8px rgba(181,50,255,0.7)' : 'none';
     }
   }
 
@@ -216,7 +423,7 @@ function onSectorLiveEvent(msg) {
     } else if (msg.isPB) {
       text = driver + ", Bestzeit Sektor " + msg.sector + "!";
     }
-    if (text) speak(text);
+    if (text) speak(text, false, carId);
   }
 }
 
@@ -242,21 +449,23 @@ function onLapLiveEvent(msg) {
     };
   }
 
-  // Live-Aktualisierung des Dashboards/OLED-Dimmers für das eigene Auto ohne auf HTTP zu warten
-  let isMyCar = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length === 1 && selectedTTSCars[0] === carId);
-  if (isMyCar) {
-    let dLast = document.getElementById('dimmerLast1Text');
-    let dPos = document.getElementById('dimmerPos1Text');
-    let dPb = document.getElementById('dimmerPb1Text');
-    let dStatus = document.getElementById('dimmerStatus1Badge');
-    if (dStatus) dStatus.style.display = isOutLapDone ? 'inline-block' : 'none';
-    if (dPos && position > 0) dPos.innerText = "P" + position;
-    if (dLast && msg.lapTime > 0) {
-      dLast.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
-      dLast.style.color = isAbsoluteBest ? 'var(--neon-purple)' : (isPersonalBest ? 'var(--neon-green)' : 'var(--text-main)');
-    }
-    if (dPb && isPersonalBest && msg.lapTime > 0) {
-      dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+  // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer das eigene Auto (Fahrer 1 & 2) ohne auf HTTP zu warten
+  if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
+    let colIdx = (selectedTTSCars[0] === carId) ? 1 : ((selectedTTSCars.length > 1 && selectedTTSCars[1] === carId) ? 2 : 0);
+    if (colIdx > 0) {
+      let dLast = document.getElementById(`dimmerLast${colIdx}Text`);
+      let dPos = document.getElementById(`dimmerPos${colIdx}Text`);
+      let dPb = document.getElementById(`dimmerPb${colIdx}Text`);
+      let dStatus = document.getElementById(`dimmerStatus${colIdx}Badge`);
+      if (dStatus) dStatus.style.display = isOutLapDone ? 'inline-block' : 'none';
+      if (dPos && position > 0) dPos.innerText = "P" + position;
+      if (dLast && msg.lapTime > 0) {
+        dLast.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+        dLast.style.color = isAbsoluteBest ? 'var(--neon-purple)' : (isPersonalBest ? 'var(--neon-green)' : 'var(--text-main)');
+      }
+      if (dPb && isPersonalBest && msg.lapTime > 0) {
+        dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+      }
     }
   }
 
@@ -303,7 +512,7 @@ function onLapLiveEvent(msg) {
   // 3. Rundenzeiten- & Outlap-Ansage (Echtzeit über WebSocket!)
   if (!raceFinishedByLeader && !isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
     if (isOutLapDone) {
-      speak(driverName + ", Outlap beendet!");
+      speak(driverName + ", Outlap beendet!", false, carId);
     } else if (msg.lapTime > 0) {
       let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.lapTime) : (msg.lapTime / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
@@ -326,7 +535,7 @@ function onLapLiveEvent(msg) {
         else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
         else lapAnnouncement = driverName + posText + timeSec;
       }
-      speak(lapAnnouncement);
+      speak(lapAnnouncement, false, carId);
     }
   }
 

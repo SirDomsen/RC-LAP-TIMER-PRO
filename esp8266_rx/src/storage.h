@@ -97,7 +97,7 @@ void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool 
 void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap = false);
 void processStorageQueue();
 
-void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNum);
+void deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
 void deleteDriverHistory(uint8_t carId);
 void deleteAllHistory();
 

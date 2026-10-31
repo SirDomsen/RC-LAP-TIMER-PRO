@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.3.9">
+  <link rel="stylesheet" href="style.css?v=4.4.13">
 </head>
 <body class="role-admin">
 
@@ -45,6 +45,26 @@
         <div class="dimmer-top-stat-item dimmer-best-item">
           <span class="dimmer-top-stat-label">🏎️ Schnellste Runde</span>
           <span id="dimmerSessionBestText" class="dimmer-top-stat-val best-val">--:--</span>
+        </div>
+        <div class="dimmer-top-stat-item">
+          <span class="dimmer-top-stat-label">Status</span>
+          <div class="startampel-container" style="gap:5px;">
+            <div class="startampel-housing" style="width:20px; height:30px; padding:1px 2px;">
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-red dimmer-ampel-red" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-red dimmer-ampel-red" style="width:5px; height:5px;"></span>
+              </div>
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-yellow dimmer-ampel-yellow" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-yellow dimmer-ampel-yellow" style="width:5px; height:5px;"></span>
+              </div>
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-green active dimmer-ampel-green" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-green active dimmer-ampel-green" style="width:5px; height:5px;"></span>
+              </div>
+            </div>
+            <span id="dimmerStatusText" class="startampel-text status-green" style="font-size:11px;">LIVE</span>
+          </div>
         </div>
       </div>
     </div>
@@ -108,6 +128,26 @@
             SZ2:<span id="sz2Status" style="color:var(--neon-red);">●</span> 
             SZ3:<span id="sz3Status" style="color:var(--neon-red);">●</span>
           </span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Website Status</span>
+          <div class="status-val startampel-container" id="statusAmpelContainer" title="Verbindung zur Basisstation">
+            <div class="startampel-housing">
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-red" id="ampelRed1"></span>
+                <span class="startampel-lamp lamp-red" id="ampelRed2"></span>
+              </div>
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-yellow" id="ampelYellow1"></span>
+                <span class="startampel-lamp lamp-yellow" id="ampelYellow2"></span>
+              </div>
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-green active" id="ampelGreen1"></span>
+                <span class="startampel-lamp lamp-green active" id="ampelGreen2"></span>
+              </div>
+            </div>
+            <span id="heartbeatStatusText" class="startampel-text status-green">LIVE</span>
+          </div>
         </div>
       </div>
 
@@ -200,6 +240,7 @@
         <button class="btn btn-danger admin-only" onclick="resetLaps()">Komplett-Reset</button>
         <button class="btn btn-purple" onclick="openStatsOverviewModal()">📊 Statistiken</button>
         <button class="btn admin-only" onclick="openConfigModal()">⚙️ Einstellungen</button>
+        <button class="btn btn-purple admin-only" onclick="openArcadeModal()" title="Accolade PC-Speaker Arcade Audio Jukebox">📼 Arcade Audio</button>
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
         <button class="btn btn-purple" onclick="activateOledDimmer()" title="Öffnet das Renn-Dashboard">🏎️ Dashboard</button>
@@ -264,7 +305,7 @@
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:8px;">
-        <button class="btn btn-purple" style="margin:0; font-size:11px;" onclick="closeTrackRecordsModal(); openStatsOverviewModal();">📊 Zur Gesamt-Statistik</button>
+        <button class="btn btn-purple" style="margin:0; font-size:11px;" onclick="closeTrackRecordsModal(); openStatsOverviewModal('records');">📊 Zur Rekord-Statistik</button>
         <button class="btn btn-warning" style="margin:0;" onclick="closeTrackRecordsModal()">Schließen</button>
       </div>
     </div>
@@ -297,6 +338,7 @@
       </div>
 
       <div class="tab-container">
+        <button class="tab-btn" id="tabRecordsBtn" onclick="switchStatsTab('records')">🏆 Rekorde</button>
         <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
         <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freies Training</button>
         <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifying</button>
@@ -305,6 +347,7 @@
         <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
       </div>
       
+      <div class="modal-body" id="statsTabRecords" style="display:none;"></div>
       <div class="modal-body" id="statsTabDrivers"></div>
       <div class="modal-body" id="statsTabTraining" style="display:none;"></div>
       <div class="modal-body" id="statsTabQuali" style="display:none;"></div>
@@ -364,9 +407,13 @@
           <label style="cursor:pointer; display: block; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15);">
             <input type="checkbox" id="cfg_sector_audio" style="transform: scale(1.2); margin-right: 8px;"> 📢 Sektor-Bestzeiten Sprachansage
           </label>
-          <label style="cursor:pointer; display: block;">
+          <label style="cursor:pointer; display: block; margin-bottom: 6px;">
             <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
             <strong>📢 Rundenzeiten im Rennen ansagen</strong> <span style="font-size: 11px; color: var(--text-muted);">(Platzierungen werden immer angesagt)</span>
+          </label>
+          <label style="cursor:pointer; display: block;">
+            <input type="checkbox" id="cfg_mute_countdown_tts" style="transform: scale(1.3); margin-right: 8px;">
+            <strong>🚦 Countdown-Sprachansage stummschalten</strong> <span style="font-size: 11px; color: var(--text-muted);">(Kein Sprach-Countdown 3-2-1, sondern nur der synchrone Startampel-Buzzer)</span>
           </label>
         </div>
 
@@ -558,19 +605,84 @@
     </div>
   </div>
 
+  <!-- MODAL: ACCOLADE ARCADE AUDIO JUKEBOX -->
+  <div id="arcadeModal" class="modal" style="z-index: 10006;">
+    <div class="modal-content" style="max-width: 500px; border: 1px solid var(--neon-cyan); box-shadow: 0 0 25px rgba(0, 229, 255, 0.25);">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">
+        <h3 style="margin:0; display:flex; align-items:center; gap:8px; font-family:var(--font-display); letter-spacing:1px; color:#fff;">
+          <span>📼</span> Arcade Audio Jukebox
+        </h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer; margin:0;" onclick="closeArcadeModal()">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding:0;">
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px; line-height:1.4;">
+          Original Accolade MS-DOS PC-Speaker Chiptunes (1987–1990) direkt über den Hardware-Buzzer des ESP8266 abspielen.
+        </div>
+
+        <!-- TRACK SELECTION & PLAYBACK CONTROLS -->
+        <div style="background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:12px; margin-bottom:14px;">
+          <label for="arcadeTrackSelect" style="font-size:12px; font-weight:bold; color:var(--neon-cyan); display:block; margin-bottom:6px;">Soundtrack auswählen:</label>
+          <select id="arcadeTrackSelect" style="width:100%; padding:8px; background:#121824; color:#fff; border:1px solid rgba(0,229,255,0.4); border-radius:6px; font-size:13px; margin-bottom:10px;">
+            <optgroup label="Grand Prix Circuit (1988)">
+              <option value="gpc_title" selected>🏎️ Title Theme (Chiptune)</option>
+              <option value="gpc_menu">🏁 Menu Theme (Upbeat Chiptune)</option>
+            </optgroup>
+            <optgroup label="Test Drive 1 (1987)">
+              <option value="td1_title">🚗 Intro / Title Theme</option>
+              <option value="td1_menu">⚡ Menu Beat (Original Groove)</option>
+            </optgroup>
+            <optgroup label="Test Drive 3: The Passion (1990)">
+              <option value="td3_theme">🔥 The Passion (Main Theme)</option>
+              <option value="td3_radio1">📻 Radio 1 (Synth-Rock)</option>
+              <option value="td3_radio2">📻 Radio 2 (Synth-Bass)</option>
+              <option value="td3_radio3">📻 Radio 3 (Melodic Groove)</option>
+            </optgroup>
+          </select>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; margin:0;">
+              <input type="checkbox" id="arcadeLoopCheckbox" checked style="transform:scale(1.2); cursor:pointer;">
+              <span>Endlosschleife (Loop)</span>
+            </label>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-success" style="padding:6px 14px; font-size:13px; margin:0;" onclick="playSelectedArcadeTrack()">▶ Abspielen</button>
+              <button class="btn btn-danger" style="padding:6px 14px; font-size:13px; margin:0;" onclick="stopArcadeTrack()">⏹ Stopp</button>
+            </div>
+          </div>
+          <div id="arcadeStatusText" style="font-size:11px; color:var(--text-muted); margin-top:8px;">Status: Bereit</div>
+        </div>
+
+        <!-- SOUND FX TEST -->
+        <div style="background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:12px;">
+          <div style="font-size:12px; font-weight:bold; color:var(--neon-gold); margin-bottom:8px;">Renn-Soundeffekte testen:</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-purple" style="font-size:12px; padding:6px 10px; margin:0;" onclick="playArcadeFx('start_lights')">🚦 Startampel</button>
+            <button class="btn btn-light" style="font-size:12px; padding:6px 10px; margin:0;" onclick="playArcadeFx('lap')">⏱️ Runden-Tick</button>
+            <button class="btn btn-warning" style="font-size:12px; padding:6px 10px; margin:0;" onclick="playArcadeFx('record')">🏆 Rekord-Fanfare</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; margin-top:12px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+        <button class="btn btn-warning" style="margin:0;" onclick="closeArcadeModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.3.7</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.4.13</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.3.7"></script>
-  <script src="websocket.js?v=4.3.7"></script>
-  <script src="modes.js?v=4.3.7"></script>
-  <script src="stats.js?v=4.3.7"></script>
-  <script src="config.js?v=4.3.7"></script>
-  <script src="main.js?v=4.3.7"></script>
+  <script src="tts.js?v=4.4.13"></script>
+  <script src="websocket.js?v=4.4.13"></script>
+  <script src="modes.js?v=4.4.13"></script>
+  <script src="stats.js?v=4.4.13"></script>
+  <script src="config.js?v=4.4.13"></script>
+  <script src="main.js?v=4.4.13"></script>
 </body>
 </html>

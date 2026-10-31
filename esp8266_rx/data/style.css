@@ -628,6 +628,112 @@ body.role-admin .driver-only {
   word-break: break-word;
 }
 
+/* --- GRAND PRIX CIRCUIT STARTAMPEL (WEBSITE STATUS HEARTBEAT) --- */
+.startampel-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.startampel-housing {
+  position: relative;
+  width: 26px;
+  height: 38px;
+  background: #0d0d0f;
+  border: 1px solid #2a2a30;
+  border-radius: 4px;
+  box-shadow: inset 0 0 4px #000, 0 2px 4px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 2px 3px;
+  box-sizing: border-box;
+}
+
+/* Nieten in den 4 Ecken (Grand Prix Circuit Style) */
+.startampel-housing::before,
+.startampel-housing::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #777;
+  border-radius: 0.5px;
+}
+.startampel-housing::before { top: 1px; left: 1px; box-shadow: 20px 0 0 #777; }
+.startampel-housing::after { bottom: 1px; left: 1px; box-shadow: 20px 0 0 #777; }
+
+.startampel-row {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  align-items: center;
+}
+
+.startampel-lamp {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  transition: all 0.15s ease-in-out;
+}
+
+/* Inaktive Linsen (Dunkel mit dezentem Glanzpunkt) */
+.startampel-lamp.lamp-red {
+  background: radial-gradient(circle at 35% 35%, #551a1a 0%, #200505 85%);
+  border: 1px solid #3a1010;
+}
+.startampel-lamp.lamp-yellow {
+  background: radial-gradient(circle at 35% 35%, #554411 0%, #221a05 85%);
+  border: 1px solid #3a3010;
+}
+.startampel-lamp.lamp-green {
+  background: radial-gradient(circle at 35% 35%, #114422 0%, #051a08 85%);
+  border: 1px solid #103a18;
+}
+
+/* Aktive Linsen (Glühend mit Reflex) */
+.startampel-lamp.lamp-red.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ff5555 45%, #ff0000 100%);
+  border: 1px solid #ff8888;
+  box-shadow: 0 0 6px var(--neon-red), inset 0 0 2px #fff;
+}
+.startampel-lamp.lamp-yellow.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ffcc00 45%, #ff9900 100%);
+  border: 1px solid #ffee88;
+  box-shadow: 0 0 6px var(--neon-orange), inset 0 0 2px #fff;
+  animation: ampel-yellow-blink 0.7s infinite alternate;
+}
+.startampel-lamp.lamp-green.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #00ff66 45%, #00cc44 100%);
+  border: 1px solid #88ffaa;
+  box-shadow: 0 0 6px var(--neon-green), inset 0 0 2px #fff;
+  animation: ampel-green-breathe 2s infinite ease-in-out;
+}
+
+@keyframes ampel-yellow-blink {
+  0% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+@keyframes ampel-green-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.1); filter: brightness(1.25); }
+}
+
+.startampel-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-family: var(--font-display);
+}
+.startampel-text.status-green { color: var(--neon-green); text-shadow: 0 0 6px rgba(0,255,136,0.4); }
+.startampel-text.status-yellow { color: var(--neon-orange); text-shadow: 0 0 6px rgba(255,153,0,0.4); }
+.startampel-text.status-red { color: var(--neon-red); text-shadow: 0 0 6px rgba(255,68,68,0.4); }
+
 .timer-display {
   color: var(--neon-cyan) !important;
   font-size: 24px !important;
@@ -916,14 +1022,54 @@ tr.my-selected-car-row {
   color: var(--text-main) !important;
 }
 
-.modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); overflow-y: auto; padding: 10px; }
-.modal-content { background: #161b22; margin: 5vh auto; padding: 20px; border-radius: 12px; width: 100%; max-width: 780px; max-height: 85vh; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--card-border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+.modal { 
+  display: none; 
+  position: fixed; 
+  z-index: 999; 
+  left: 0; 
+  top: 0; 
+  width: 100%; 
+  height: 100%; 
+  background: rgba(0,0,0,0.85); 
+  backdrop-filter: blur(5px); 
+  overflow-y: auto; 
+  padding: 10px; 
+  -webkit-overflow-scrolling: touch;
+}
+.modal-content { 
+  background: #161b22; 
+  margin: 2vh auto; 
+  padding: 18px; 
+  border-radius: 12px; 
+  width: 100%; 
+  max-width: 820px; 
+  max-height: 92vh; 
+  display: flex; 
+  flex-direction: column; 
+  text-align: left; 
+  border: 1px solid var(--card-border); 
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8); 
+}
+
+/* Speziell fuer Statistik- & Rekord-Modale: Mehr Breite und maximale vertikale Ausnutzung */
+#statsOverviewModal .modal-content,
+#statsModal .modal-content,
+#trackRecordsModal .modal-content {
+  max-width: 960px;
+  max-height: 94vh;
+}
 .modal-content.theme-purple { border-color: var(--neon-purple) !important; box-shadow: 0 0 35px rgba(181, 50, 255, 0.45) !important; }
 .modal-content.theme-danger { border-color: var(--neon-red) !important; box-shadow: 0 0 35px rgba(255, 51, 102, 0.45) !important; }
 .modal-content.theme-orange { border-color: var(--neon-orange) !important; box-shadow: 0 0 35px rgba(255, 153, 0, 0.45) !important; }
 .modal-content.theme-cyan   { border-color: var(--neon-cyan) !important; box-shadow: 0 0 35px rgba(0, 229, 255, 0.4) !important; }
 .modal-content.theme-green  { border-color: var(--neon-green) !important; box-shadow: 0 0 35px rgba(0, 255, 102, 0.4) !important; }
-.modal-body { overflow-y: auto; padding-right: 5px; flex-grow: 1; }
+.modal-body { 
+  overflow-y: auto; 
+  padding-right: 5px; 
+  flex-grow: 1; 
+  min-height: 120px;
+  -webkit-overflow-scrolling: touch;
+}
 .modal-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 5px; flex-wrap: wrap; }
 
 .tts-filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 8px; }
@@ -1207,6 +1353,13 @@ footer {
 .top5-entry-row:last-child {
   border-bottom: none;
 }
+.top5-entry-row.clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.top5-entry-row.clickable:hover {
+  background: rgba(0, 229, 255, 0.08) !important;
+}
 .top5-rank-badge {
   font-family: var(--font-display);
   font-weight: 900;
@@ -1214,6 +1367,10 @@ footer {
   min-width: 34px;
   display: inline-block;
 }
+.top5-rank-1 { color: var(--neon-gold); text-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+.top5-rank-2 { color: var(--neon-cyan); text-shadow: 0 0 6px rgba(0, 229, 255, 0.6); }
+.top5-rank-3 { color: var(--neon-purple); text-shadow: 0 0 6px rgba(181, 50, 255, 0.6); }
+.top5-rank-other { color: var(--text-muted); }
 .top5-del-btn {
   background: rgba(255, 51, 102, 0.15);
   border: 1px solid var(--neon-red);
@@ -1229,3 +1386,85 @@ footer {
   color: #fff;
   box-shadow: 0 0 8px var(--neon-red);
 }
+
+/* --- RESPONSIVES SMARTPHONE QUERFORMAT (LANDSCAPE) FUER MODALS & STATISTIKEN --- */
+@media (max-height: 600px) {
+  .modal {
+    padding: 4px;
+  }
+  .modal-content {
+    margin: 1vh auto;
+    padding: 10px 14px;
+    max-height: 98vh;
+    border-radius: 8px;
+  }
+  #statsOverviewModal .modal-content,
+  #statsModal .modal-content,
+  #trackRecordsModal .modal-content {
+    max-height: 98vh;
+    padding: 8px 12px;
+  }
+  
+  /* Header-Zeile kompakter */
+  .modal-content > div:first-child {
+    margin-bottom: 6px !important;
+    padding-bottom: 4px !important;
+  }
+  .modal-content h3 {
+    font-size: 14px !important;
+  }
+  
+  /* Filter- & Backup-Leiste einzeilig/kompakt halten */
+  .backup-bar {
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    gap: 6px;
+    font-size: 11px;
+  }
+  
+  /* Tabs im Querformat als horizontal wischbare Leiste statt 3 Zeilen Umbruch */
+  .tab-container {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    gap: 4px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .tab-btn {
+    white-space: nowrap;
+    padding: 4px 8px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  
+  /* Footer mit Schliessen-Button platzsparend */
+  .modal-content > div:last-child {
+    margin-top: 6px !important;
+    padding-top: 6px !important;
+  }
+  .modal-content > div:last-child .btn {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+  
+  /* Maximaler Platz fuer den eigentlichen Inhalt */
+  .modal-body {
+    flex-grow: 1;
+    min-height: 160px;
+    padding-right: 4px;
+  }
+  
+  .session-card {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .driver-select-card {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+}
+

@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "esp_now_base.h"
 
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <ESP8266mDNS.h>
@@ -11,10 +12,20 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-
 extern "C" {
   #include <espnow.h>
 }
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <ESPmDNS.h>
+#include <ArduinoOTA.h>
+#include <Update.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
+#include <esp_now.h>
+#endif
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -39,7 +50,7 @@ static uint32_t ghostWlanOffTimer = 0;
 
 static const char* cacheHeaderStr = "max-age=86400";
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 16000;
+const size_t HEAP_CRITICAL_MIN_BYTES = 12000;
 const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
 const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
 
@@ -53,7 +64,11 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
+#if defined(ESP8266)
   return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
+#elif defined(ESP32)
+  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES);
+#endif
 }
 
 static const char* getContentType(const String& path) {
@@ -85,10 +100,15 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
 
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
+#if defined(ESP8266)
       AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
+#elif defined(ESP32)
+      AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
+#endif
       res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);
+      return true;
     } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
       res->addHeader("Retry-After", "4");
@@ -126,6 +146,69 @@ void triggerWifiSwitch(uint8_t mode) {
   pendingWifiSwitch = true;
 }
 
+// --- WEBSOCKET CLIENT-LIFECYCLE & SESSION-VERWALTUNG ---
+struct WsTabSession {
+  uint32_t clientId;
+  char tabId[12];
+  uint32_t stuckQueueSince;
+};
+static const size_t MAX_WS_SESSIONS = 4;
+static WsTabSession wsSessions[MAX_WS_SESSIONS] = {};
+
+static void addWsClient(uint32_t clientId) {
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      wsSessions[i].stuckQueueSince = 0;
+      return;
+    }
+  }
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == 0) {
+      wsSessions[i].clientId = clientId;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      return;
+    }
+  }
+}
+
+static void registerWsTab(uint32_t clientId, const char* tabId) {
+  if (!tabId || tabId[0] == '\0') return;
+
+  // 1. Wenn derselbe Tab sich neu verbindet -> vorherigen Socket dieses Tabs schließen
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId != 0 && wsSessions[i].clientId != clientId && strncmp(wsSessions[i].tabId, tabId, sizeof(wsSessions[i].tabId)) == 0) {
+      uint32_t oldId = wsSessions[i].clientId;
+      wsSessions[i].clientId = 0;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      ws.close(oldId, 1000, "Tab reloaded");
+      break;
+    }
+  }
+
+  // 2. Tab-ID fuer diesen Client speichern
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      strncpy(wsSessions[i].tabId, tabId, sizeof(wsSessions[i].tabId) - 1);
+      wsSessions[i].tabId[sizeof(wsSessions[i].tabId) - 1] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      return;
+    }
+  }
+}
+
+static void unregisterWsClient(uint32_t clientId) {
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      wsSessions[i].clientId = 0;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      return;
+    }
+  }
+}
+
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     if (isHeapCriticalForFileTransfer()) {
@@ -133,14 +216,31 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
       return;
     }
     triggerGhostWlanEarlyShutdown();
+    client->keepAlivePeriod(30);
+    addWsClient(client->id());
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
-      if (strncmp((char*)data, "{\"ping\":", 8) == 0) {
-        client->text((char*)data);
+      char* str = (char*)data;
+      if (strncmp(str, "{\"cmd\":\"hello\"", 14) == 0) {
+        char* tabKey = strstr(str, "\"tab\":\"");
+        if (tabKey) {
+          tabKey += 7;
+          char* end = strchr(tabKey, '\"');
+          if (end) {
+            *end = '\0';
+            registerWsTab(client->id(), tabKey);
+          }
+        }
+      } else if (strncmp(str, "{\"cmd\":\"ping\"", 13) == 0) {
+        client->text(F("{\"cmd\":\"pong\"}"));
+      } else if (strncmp(str, "{\"ping\":", 8) == 0) {
+        client->text(str);
       }
     }
+  } else if (type == WS_EVT_DISCONNECT) {
+    unregisterWsClient(client->id());
   }
 }
 
@@ -155,16 +255,21 @@ static void blinkGreenLED(int count) {
 
 static void setupGhostWLAN() {
   currentActiveIP = WiFi.localIP();
+#if defined(ESP8266)
   WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+#elif defined(ESP32)
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+#endif
   
   String ipStr = currentActiveIP.toString();
   String connectedSsid = WiFi.SSID();
   
   int maxSsidLen = 31 - 4 - ipStr.length();
-  if (connectedSsid.length() > maxSsidLen) {
+  if (maxSsidLen > 0 && connectedSsid.length() > (size_t)maxSsidLen) {
     connectedSsid = connectedSsid.substring(0, maxSsidLen);
   }
   
@@ -181,10 +286,15 @@ static void setupFallbackAP() {
   ghostWlanActive = false;
   WiFi.disconnect(true);
   delay(50);
+#if defined(ESP8266)
   WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
   WiFi.mode(WIFI_AP);
   WiFi.setOutputPower(20.5);
   WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+#elif defined(ESP32)
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleep(false);
+#endif
   
   IPAddress local_IP(192, 168, 0, 8);
   if (learnedApIP.length() > 0) {
@@ -214,12 +324,19 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
+#if defined(ESP8266)
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
     WiFi.hostname(getDeviceHostname());
+#elif defined(ESP32)
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(getDeviceHostname().c_str());
+#endif
     
     WiFi.begin(s.c_str(), p.c_str());
     uint32_t startMs = millis();
@@ -243,12 +360,19 @@ static void connectNetworkCascade(uint8_t startMode) {
     digitalWrite(LED_READY, LOW);
     WiFi.disconnect(true);
     delay(50);
+#if defined(ESP8266)
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
     WiFi.mode(WIFI_STA);
     WiFi.setOutputPower(20.5);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     WiFi.config(0u, 0u, 0u);
     WiFi.hostname(getDeviceHostname());
+#elif defined(ESP32)
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(getDeviceHostname().c_str());
+#endif
     
     WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
@@ -268,6 +392,7 @@ static void connectNetworkCascade(uint8_t startMode) {
   setupFallbackAP();
 }
 
+#if defined(ESP8266)
 static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
   Dir dir = LittleFS.openDir(basePath);
   while (dir.next()) {
@@ -284,6 +409,26 @@ static void listFilesRecursive(const String& basePath, AsyncResponseStream *resp
     }
   }
 }
+#elif defined(ESP32)
+static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
+  File dir = LittleFS.open(basePath);
+  if (!dir || !dir.isDirectory()) return;
+  File file = dir.openNextFile();
+  while (file) {
+    String fullPath = file.path();
+    if (file.isDirectory()) {
+      listFilesRecursive(fullPath, response, first);
+    } else {
+      if (!first) response->print(",");
+      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
+      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                       relName.c_str(), (unsigned int)file.size(), (unsigned long)file.getLastWrite());
+      first = false;
+    }
+    file = dir.openNextFile();
+  }
+}
+#endif
 
 void initNetworkAndServer() {
   connectNetworkCascade(activeWifiMode);
@@ -319,8 +464,12 @@ void initNetworkAndServer() {
     }
   }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
     if (!index) {
+#if defined(ESP8266)
       Update.runAsync(true);
       size_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+#elif defined(ESP32)
+      size_t maxSketchSpace = UPDATE_SIZE_UNKNOWN;
+#endif
       if (!Update.begin(maxSketchSpace, U_FLASH)) {
         Update.printError(Serial);
       }
@@ -339,13 +488,20 @@ void initNetworkAndServer() {
 
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     flushCurrentSessionToIndex();
+#if defined(ESP8266)
     FSInfo fs_info;
     LittleFS.info(fs_info);
+    size_t totalBytes = fs_info.totalBytes;
+    size_t usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
+#endif
     updateFsUsageCache();
 
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
-                     (unsigned int)fs_info.totalBytes, (unsigned int)fs_info.usedBytes);
+                     (unsigned int)totalBytes, (unsigned int)usedBytes);
 
     bool first = true;
     listFilesRecursive("/", response, first);
@@ -404,7 +560,11 @@ void initNetworkAndServer() {
     json = "{\"freeHeap\":";
     json += ESP.getFreeHeap();
     json += ",\"frag\":";
+#if defined(ESP8266)
     json += ESP.getHeapFragmentation();
+#else
+    json += 0;
+#endif
     json += ",\"maxLoopUs\":";
     json += perfMaxLoopUs;
     json += ",\"avgLoopUs\":";
@@ -470,7 +630,17 @@ void initNetworkAndServer() {
   server.on("/api/sectorconfig", HTTP_GET, handleGetSectorConfig);
   server.on("/api/setsectorconfig", HTTP_POST, handlePostSetSectorConfig);
 
+  server.on("/api/buzzer", HTTP_POST, handlePostBuzzer);
+  server.on("/api/buzzer", HTTP_GET, handleGetBuzzer);
+  server.on("/api/countdown", HTTP_POST, handlePostCountdown);
+
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(204);
+  });
+  server.on("/apple-touch-icon.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(204);
+  });
+  server.on("/apple-touch-icon-precomposed.png", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(204);
   });
 
@@ -479,6 +649,10 @@ void initNetworkAndServer() {
 
     if (url.startsWith("/api/")) {
       request->send(404, "application/json", "{\"error\":\"Not Found\"}");
+      return;
+    }
+    if (url.startsWith("/apple-touch-icon") || url.endsWith(".map")) {
+      request->send(204);
       return;
     }
 
@@ -511,7 +685,11 @@ void handleNetworkTasks() {
     ghostWlanActive = false;
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
+#if defined(ESP8266)
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
+#elif defined(ESP32)
+    WiFi.setSleep(false);
+#endif
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
@@ -522,9 +700,44 @@ void handleNetworkTasks() {
     ESP.restart(); 
   }
 
+#if defined(ESP8266)
   MDNS.update();
+#endif
   ArduinoOTA.handle();
-  ws.cleanupClients();
+  // Zyklischer Check auf verstaute Sockets (alle 3 Sekunden)
+  static uint32_t lastClientStallCheck = 0;
+  uint32_t now = millis();
+  if (now - lastClientStallCheck >= 3000) {
+    lastClientStallCheck = now;
+    if (ws.count() > 0) {
+      for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+        if (wsSessions[i].clientId != 0) {
+          AsyncWebSocketClient* c = ws.client(wsSessions[i].clientId);
+          if (c) {
+            // Wenn der Client unquittierte Pakete staut (z. B. Handy im Standby/gesperrt)
+            if (c->queueLen() > 0) {
+              if (wsSessions[i].stuckQueueSince == 0) {
+                wsSessions[i].stuckQueueSince = now;
+              } else if (now - wsSessions[i].stuckQueueSince >= 8000) {
+                uint32_t deadId = wsSessions[i].clientId;
+                unregisterWsClient(deadId);
+                c->close(1008, "Queue stalled");
+              }
+            } else {
+              wsSessions[i].stuckQueueSince = 0;
+            }
+          } else {
+            wsSessions[i].clientId = 0;
+            wsSessions[i].tabId[0] = '\0';
+            wsSessions[i].stuckQueueSince = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // Haelt max. 3 WebSockets aktiv, damit min. 2 TCP-PCBs fuer HTTP-Assets frei bleiben
+  ws.cleanupClients(3);
 }
 
 void broadcastWebSocket(const String& msg) {

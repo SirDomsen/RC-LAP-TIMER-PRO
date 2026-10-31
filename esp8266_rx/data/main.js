@@ -1,9 +1,26 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
-let countdownTimeouts = [];
-window.UI_VERSION = '4.3.6'; 
+window.countdownTimeouts = window.countdownTimeouts || [];
+window.UI_VERSION = '4.4.13'; 
+
+function formatLapTime(ms, fallback = '---') {
+  if (!ms || isNaN(ms) || ms <= 0) return fallback;
+  let totalSec = Math.round(ms) / 1000;
+  let min = Math.floor(totalSec / 60);
+  let sec = totalSec - (min * 60);
+  if (sec >= 59.995) {
+    min++;
+    sec = 0;
+  }
+  let secStr = sec.toFixed(2);
+  if (min > 0) {
+    if (sec < 10) secStr = '0' + secStr;
+    return `${min}:${secStr}`;
+  }
+  return secStr;
+}
+window.formatLapTime = formatLapTime; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
-let socket = null;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 
@@ -69,6 +86,7 @@ let activeStatsCarId = null;
 let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
+let muteCountdownTts = JSON.parse(localStorage.getItem('muteCountdownTts') ?? 'false');
 
 // --- UNIVERSELLES DIALOG-SYSTEM (Vorbild Firmware-OTA) ---
 let _dialogResolver = null;
@@ -379,6 +397,9 @@ function openDriverConfigModal() {
 
   let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
+
+  let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
+  if (muteCdownCb) muteCdownCb.checked = muteCountdownTts;
 }
 
 function closeDriverConfigModal() {
@@ -399,7 +420,94 @@ function saveDriverAudioConfig() {
     localStorage.setItem('announceLapTimesInRace', JSON.stringify(announceLapTimesInRace));
   }
 
+  let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
+  if (muteCdownCb) {
+    muteCountdownTts = muteCdownCb.checked;
+    localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
+  }
+
   fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
+}
+
+// Accolade Arcade Audio Jukebox: Steuerung des Hardware-Speakers
+function playGpcWebBuzzer(cmd) {
+  fetch('/api/buzzer?cmd=' + encodeURIComponent(cmd), { method: 'POST' }).catch(() => {});
+}
+
+function openArcadeModal() {
+  const modal = document.getElementById('arcadeModal');
+  if (!modal) return;
+  modal.style.display = 'block';
+  updateArcadeBuzzerStatus();
+}
+
+function closeArcadeModal() {
+  const modal = document.getElementById('arcadeModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateArcadeBuzzerStatus() {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (!statusEl) return;
+  fetch('/api/buzzer')
+    .then(r => r.json())
+    .then(data => {
+      if (data.playing) {
+        statusEl.innerHTML = `Status: <span style="color:var(--neon-green); font-weight:bold;">▶ Spielt (${data.track || 'Track'})</span>`;
+      } else {
+        statusEl.innerHTML = 'Status: <span style="color:var(--text-muted);">Bereit</span>';
+      }
+    })
+    .catch(() => {
+      statusEl.innerHTML = 'Status: <span style="color:var(--text-muted);">Bereit</span>';
+    });
+}
+
+function playSelectedArcadeTrack() {
+  const trackSel = document.getElementById('arcadeTrackSelect');
+  const loopCb = document.getElementById('arcadeLoopCheckbox');
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (!trackSel) return;
+
+  const track = trackSel.value;
+  const loop = loopCb ? (loopCb.checked ? '1' : '0') : '1';
+
+  if (statusEl) {
+    const trackName = trackSel.options[trackSel.selectedIndex]?.text || track;
+    statusEl.innerHTML = `Status: <span style="color:var(--neon-cyan);">Starte ${trackName}...</span>`;
+  }
+
+  fetch(`/api/buzzer?cmd=play&track=${encodeURIComponent(track)}&loop=${loop}`, { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 250);
+    })
+    .catch(() => {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--neon-red);">Fehler beim Starten</span>`;
+    });
+}
+
+function stopArcadeTrack() {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (statusEl) {
+    statusEl.innerHTML = 'Status: <span style="color:var(--neon-gold);">Stoppe...</span>';
+  }
+  fetch('/api/buzzer?cmd=stop', { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 200);
+    })
+    .catch(() => {});
+}
+
+function playArcadeFx(fxCmd) {
+  const statusEl = document.getElementById('arcadeStatusText');
+  if (statusEl) {
+    statusEl.innerHTML = `Status: <span style="color:var(--neon-gold);">Soundeffekt gesendet...</span>`;
+  }
+  fetch(`/api/buzzer?cmd=${encodeURIComponent(fxCmd)}`, { method: 'POST' })
+    .then(() => {
+      setTimeout(updateArcadeBuzzerStatus, 400);
+    })
+    .catch(() => {});
 }
 
 // Aktualisiert eine einzelne Fahrer-Spalte im Dashboard (colIdx = 1 oder 2)
@@ -454,14 +562,14 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     }
   }
 
-  if (dPb) dPb.innerText = rowData.bestLap > 0 ? (rowData.bestLap / 1000).toFixed(2) + 's' : '--:--';
+  if (dPb) dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
 
   if (dLast) {
     if (rowData.lastLapIsOutLap) {
-      dLast.innerText = rowData.lastLap > 0 ? "Outlap (" + (rowData.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      dLast.innerText = rowData.lastLap > 0 ? "Outlap (" + formatLapTime(rowData.lastLap) + ")" : "Outlap";
       dLast.style.color = 'var(--text-muted)';
     } else {
-      dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
+      dLast.innerText = formatLapTime(rowData.lastLap, '--:--');
       let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
       let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
       if (isOverall) dLast.style.color = 'var(--neon-purple)';
@@ -668,7 +776,7 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
         colorStyle = 'color:var(--neon-green);';
       }
 
-      let secStr = (val / 1000).toFixed(2) + 's';
+      let secStr = formatLapTime(val);
       return `<td><span style="font-weight:700; ${colorStyle} ${shadowStyle}">${secStr}</span></td>`;
     };
 
@@ -681,10 +789,10 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
     let lastDisp = '---';
     let lastColor = 'color:var(--text-main);';
     if (row.lastLapIsOutLap) {
-      lastDisp = row.lastLap > 0 ? "Outlap (" + (row.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      lastDisp = row.lastLap > 0 ? "Outlap (" + formatLapTime(row.lastLap) + ")" : "Outlap";
       lastColor = 'color:var(--text-muted);';
     } else if (row.lastLap > 0) {
-      lastDisp = (row.lastLap / 1000).toFixed(2) + 's';
+      lastDisp = formatLapTime(row.lastLap);
       let isOverallLast = (minBestLap > 0 && row.lastLap <= minBestLap);
       let isPbLast = (row.bestLap > 0 && row.lastLap <= row.bestLap);
       if (isOverallLast) lastColor = 'color:var(--neon-purple);';
@@ -714,7 +822,7 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
     let bestDisp = '---';
     let bestColor = 'color:var(--text-muted);';
     if (row.bestLap > 0) {
-      bestDisp = (row.bestLap / 1000).toFixed(2) + 's';
+      bestDisp = formatLapTime(row.bestLap);
       if (minBestLap > 0 && row.bestLap <= minBestLap) {
         bestColor = 'color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-weight:900;';
       } else {
@@ -963,10 +1071,208 @@ function populateTrackSelectDropdowns() {
   if (dimBadge) dimBadge.innerText = activeTrackName;
 }
 
+function findSessionForRecord(record, trackId) {
+  if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) return null;
+  let tId = trackId || record.trackId || (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+  let targetLap = record.lap;
+  if (!targetLap || targetLap <= 0) return null;
+
+  // 1. Suche nach gleicher Strecke + passender Bestzeit und Fahrer/Car
+  let match = allSessionsCache.find(s => {
+    let sTrack = s.trackId || 'standard';
+    if (sTrack !== tId) return false;
+    if (!Array.isArray(s.results)) return false;
+    return s.results.some(r => {
+      let carMatch = (!record.carId || r.id === record.carId);
+      let driverMatch = (!record.driver || !r.driver || r.driver.toLowerCase() === record.driver.toLowerCase());
+      let timeMatch = (r.bestLap === targetLap) || (Math.abs(r.bestLap - targetLap) <= 5);
+      return (carMatch || driverMatch) && timeMatch;
+    });
+  });
+
+  // 2. Fallback: Beliebige Strecke (falls umbenannt oder migriert)
+  if (!match) {
+    match = allSessionsCache.find(s => {
+      if (!Array.isArray(s.results)) return false;
+      return s.results.some(r => {
+        let carMatch = (!record.carId || r.id === record.carId);
+        let driverMatch = (!record.driver || !r.driver || r.driver.toLowerCase() === record.driver.toLowerCase());
+        let timeMatch = (r.bestLap === targetLap) || (Math.abs(r.bestLap - targetLap) <= 5);
+        return (carMatch || driverMatch) && timeMatch;
+      });
+    });
+  }
+  return match;
+}
+window.findSessionForRecord = findSessionForRecord;
+
+window.openSessionFromRecordJump = async function(sessionId, mode) {
+  if (typeof closeTrackRecordsModal === 'function') {
+    closeTrackRecordsModal();
+  }
+  let m = document.getElementById('statsOverviewModal');
+  if (!m || m.style.display !== 'block') {
+    if (typeof openStatsOverviewModal === 'function') {
+      await openStatsOverviewModal();
+    }
+  }
+  if (typeof openSessionFromRecord === 'function') {
+    openSessionFromRecord(mode, sessionId);
+  }
+};
+
+async function refillTrackRecordsFromSessions(targetTrackId) {
+  let tId = targetTrackId || (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+  if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) {
+    if (typeof fetchSessionsAndStorageInfo === 'function') {
+      try { await fetchSessionsAndStorageInfo(); } catch (e) {}
+    }
+  }
+  if (!Array.isArray(allSessionsCache) || allSessionsCache.length === 0) return;
+
+  // Streckenliste aus /tracks.json laden (oder allTracksList)
+  let tracksDoc = { active: (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard'), tracks: [] };
+  try {
+    let tRes = await fetch('/tracks.json?_t=' + Date.now(), { cache: 'no-store' });
+    if (tRes.ok) tracksDoc = await tRes.json();
+    else if (Array.isArray(allTracksList)) tracksDoc.tracks = JSON.parse(JSON.stringify(allTracksList));
+  } catch (e) {
+    if (Array.isArray(allTracksList)) tracksDoc.tracks = JSON.parse(JSON.stringify(allTracksList));
+  }
+
+  let trackObj = (tracksDoc.tracks || []).find(t => t.id === tId);
+  if (!trackObj) return;
+
+  let todayStr = '';
+  if (typeof getCurrentLocalDateStr === 'function') {
+    todayStr = getCurrentLocalDateStr();
+  }
+  let nowD = new Date();
+  let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
+
+  // 1. Sammle alle verbleibenden Fahrer/Auto-Kombinationen aus allen Sessions dieser Strecke
+  let allTimeMap = {};
+  let dailyMap = {};
+
+  allSessionsCache.forEach(s => {
+    let sTrack = s.trackId || 'standard';
+    if (sTrack !== tId) return;
+
+    let sDateStr = '';
+    let isToday = false;
+    if (s.startTs) {
+      let sD = new Date(s.startTs * 1000);
+      isToday = (sD.toDateString() === nowD.toDateString());
+      sDateStr = `${String(sD.getFullYear()).slice(-2)}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}`;
+    }
+    if (!isToday && s.date && todayStr && s.date === todayStr) isToday = true;
+
+    if (s.mode !== 4 && Array.isArray(s.results)) {
+      s.results.forEach(r => {
+        if (!r.bestLap || r.bestLap <= 0) return;
+        let dName = (r.driver || '').trim() || (typeof getCarDriverName === 'function' ? getCarDriverName(r.id) : ('Fahrer ' + r.id));
+        let cName = (r.car || '').trim() || (typeof getCarCarName === 'function' ? getCarCarName(r.id) : ('Auto ' + r.id));
+        let comboKey = `${dName.toLowerCase()}_${cName.toLowerCase()}`;
+
+        let entry = {
+          lap: r.bestLap,
+          carId: r.id || 0,
+          driver: dName,
+          car: cName,
+          date: sDateStr || (s.date || '')
+        };
+
+        if (!allTimeMap[comboKey] || r.bestLap < allTimeMap[comboKey].lap) {
+          allTimeMap[comboKey] = entry;
+        }
+
+        if (isToday) {
+          if (!dailyMap[comboKey] || r.bestLap < dailyMap[comboKey].lap) {
+            dailyMap[comboKey] = entry;
+          }
+        }
+      });
+    }
+  });
+
+  // 2. Bestehende Einträge der Strecke einbeziehen (falls manuelle Einträge existieren)
+  let existingAllTime = Array.isArray(trackObj.allTimeRecords) ? trackObj.allTimeRecords : [];
+  existingAllTime.forEach(e => {
+    if (!e || !e.lap || e.lap <= 0) return;
+    let dName = (e.driver || '').trim();
+    let cName = (e.car || '').trim();
+    let comboKey = `${dName.toLowerCase()}_${cName.toLowerCase()}`;
+    if (!allTimeMap[comboKey] || e.lap < allTimeMap[comboKey].lap) {
+      allTimeMap[comboKey] = e;
+    }
+  });
+
+  let existingDaily = Array.isArray(trackObj.dailyRecords) ? trackObj.dailyRecords : [];
+  existingDaily.forEach(e => {
+    if (!e || !e.lap || e.lap <= 0) return;
+    let dName = (e.driver || '').trim();
+    let cName = (e.car || '').trim();
+    let comboKey = `${dName.toLowerCase()}_${cName.toLowerCase()}`;
+    if (!dailyMap[comboKey] || e.lap < dailyMap[comboKey].lap) {
+      dailyMap[comboKey] = e;
+    }
+  });
+
+  // 3. Top 5 sortieren und auffüllen
+  let sortedAllTime = Object.values(allTimeMap).sort((a, b) => a.lap - b.lap).slice(0, 5);
+  let sortedDaily = Object.values(dailyMap).sort((a, b) => a.lap - b.lap).slice(0, 5);
+
+  trackObj.allTimeRecords = sortedAllTime;
+  trackObj.dailyRecords = sortedDaily;
+
+  if (sortedAllTime.length > 0) {
+    trackObj.recordLap = sortedAllTime[0].lap;
+    trackObj.recordCarId = sortedAllTime[0].carId;
+    trackObj.recordDriver = sortedAllTime[0].driver;
+    trackObj.recordCar = sortedAllTime[0].car;
+    trackObj.recordDate = sortedAllTime[0].date;
+  } else {
+    trackObj.recordLap = 0;
+    trackObj.recordCarId = 0;
+    trackObj.recordDriver = "";
+    trackObj.recordCar = "";
+    trackObj.recordDate = "";
+  }
+
+  if (sortedDaily.length > 0) {
+    trackObj.bestLap = sortedDaily[0].lap;
+    trackObj.bestCarId = sortedDaily[0].carId;
+    trackObj.bestDriver = sortedDaily[0].driver;
+    trackObj.bestCar = sortedDaily[0].car;
+    trackObj.bestDate = sortedDaily[0].date;
+  } else {
+    trackObj.bestLap = 0;
+    trackObj.bestCarId = 0;
+    trackObj.bestDriver = "";
+    trackObj.bestCar = "";
+    trackObj.bestDate = todayFormatted;
+  }
+
+  // 4. Zurückschreiben via /api/upload
+  try {
+    let tBlob = new Blob([JSON.stringify(tracksDoc)], { type: 'application/json' });
+    let tFd = new FormData();
+    tFd.append('data', tBlob, '/tracks.json');
+    await fetch('/api/upload', { method: 'POST', body: tFd });
+  } catch (upErr) {
+    console.warn("Fehler beim Aktualisieren von /tracks.json:", upErr);
+  }
+}
+window.refillTrackRecordsFromSessions = refillTrackRecordsFromSessions;
+
 async function openTrackRecordsModal(trackId) {
   let modal = document.getElementById('trackRecordsModal');
   if (!modal) return;
   modal.style.display = 'block';
+
+  if (typeof fetchSessionsAndStorageInfo === 'function' && (typeof allSessionsCache === 'undefined' || !allSessionsCache || allSessionsCache.length === 0)) {
+    try { await fetchSessionsAndStorageInfo(); } catch (e) {}
+  }
 
   await loadTracks();
   let targetId = trackId || activeTrackId;
@@ -1025,29 +1331,39 @@ function renderTrackRecordsModalContent(trackId) {
       let rankClass = rank === 1 ? 'top5-rank-1' : (rank === 2 ? 'top5-rank-2' : (rank === 3 ? 'top5-rank-3' : 'top5-rank-other'));
       let driverName = entry.driver || (carNamesMap[entry.carId]?.driver) || ('Fahrer ' + (entry.carId || '?'));
       let carName = entry.car || (carNamesMap[entry.carId]?.car) || ('Auto ' + (entry.carId || '?'));
-      let timeStr = (entry.lap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(entry.lap);
       let dateFormatted = formatRecordDate(entry.date);
       let dateHtml = (isAllTime && dateFormatted) ? `<span class="top5-entry-date">📅 ${dateFormatted}</span>` : '';
       let prevHintHtml = (isAdmin && entry.prevLap && entry.prevLap > 0)
-        ? `<span style="font-size:10px; color:var(--text-muted); margin-left:4px;" title="Wird beim Löschen dieser Zeit automatisch wiederhergestellt">(vorher: ${(entry.prevLap / 1000).toFixed(2)}s)</span>`
+        ? `<span style="font-size:10px; color:var(--text-muted); margin-left:4px;" title="Wird beim Löschen dieser Zeit automatisch wiederhergestellt">(vorher: ${formatLapTime(entry.prevLap)})</span>`
         : '';
 
       let timeColor = (rank === 1)
         ? (isAllTime ? 'color:var(--neon-gold); text-shadow:0 0 8px rgba(255,215,0,0.5);' : 'color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.6);')
         : 'color:var(--neon-green);';
 
+      let matchedSession = (typeof findSessionForRecord === 'function') ? findSessionForRecord(entry, trackObj.id) : null;
+      let sessionClickAttr = matchedSession
+        ? `onclick="openSessionFromRecordJump('${matchedSession.id}', ${matchedSession.mode !== undefined ? matchedSession.mode : 0})" title="🔍 Klick öffnet Session in Statistiken"`
+        : '';
+      let sessionClass = matchedSession ? 'clickable' : '';
+      let sessionHint = matchedSession
+        ? `<span style="font-size:10px; color:var(--neon-cyan); margin-left:6px;" title="Session vorhanden">🔍</span>`
+        : '';
+
       let delBtn = isAdmin
-        ? `<button class="top5-del-btn" onclick="deleteTrackRecordEntryUI('${trackObj.id}', '${typeKey}', ${idx})" title="Eintrag löschen${entry.prevLap > 0 ? ' (stellt vorherige Bestzeit wieder her)' : ''}">✕</button>`
+        ? `<button class="top5-del-btn" onclick="event.stopPropagation(); deleteTrackRecordEntryUI('${trackObj.id}', '${typeKey}', ${idx})" title="Eintrag löschen${entry.prevLap > 0 ? ' (stellt vorherige Bestzeit wieder her)' : ''}">✕</button>`
         : '';
 
       rowsHtml += `
-        <div class="top5-entry-row">
+        <div class="top5-entry-row ${sessionClass}" ${sessionClickAttr}>
           <div class="top5-entry-left">
             <span class="top5-rank-badge ${rankClass}">P${rank}</span>
             <div class="top5-driver-info">
               <div>
                 <span class="top5-driver-name">${driverName}</span>
                 <span class="top5-car-name">(${carName})</span>
+                ${sessionHint}
               </div>
               <div>
                 ${dateHtml}
@@ -1095,19 +1411,156 @@ function renderTrackRecordsModalContent(trackId) {
 }
 
 async function deleteTrackRecordEntryUI(trackId, type, index) {
-  let title = (type === 'daily') ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
+  let targetId = trackId || activeTrackId;
+  let trackObj = allTracksList.find(t => t.id === targetId);
+  let isDaily = (type === 'daily');
+  let title = isDaily ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
   let desc = '';
   let boxInfo = '';
+  let cascadeInfo = '';
+
+  let allTimeArr = Array.isArray(trackObj?.allTimeRecords) ? trackObj.allTimeRecords : [];
+  if (allTimeArr.length === 0 && trackObj?.recordLap > 0) {
+    allTimeArr = [{ lap: trackObj.recordLap, carId: trackObj.recordCarId || 0, driver: trackObj.recordDriver || '', car: trackObj.recordCar || '', date: trackObj.recordDate || '' }];
+  }
+
+  let dailyArr = Array.isArray(trackObj?.dailyRecords) ? trackObj.dailyRecords : [];
+  if (dailyArr.length === 0 && trackObj?.bestLap > 0) {
+    dailyArr = [{ lap: trackObj.bestLap, carId: trackObj.bestCarId || 0, driver: trackObj.bestDriver || '', car: trackObj.bestCar || '', date: trackObj.bestDate || '' }];
+  }
+
+  let matchedSession = null;
+  let matchedLap = null;
+  let matchedSessionData = null;
+
+  if (index >= 0) {
+    let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
+    if (targetEntry) {
+      if (typeof fetchSessionsAndStorageInfo === 'function' && (typeof allSessionsCache === 'undefined' || !allSessionsCache || allSessionsCache.length === 0)) {
+        try { await fetchSessionsAndStorageInfo(); } catch (e) {}
+      }
+
+      // Notanker falls allSessionsCache leer: Dateiliste über /api/files abrufen
+      if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) {
+        try {
+          let fRes = await fetch('/api/files');
+          if (fRes.ok) {
+            let fData = await fRes.json();
+            let rawList = (fData.files || []).filter(f => {
+              let fn = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+              return fn.endsWith('.json') && fn.includes('/') && !fn.includes('tracks') && !fn.includes('sessions') && !fn.includes('wifi') && !fn.includes('daily_best');
+            });
+            allSessionsCache = rawList.map(f => ({ file: f.name, id: f.name.replace(/^.*\//, '').replace('.json', ''), trackId: targetId }));
+          }
+        } catch (fErr) {}
+      }
+
+      if (typeof allSessionsCache !== 'undefined' && Array.isArray(allSessionsCache) && allSessionsCache.length > 0) {
+        // 1. Alle Sessions dieser Strecke sammeln
+        let candidateSessions = allSessionsCache.filter(s => {
+          let sTrack = s.trackId || 'standard';
+          if (sTrack !== targetId) return false;
+          return true;
+        });
+
+        // 2. Bevorzuge Sessions, an denen dieses Auto oder dieser Fahrer teilgenommen hat
+        let driverFiltered = candidateSessions.filter(s => {
+          if (!Array.isArray(s.results)) return false;
+          return s.results.some(r => {
+            let matchCar = (targetEntry.carId && r.id === targetEntry.carId);
+            let matchDriver = (targetEntry.driver && r.driver && r.driver.toLowerCase() === targetEntry.driver.toLowerCase());
+            return matchCar || matchDriver;
+          });
+        });
+        if (driverFiltered.length > 0) candidateSessions = driverFiltered;
+
+        // Wenn candidateSessions leer ist: alle Sessions durchsuchen!
+        let searchSessionsList = candidateSessions.length > 0 ? [...candidateSessions] : [];
+        for (let s of allSessionsCache) {
+          if (!searchSessionsList.includes(s)) searchSessionsList.push(s);
+        }
+
+        // 3. Durchsuche die Sessions nach der konkreten Runde mit Zeit == targetEntry.lap
+        for (let s of searchSessionsList) {
+          if (!s.file) continue;
+          try {
+            let sData = null;
+            if (typeof fetchSessionFileData === 'function') {
+              sData = await fetchSessionFileData(s.file);
+            } else {
+              let sRes = await fetch('/api/sessionfile?file=' + encodeURIComponent(s.file) + '&_t=' + Date.now(), { cache: 'no-store' });
+              if (sRes.ok) sData = await sRes.json();
+            }
+
+            if (sData && Array.isArray(sData.laps)) {
+              let found = sData.laps.find(l => {
+                let lCar = l.c !== undefined ? l.c : (l.carId || 0);
+                let lTime = l.t !== undefined ? l.t : (l.time || 0);
+                let lDriver = (l.driver || '').trim();
+                let matchCar = (!targetEntry.carId || lCar === targetEntry.carId);
+                let matchDriver = (!targetEntry.driver || !lDriver || lDriver.toLowerCase() === targetEntry.driver.toLowerCase());
+                let timeMatch = (lTime === targetEntry.lap) || (Math.abs(lTime - targetEntry.lap) <= 5);
+                return (matchCar || matchDriver) && timeMatch;
+              });
+              if (found) {
+                matchedLap = {
+                  carId: found.c !== undefined ? found.c : (found.carId || targetEntry.carId),
+                  lap: found.l !== undefined ? found.l : (found.lap || 0),
+                  time: found.t !== undefined ? found.t : (found.time || targetEntry.lap)
+                };
+                matchedSession = s;
+                matchedSessionData = sData;
+                break;
+              }
+            }
+          } catch (err) {}
+        }
+      }
+    }
+  }
+
   if (index < 0) {
-    desc = (type === 'daily')
+    desc = isDaily
       ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?'
       : 'Wirklich <strong>ALLE All-Time Streckenrekorde</strong> dieser Strecke löschen?';
-    boxInfo = (type === 'daily') ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
+    boxInfo = isDaily ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
   } else {
-    desc = (type === 'daily')
-      ? `Platz ${index + 1} der Tagesbestzeit löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`
-      : `Platz ${index + 1} des Streckenrekords löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine gültige Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
-    boxInfo = `Platz ${index + 1}`;
+    let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
+    let driverName = targetEntry ? (targetEntry.driver || (carNamesMap[targetEntry.carId]?.driver) || ('Fahrer ' + (targetEntry.carId || '?'))) : ('Platz ' + (index + 1));
+    let timeStr = targetEntry ? formatLapTime(targetEntry.lap) : '';
+
+    if (matchedSession && matchedLap) {
+      title = isDaily ? '⏱️ TAGESBESTZEIT & RUNDE LÖSCHEN' : '🏆 REKORD & RUNDE LÖSCHEN';
+      boxInfo = `Runde ${matchedLap.lap}: ${driverName} (${timeStr}) in Session ${matchedSession.id}`;
+      desc = `Möchtest du diesen Rekord und die zugehörige <strong>Runde ${matchedLap.lap}</strong> dauerhaft aus der Session löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Die Runde wird vollständig aus dem Protokoll entfernt (Rundenanzahl -1) und die vorherige Bestzeit rückt nach.</span>`;
+    } else {
+      boxInfo = `Platz ${index + 1}: ${driverName} (${timeStr})`;
+      desc = `Platz ${index + 1} löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Bestzeit wird aus der Rekordliste entfernt (vorherige Bestzeit rückt nach).</span>`;
+    }
+
+    if (isDaily) {
+      if (targetEntry) {
+        let matchInAllTime = allTimeArr.some(at =>
+          at.lap === targetEntry.lap &&
+          ((targetEntry.driver && at.driver && at.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && at.carId === targetEntry.carId))
+        );
+        if (matchInAllTime) {
+          cascadeInfo = `<span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Diese Zeit ist gleichzeitig als <strong>All-Time Streckenrekord</strong> eingetragen und wird auch dort automatisch entfernt.</span>`;
+        }
+      }
+    } else {
+      if (targetEntry) {
+        let matchInDaily = dailyArr.some(d =>
+          d.lap === targetEntry.lap &&
+          ((targetEntry.driver && d.driver && d.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && d.carId === targetEntry.carId))
+        );
+        if (matchInDaily) {
+          cascadeInfo = `<span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Dieser Streckenrekord stammt von heute und steht in der <strong>Tagesbestzeit</strong>. Er wird auch dort entfernt.</span>`;
+        } else if (targetEntry.date) {
+          cascadeInfo = `<span style="color:var(--text-muted); font-size:12px; display:block; margin-top:8px;">ℹ️ Dieser Streckenrekord stammt vom <strong>${formatRecordDate(targetEntry.date)}</strong>.</span>`;
+        }
+      }
+    }
   }
 
   let ok = await showConfirm({
@@ -1115,19 +1568,116 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     theme: "danger",
     boxLabel: "Eintrag:",
     boxContent: boxInfo,
-    message: desc + '<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Vorgang kann nicht rückgängig gemacht werden!</span>',
+    message: desc + cascadeInfo + '<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Vorgang kann nicht rückgängig gemacht werden!</span>',
     confirmText: "LÖSCHEN 🗑️",
     cancelText: "ABBRECHEN"
   });
   if (!ok) return;
 
   try {
-    let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(trackId)}&type=${encodeURIComponent(type)}&index=${index}`;
-    let res = await fetch(url, { method: 'POST' });
-    if (res.ok) {
+    let success = false;
+    if (matchedSession && matchedLap && matchedSessionData) {
+      try {
+        // 1. Physisch aus matchedSessionData.laps im Browser entfernen
+        if (Array.isArray(matchedSessionData.laps)) {
+          let lapIdx = matchedSessionData.laps.findIndex(l => {
+            let lCar = l.c !== undefined ? l.c : (l.carId || 0);
+            let lTime = l.t !== undefined ? l.t : (l.time || 0);
+            let lLap = l.l !== undefined ? l.l : (l.lap || 0);
+            let carMatch = (lCar === matchedLap.carId);
+            let timeMatch = (lTime === matchedLap.time) || (Math.abs(lTime - matchedLap.time) <= 5);
+            let lapMatch = (matchedLap.lap > 0 && lLap === matchedLap.lap);
+            return carMatch && (timeMatch || lapMatch);
+          });
+
+          if (lapIdx >= 0) {
+            matchedSessionData.laps.splice(lapIdx, 1);
+
+            // Runden für dieses Auto neu durchnummerieren
+            let carLapCounter = 0;
+            matchedSessionData.laps.forEach(l => {
+              let c = l.c !== undefined ? l.c : (l.carId || 0);
+              if (c === matchedLap.carId) {
+                carLapCounter++;
+                if (l.l !== undefined) l.l = carLapCounter;
+                if (l.lap !== undefined) l.lap = carLapCounter;
+              }
+            });
+          }
+        }
+
+        let rawPath = matchedSession.file.startsWith('/') ? matchedSession.file : ('/' + matchedSession.file);
+
+        if (matchedSessionData.laps.length === 0) {
+          // Keine Runden mehr in der Session: Datei komplett löschen
+          let delRes = await fetch('/api/deletefile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'file=' + encodeURIComponent(rawPath)
+          });
+          if (delRes.ok) success = true;
+        } else {
+          // 2. Modifizierte Datei via /api/upload direkt auf Flash (LittleFS) schreiben (100% crashsicher, 0 RAM-Last auf ESP)
+          let compBlob = new Blob([JSON.stringify(matchedSessionData)], { type: 'application/json' });
+          let compFd = new FormData();
+          compFd.append('data', compBlob, rawPath);
+          let upRes = await fetch('/api/upload', { method: 'POST', body: compFd });
+          if (upRes.ok) success = true;
+        }
+
+        // Backend zusätzlich über deletelap informieren (aktualisiert /sessions.json Index & RAM)
+        try {
+          let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}&file=${encodeURIComponent(matchedSession.file)}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
+          await fetch(lapUrl, { method: 'POST' });
+        } catch (e) {}
+
+        if (typeof sessionFileCache !== 'undefined' && matchedSession.file) {
+          delete sessionFileCache[matchedSession.file];
+        }
+        let safeId = (typeof sanitizeDomId === 'function') ? sanitizeDomId(matchedSession.id) : String(matchedSession.id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        let elemId = `s_${safeId}_driver_${matchedLap.carId}`;
+        if (typeof embeddedLapsState !== 'undefined' && embeddedLapsState[elemId]) {
+          delete embeddedLapsState[elemId].laps;
+        }
+      } catch (lapErr) {
+        console.warn("Fehler beim physischen Löschen der Runde aus Session:", lapErr);
+      }
+    }
+
+    // IMMER auch den Top-5 Rekordeintrag in tracks.json / daily_best.json entfernen
+    try {
+      let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`;
+      let res = await fetch(url, { method: 'POST' });
+      if (res.ok) success = true;
+    } catch (recErr) {
+      console.warn("Fehler beim Löschen des Rekordeintrags:", recErr);
+    }
+
+    if (success) {
+      // Top-5 Rekorde sofort wieder aus den verbleibenden Sessions auf bis zu 5 Plätze auffüllen
+      try {
+        await refillTrackRecordsFromSessions(targetId);
+      } catch (fillErr) {
+        console.warn("Fehler beim Auffüllen der Top-5 Rekorde:", fillErr);
+      }
+
       await loadTracks();
       await updateData(true);
-      renderTrackRecordsModalContent(trackId);
+      if (typeof fetchSessionsAndStorageInfo === 'function') {
+        await fetchSessionsAndStorageInfo();
+      }
+      if (typeof renderTrackRecordsModalContent === 'function') {
+        renderTrackRecordsModalContent(trackId);
+      }
+      if (typeof updateStatsModalDailyBest === 'function') {
+        updateStatsModalDailyBest();
+      }
+      if (typeof renderRecordsOverview === 'function') {
+        renderRecordsOverview();
+      }
+      if (typeof renderDriversOverview === 'function' && typeof currentTab !== 'undefined' && currentTab === 'drivers') {
+        renderDriversOverview();
+      }
     } else {
       await showAlert({
         title: "❌ FEHLER",
@@ -1481,7 +2031,7 @@ function updateTrackRecordBar(info) {
   }
   if (dimAllTimeVal) {
     if (hasAllTime) {
-      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(recLap);
       let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
       let dFmt = formatRecordDate(recDate);
       let dSuffix = dFmt ? ` <small style="color:var(--text-muted); font-size:10px;">(${dFmt})</small>` : '';
@@ -1492,7 +2042,7 @@ function updateTrackRecordBar(info) {
   }
   if (dimDailyVal) {
     if (hasDailyBest) {
-      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(dailyLap);
       let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
       dimDailyVal.innerHTML = `${driver} — <span style="color:var(--neon-green); font-size:13px;">${timeStr}</span>`;
     } else {
@@ -1510,7 +2060,7 @@ function updateTrackRecordBar(info) {
 
   if (allTimeDisp) {
     if (hasAllTime) {
-      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(recLap);
       let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
       let car = recCar || (carNamesMap[recCarId]?.car) || ('Auto ' + recCarId);
       let dFmt = formatRecordDate(recDate);
@@ -1523,7 +2073,7 @@ function updateTrackRecordBar(info) {
 
   if (dailyDisp) {
     if (hasDailyBest) {
-      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(dailyLap);
       let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
       let car = dailyCar || (carNamesMap[dailyCarId]?.car) || ('Auto ' + dailyCarId);
       dailyDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small> — <span style="color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-size:16px;">${timeStr}</span>`;
@@ -1590,6 +2140,13 @@ let lastUpdateDataTime = 0;
 const MIN_UPDATE_INTERVAL_MS = 1000;
 let updateDataTimer = null;
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
 function requestUpdateData(fullSync = false, priority = false) {
   if (fullSync) pendingUpdateFullSync = true;
   pendingUpdateRequested = true;
@@ -1630,10 +2187,20 @@ function requestUpdateData(fullSync = false, priority = false) {
 
 async function updateData(fullSync = false) {
   let now = Date.now();
-  if (isUpdatingData || (now - lastUpdateDataTime < MIN_UPDATE_INTERVAL_MS)) {
+  if (isUpdatingData) {
+    if (now - lastUpdateDataTime > 5000) {
+      console.warn("[Telemetry] Stale update lock detected (>5s), resetting lock");
+      isUpdatingData = false;
+    } else {
+      pendingUpdateRequested = true;
+      if (fullSync) pendingUpdateFullSync = true;
+      return;
+    }
+  }
+  if (now - lastUpdateDataTime < MIN_UPDATE_INTERVAL_MS) {
     pendingUpdateRequested = true;
     if (fullSync) pendingUpdateFullSync = true;
-    if (!updateDataTimer && !isUpdatingData) {
+    if (!updateDataTimer) {
       let isDriver = (userRole === 'driver');
       let jitter = isDriver ? Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 300);
       let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime)) + jitter;
@@ -1651,7 +2218,7 @@ async function updateData(fullSync = false) {
   lastUpdateDataTime = now;
 
   try {
-    let response = await fetch('/api/laps');
+    let response = await fetchWithTimeout('/api/laps', {}, 4500);
     if (response.status === 503) {
       isUpdatingData = false;
       return;
@@ -1738,7 +2305,7 @@ async function updateData(fullSync = false) {
           if (row.state === 'drag_running') {
             lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
           } else if (row.lastLap > 0) {
-            lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            lastDisplay = formatLapTime(row.lastLap);
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
             if (isOverall && isPB) lastClass = 'lap-time-purple';
@@ -1746,10 +2313,10 @@ async function updateData(fullSync = false) {
           }
         } else {
           if (row.lastLapIsOutLap) {
-            lastDisplay = row.lastLap > 0 ? '<span class="outlap-badge">Outlap</span> <span style="font-size:12px; opacity:0.85;">(' + (row.lastLap / 1000).toFixed(2) + 's)</span>' : '<span class="outlap-badge">Outlap</span>';
+            lastDisplay = row.lastLap > 0 ? '<span class="outlap-badge">Outlap</span> <span style="font-size:12px; opacity:0.85;">(' + formatLapTime(row.lastLap) + ')</span>' : '<span class="outlap-badge">Outlap</span>';
             lastClass = 'lap-time-neutral';
           } else if (row.lastLap > 0) {
-            lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            lastDisplay = formatLapTime(row.lastLap);
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
 
@@ -1772,16 +2339,16 @@ async function updateData(fullSync = false) {
           }
         }
 
-        let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
+        let bestDisplay = row.bestLap > 0 ? formatLapTime(row.bestLap) : '---';
         let bestClass = 'lap-time-green';
         if (activeCarsWithLaps > 1 && minBestLap > 0 && row.bestLap > 0 && row.bestLap <= minBestLap) {
           bestClass = 'lap-time-purple';
         }
 
         let formatSectorCell = (sectorNum, szVal, splitVal) => {
-          let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
+          let valDisp = szVal > 0 ? formatLapTime(szVal) : '---';
           if (currentMode === 4) {
-            let splitDisp = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+            let splitDisp = splitVal > 0 ? formatLapTime(splitVal) : '---';
             return `<div class="drag-cell"><span class="drag-split">Spl: ${splitDisp}</span><span class="drag-sector">${valDisp}</span></div>`;
           }
           return valDisp;
@@ -1851,7 +2418,7 @@ async function updateData(fullSync = false) {
     if (dLeaderLap) dLeaderLap.innerText = leaderLaps || 0;
 
     let dSessionBest = document.getElementById('dimmerSessionBestText') || document.getElementById('dimmerOverallText');
-    if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
+    if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? formatLapTime(minBestLap, '--:--') : '--:--';
 
     // 1) Rennleiter Dashboard (Leaderboard-Tabelle für alle tatsächlich erfassten Fahrzeuge)
     let dLeaderboardBody = document.getElementById('dimmerLeaderboardBody');
@@ -1902,7 +2469,7 @@ async function updateData(fullSync = false) {
   if (!fullSync) return;
 
   try {
-    let r = await fetch('/api/timeleft');
+    let r = await fetchWithTimeout('/api/timeleft', {}, 4000);
     if (r.ok) {
       let info = await r.json();
 
@@ -1949,7 +2516,7 @@ async function updateData(fullSync = false) {
   } catch (err) {}
 
   try {
-    let resStations = await fetch('/api/stations');
+    let resStations = await fetchWithTimeout('/api/stations', {}, 4000);
     if (resStations.ok) {
       let stations = await resStations.json();
       let sz1 = document.getElementById('sz1Status');
@@ -1981,7 +2548,7 @@ async function updateData(fullSync = false) {
 
   if (userRole === 'admin') {
     try {
-      let r = await fetch('/api/recent');
+      let r = await fetchWithTimeout('/api/recent', {}, 4000);
       if (r.ok) {
         let ids = await r.json();
         let html = '';
@@ -2022,7 +2589,7 @@ function finishSessionNow() {
       let pole = activeCars[0];
       let poleDriver = pole.driver || (carNamesMap[pole.id]?.driver || ("Fahrer " + pole.id));
       let poleCar = pole.car || (carNamesMap[pole.id]?.car || ("Auto " + pole.id));
-      let poleTimeDisp = (pole.bestLap / 1000).toFixed(2) + 's';
+      let poleTimeDisp = formatLapTime(pole.bestLap);
       let poleTimeSpeech = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(pole.bestLap) : (pole.bestLap / 1000).toFixed(2).replace('.', ',');
 
       let banner = document.getElementById('poleBanner');
@@ -2058,7 +2625,7 @@ function finishSessionNow() {
     }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     if (timerElem) timerElem.innerText = "ZIEL";
-    announceRaceResults();
+    if (typeof announceRaceResults === 'function') announceRaceResults();
   } else {
     if (timerElem) timerElem.innerText = "ZIEL";
     speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);
@@ -2208,7 +2775,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
     if (currentMode === 2 && targetLaps > 0 && currentLaps >= targetLaps && !isSessionFinished) {
       isSessionFinished = true;
       isSessionActive = false;
-      announceRaceResults();
+      if (typeof announceRaceResults === 'function') announceRaceResults();
       return;
     }
 
@@ -2359,6 +2926,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
   if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
   if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
+  if (event.target === document.getElementById('arcadeModal')) closeArcadeModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {
     document.getElementById('roleSelectModal').style.display = 'none';
   }
@@ -2379,6 +2947,7 @@ document.addEventListener('keydown', function(e) {
     closeNewTrackModal();
     closeStorageFullModal();
     closeTrackRecordsModal();
+    closeArcadeModal();
     if (userRole && document.getElementById('roleSelectModal')) {
       document.getElementById('roleSelectModal').style.display = 'none';
     }

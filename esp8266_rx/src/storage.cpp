@@ -23,7 +23,11 @@ uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 // Eindeutige Hardware-Identifikatoren
 String getChipIdSuffix() {
   char buf[8];
+#if defined(ESP8266)
   snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getChipId() & 0xFFFF));
+#elif defined(ESP32)
+  snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getEfuseMac() & 0xFFFF));
+#endif
   return String(buf);
 }
 
@@ -414,10 +418,15 @@ void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAl
   }
 }
 
-static bool removeEntryFromList(RecordEntry* list, uint8_t& count, int8_t index, uint32_t& deletedLapOut, uint8_t& deletedCarIdOut, uint32_t& restoredLapOut) {
+static bool removeEntryFromList(RecordEntry* list, uint8_t& count, int8_t index, 
+                                uint32_t& deletedLapOut, uint8_t& deletedCarIdOut, uint32_t& restoredLapOut,
+                                String* deletedDriverOut = nullptr, String* deletedCarOut = nullptr, String* deletedDateOut = nullptr) {
   deletedLapOut = 0;
   deletedCarIdOut = 0;
   restoredLapOut = 0;
+  if (deletedDriverOut) *deletedDriverOut = "";
+  if (deletedCarOut) *deletedCarOut = "";
+  if (deletedDateOut) *deletedDateOut = "";
 
   if (index < 0) {
     clearRecordList(list, count);
@@ -428,6 +437,9 @@ static bool removeEntryFromList(RecordEntry* list, uint8_t& count, int8_t index,
   deletedLapOut = list[index].lapMs;
   deletedCarIdOut = list[index].carId;
   restoredLapOut = list[index].prevLapMs;
+  if (deletedDriverOut) *deletedDriverOut = list[index].driver;
+  if (deletedCarOut) *deletedCarOut = list[index].car;
+  if (deletedDateOut) *deletedDateOut = list[index].date;
 
   if (list[index].prevLapMs > 0) {
     list[index].lapMs = list[index].prevLapMs;
@@ -442,20 +454,71 @@ static bool removeEntryFromList(RecordEntry* list, uint8_t& count, int8_t index,
   return true;
 }
 
+static int8_t findMatchingRecordIndex(const RecordEntry* list, uint8_t count, uint32_t lapMs, uint8_t carId, const String& driver, const String& expectedDate) {
+  if (lapMs == 0 || count == 0) return -1;
+  for (uint8_t i = 0; i < count; i++) {
+    if (list[i].lapMs == lapMs) {
+      bool driverMatch = false;
+      if (driver.length() > 0 && list[i].driver.length() > 0) {
+        if (list[i].driver.equalsIgnoreCase(driver)) driverMatch = true;
+      } else if (carId > 0 && list[i].carId == carId) {
+        driverMatch = true;
+      }
+      if (driverMatch) {
+        if (expectedDate.length() == 0 || list[i].date.length() == 0 || list[i].date == expectedDate) {
+          return (int8_t)i;
+        }
+      }
+    }
+  }
+  return -1;
+}
+
 bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
   String targetId = trackId.length() > 0 ? trackId : activeTrackId;
   uint32_t deletedLap = 0;
   uint8_t deletedCarId = 0;
   uint32_t restoredLap = 0;
+  String deletedDriver = "";
+  String deletedCar = "";
+  String deletedDate = "";
+  String today = getCurrentLocalDateStr();
 
   if (targetId == activeTrackId) {
     bool ok = false;
     if (isDaily) {
-      ok = removeEntryFromList(activeDailyRecords, activeDailyCount, index, deletedLap, deletedCarId, restoredLap);
+      ok = removeEntryFromList(activeDailyRecords, activeDailyCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
+      if (!ok) return false;
+
+      // Kaskadierung zum All-Time Streckenrekord:
+      // Eine Tagesbestzeit stammt von heute. Falls derselbe Eintrag (gleiche Rundenzeit + Fahrer von heute)
+      // auch in der All-Time Liste steht, war diese Tagesbestzeit gleichzeitig der Streckenrekord!
+      if (index >= 0 && deletedLap > 0) {
+        String matchDate = deletedDate.length() > 0 ? deletedDate : today;
+        int8_t allTimeIdx = findMatchingRecordIndex(activeAllTimeRecords, activeAllTimeCount, deletedLap, deletedCarId, deletedDriver, matchDate);
+        if (allTimeIdx >= 0) {
+          uint32_t dLap = 0, rLap = 0;
+          uint8_t dCar = 0;
+          removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, allTimeIdx, dLap, dCar, rLap);
+        }
+      }
     } else {
-      ok = removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, index, deletedLap, deletedCarId, restoredLap);
+      ok = removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
+      if (!ok) return false;
+
+      // Kaskadierung zur Tagesbestzeit:
+      // Ein Streckenrekord kann älter sein als heute (Streckenrekord != Tagesbestzeit falls älter!).
+      // Nur wenn der gelöschte Streckenrekord von HEUTE stammt, existiert er auch in der Tagesbestzeit.
+      bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
+      if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
+        int8_t dailyIdx = findMatchingRecordIndex(activeDailyRecords, activeDailyCount, deletedLap, deletedCarId, deletedDriver, "");
+        if (dailyIdx >= 0) {
+          uint32_t dLap = 0, rLap = 0;
+          uint8_t dCar = 0;
+          removeEntryFromList(activeDailyRecords, activeDailyCount, dailyIdx, dLap, dCar, rLap);
+        }
+      }
     }
-    if (!ok) return false;
 
     if (deletedCarId >= 1 && deletedCarId <= MAX_CARS && deletedLap > 0 && bestLapDuration[deletedCarId] == deletedLap) {
       bestLapDuration[deletedCarId] = restoredLap;
@@ -478,42 +541,74 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
     bool found = false;
     for (JsonObject t : arr) {
       if (t["id"].as<String>() == targetId) {
-        RecordEntry tempList[MAX_TRACK_RECORDS];
-        uint8_t tempCount = 0;
-        const char* arrKey = isDaily ? "dailyRecords" : "allTimeRecords";
-        loadRecordArrayFromJson(t, arrKey, tempList, tempCount);
-        if (!removeEntryFromList(tempList, tempCount, index, deletedLap, deletedCarId, restoredLap)) {
-          return false;
-        }
-        saveRecordArrayToJson(t, arrKey, tempList, tempCount);
+        RecordEntry allTimeList[MAX_TRACK_RECORDS];
+        uint8_t allTimeCount = 0;
+        loadRecordArrayFromJson(t, "allTimeRecords", allTimeList, allTimeCount);
+
+        RecordEntry dailyList[MAX_TRACK_RECORDS];
+        uint8_t dailyCount = 0;
+        loadRecordArrayFromJson(t, "dailyRecords", dailyList, dailyCount);
+
+        bool ok = false;
         if (isDaily) {
-          if (tempCount > 0 && tempList[0].lapMs > 0) {
-            t["bestLap"] = tempList[0].lapMs;
-            t["bestCarId"] = tempList[0].carId;
-            t["bestDriver"] = tempList[0].driver;
-            t["bestCar"] = tempList[0].car;
-            t["bestDate"] = tempList[0].date;
-          } else {
-            t["bestLap"] = 0;
-            t["bestCarId"] = 0;
-            t["bestDriver"] = "";
-            t["bestCar"] = "";
+          ok = removeEntryFromList(dailyList, dailyCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
+          if (!ok) return false;
+
+          if (index >= 0 && deletedLap > 0) {
+            String matchDate = deletedDate.length() > 0 ? deletedDate : today;
+            int8_t allTimeIdx = findMatchingRecordIndex(allTimeList, allTimeCount, deletedLap, deletedCarId, deletedDriver, matchDate);
+            if (allTimeIdx >= 0) {
+              uint32_t dLap = 0, rLap = 0;
+              uint8_t dCar = 0;
+              removeEntryFromList(allTimeList, allTimeCount, allTimeIdx, dLap, dCar, rLap);
+            }
           }
         } else {
-          if (tempCount > 0 && tempList[0].lapMs > 0) {
-            t["recordLap"] = tempList[0].lapMs;
-            t["recordCarId"] = tempList[0].carId;
-            t["recordDriver"] = tempList[0].driver;
-            t["recordCar"] = tempList[0].car;
-            t["recordDate"] = tempList[0].date;
-          } else {
-            t["recordLap"] = 0;
-            t["recordCarId"] = 0;
-            t["recordDriver"] = "";
-            t["recordCar"] = "";
-            t["recordDate"] = "";
+          ok = removeEntryFromList(allTimeList, allTimeCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
+          if (!ok) return false;
+
+          bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
+          if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
+            int8_t dailyIdx = findMatchingRecordIndex(dailyList, dailyCount, deletedLap, deletedCarId, deletedDriver, "");
+            if (dailyIdx >= 0) {
+              uint32_t dLap = 0, rLap = 0;
+              uint8_t dCar = 0;
+              removeEntryFromList(dailyList, dailyCount, dailyIdx, dLap, dCar, rLap);
+            }
           }
         }
+
+        saveRecordArrayToJson(t, "allTimeRecords", allTimeList, allTimeCount);
+        saveRecordArrayToJson(t, "dailyRecords", dailyList, dailyCount);
+
+        // Header-Felder synchronisieren
+        if (dailyCount > 0 && dailyList[0].lapMs > 0) {
+          t["bestLap"] = dailyList[0].lapMs;
+          t["bestCarId"] = dailyList[0].carId;
+          t["bestDriver"] = dailyList[0].driver;
+          t["bestCar"] = dailyList[0].car;
+          t["bestDate"] = dailyList[0].date;
+        } else {
+          t["bestLap"] = 0;
+          t["bestCarId"] = 0;
+          t["bestDriver"] = "";
+          t["bestCar"] = "";
+        }
+
+        if (allTimeCount > 0 && allTimeList[0].lapMs > 0) {
+          t["recordLap"] = allTimeList[0].lapMs;
+          t["recordCarId"] = allTimeList[0].carId;
+          t["recordDriver"] = allTimeList[0].driver;
+          t["recordCar"] = allTimeList[0].car;
+          t["recordDate"] = allTimeList[0].date;
+        } else {
+          t["recordLap"] = 0;
+          t["recordCarId"] = 0;
+          t["recordDriver"] = "";
+          t["recordCar"] = "";
+          t["recordDate"] = "";
+        }
+
         found = true;
         break;
       }
@@ -547,6 +642,7 @@ static String escapeJsonStr(const String& s) {
 }
 
 void updateFsUsageCache() {
+#if defined(ESP8266)
   FSInfo fs_info;
   if (LittleFS.info(fs_info) && fs_info.totalBytes > 0) {
     cachedFsTotalBytes = fs_info.totalBytes;
@@ -556,12 +652,30 @@ void updateFsUsageCache() {
       storageFullLocked = false;
     }
   }
+#elif defined(ESP32)
+  size_t total = LittleFS.totalBytes();
+  size_t used = LittleFS.usedBytes();
+  if (total > 0) {
+    cachedFsTotalBytes = total;
+    cachedFsUsedBytes = used;
+    cachedFsUsedPct = (uint8_t)((used * 100ULL) / total);
+    if (cachedFsUsedPct < 95) {
+      storageFullLocked = false;
+    }
+  }
+#endif
 }
 
 void initFS() {
+#if defined(ESP8266)
   if (LittleFS.begin()) {
     updateFsUsageCache();
   }
+#elif defined(ESP32)
+  if (LittleFS.begin(true)) {
+    updateFsUsageCache();
+  }
+#endif
 }
 
 // --- STRECKEN-VERWALTUNG (/tracks.json) ---
@@ -796,6 +910,7 @@ bool addOrSelectTrack(const String& rawName) {
 }
 
 static void removeDirectoryRecursive(const String& dirPath) {
+#if defined(ESP8266)
   Dir dir = LittleFS.openDir(dirPath);
   while (dir.next()) {
     String subPath = dirPath + "/" + dir.fileName();
@@ -806,6 +921,21 @@ static void removeDirectoryRecursive(const String& dirPath) {
     }
   }
   LittleFS.rmdir(dirPath);
+#elif defined(ESP32)
+  File dir = LittleFS.open(dirPath);
+  if (!dir || !dir.isDirectory()) return;
+  File file = dir.openNextFile();
+  while (file) {
+    String subPath = file.path();
+    if (file.isDirectory()) {
+      removeDirectoryRecursive(subPath);
+    } else {
+      LittleFS.remove(subPath);
+    }
+    file = dir.openNextFile();
+  }
+  LittleFS.rmdir(dirPath);
+#endif
 }
 
 // Hilfsfunktion: Filtert /sessions.json im Streaming-Verfahren ohne RAM-Spitzen
@@ -1516,32 +1646,38 @@ void deleteSessionById(const String& sessionId) {
   filterSessionsIndexFile(sessionId, "", "", "");
 }
 
-void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNum) {
-  if (sessionId.length() == 0) return;
+void deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (sessionId.length() == 0 && filePath.length() == 0) return;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
   // 1. Dateipfad der Session ermitteln
-  String targetFile = "";
-  if (currentSessionActive && currentSessionId == sessionId) {
-    targetFile = currentSessionFilePath;
-  } else if (LittleFS.exists("/sessions.json")) {
-    File fIn = LittleFS.open("/sessions.json", "r");
-    if (fIn) {
-      String needle = "\"id\":\"" + sessionId + "\"";
-      while (fIn.available()) {
-        String line = fIn.readStringUntil('}');
-        int idx = line.indexOf(needle);
-        if (idx >= 0) {
-          int fIdx = line.indexOf("\"file\":\"");
-          if (fIdx >= 0) {
-            int startQ = fIdx + 8;
-            int endQ = line.indexOf("\"", startQ);
-            if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+  String targetFile = filePath;
+  if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
+    targetFile = "/" + targetFile;
+  }
+
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
+    if (currentSessionActive && currentSessionId == sessionId) {
+      targetFile = currentSessionFilePath;
+    } else if (LittleFS.exists("/sessions.json")) {
+      File fIn = LittleFS.open("/sessions.json", "r");
+      if (fIn) {
+        String needle = "\"id\":\"" + sessionId + "\"";
+        while (fIn.available()) {
+          String line = fIn.readStringUntil('}');
+          int idx = line.indexOf(needle);
+          if (idx >= 0) {
+            int fIdx = line.indexOf("\"file\":\"");
+            if (fIdx >= 0) {
+              int startQ = fIdx + 8;
+              int endQ = line.indexOf("\"", startQ);
+              if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+            }
+            break;
           }
-          break;
         }
+        fIn.close();
       }
-      fIn.close();
     }
   }
 
@@ -1561,8 +1697,14 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
   for (size_t i = 0; i < laps.size(); i++) {
     uint8_t cId = laps[i]["c"] | (laps[i]["carId"] | 0);
     uint16_t lNum = laps[i]["l"] | (laps[i]["lap"] | 0);
-    if (cId == carId && lNum == lapNum) {
-      deletedLapTimeMs = laps[i]["t"] | (laps[i]["time"] | 0);
+    uint32_t lTime = laps[i]["t"] | (laps[i]["time"] | 0);
+
+    bool carMatch = (carId == 0 || cId == carId);
+    bool lapMatch = (lapNum > 0 && lNum == lapNum);
+    bool timeMatch = (lapTimeMs > 0 && lTime == lapTimeMs);
+
+    if (carMatch && (lapMatch || timeMatch)) {
+      deletedLapTimeMs = lTime;
       laps.remove(i);
       break;
     }
@@ -1570,18 +1712,58 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
 
   String sessTrackId = doc["trackId"] | activeTrackId;
 
-  // Falls die gelöschte Runde in der Top-5 Rekordliste stand, auch dort automatisch korrigieren
-  if (deletedLapTimeMs > 0 && sessTrackId == activeTrackId) {
-    for (uint8_t i = 0; i < activeAllTimeCount; i++) {
-      if (activeAllTimeRecords[i].lapMs == deletedLapTimeMs && activeAllTimeRecords[i].carId == carId) {
-        deleteTrackRecordEntry(activeTrackId, false, (int8_t)i);
-        break;
+  // Falls die gelöschte Runde in der Top-5 Rekordliste stand, auch dort automatisch korrigieren.
+  // deleteTrackRecordEntry übernimmt die automatische Kaskadierung (Daily <-> All-Time falls Datum heute).
+  if (deletedLapTimeMs > 0) {
+    bool handled = false;
+    if (sessTrackId == activeTrackId) {
+      for (uint8_t i = 0; i < activeDailyCount; i++) {
+        if (activeDailyRecords[i].lapMs == deletedLapTimeMs && activeDailyRecords[i].carId == carId) {
+          deleteTrackRecordEntry(activeTrackId, true, (int8_t)i);
+          handled = true;
+          break;
+        }
       }
-    }
-    for (uint8_t i = 0; i < activeDailyCount; i++) {
-      if (activeDailyRecords[i].lapMs == deletedLapTimeMs && activeDailyRecords[i].carId == carId) {
-        deleteTrackRecordEntry(activeTrackId, true, (int8_t)i);
-        break;
+      if (!handled) {
+        for (uint8_t i = 0; i < activeAllTimeCount; i++) {
+          if (activeAllTimeRecords[i].lapMs == deletedLapTimeMs && activeAllTimeRecords[i].carId == carId) {
+            deleteTrackRecordEntry(activeTrackId, false, (int8_t)i);
+            break;
+          }
+        }
+      }
+    } else {
+      // Session auf einer anderen (nicht aktiven) Strecke: passenden Eintrag in tracks.json suchen
+      if (LittleFS.exists("/tracks.json")) {
+        File f = LittleFS.open("/tracks.json", "r");
+        if (f) {
+          JsonDocument doc;
+          DeserializationError err = deserializeJson(doc, f);
+          f.close();
+          if (!err) {
+            JsonArray arr = doc["tracks"].as<JsonArray>();
+            for (JsonObject t : arr) {
+              if (t["id"].as<String>() == sessTrackId) {
+                RecordEntry dList[MAX_TRACK_RECORDS];
+                uint8_t dCount = 0;
+                loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
+                int8_t dIdx = findMatchingRecordIndex(dList, dCount, deletedLapTimeMs, carId, "", "");
+                if (dIdx >= 0) {
+                  deleteTrackRecordEntry(sessTrackId, true, dIdx);
+                } else {
+                  RecordEntry aList[MAX_TRACK_RECORDS];
+                  uint8_t aCount = 0;
+                  loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
+                  int8_t aIdx = findMatchingRecordIndex(aList, aCount, deletedLapTimeMs, carId, "", "");
+                  if (aIdx >= 0) {
+                    deleteTrackRecordEntry(sessTrackId, false, aIdx);
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -1757,6 +1939,7 @@ void deleteAllHistory() {
   }
 
   // Alle Unterordner im Root (Strecken-Ordner) leeren & entfernen
+#if defined(ESP8266)
   Dir root = LittleFS.openDir("/");
   std::vector<String> dirsToRemove;
   while (root.next()) {
@@ -1769,6 +1952,24 @@ void deleteAllHistory() {
       }
     }
   }
+#elif defined(ESP32)
+  File root = LittleFS.open("/");
+  std::vector<String> dirsToRemove;
+  if (root && root.isDirectory()) {
+    File f = root.openNextFile();
+    while (f) {
+      if (f.isDirectory()) {
+        dirsToRemove.push_back(f.path());
+      } else {
+        String fn = f.name();
+        if (fn.startsWith("stats_") && fn.endsWith(".json")) {
+          LittleFS.remove(f.path());
+        }
+      }
+      f = root.openNextFile();
+    }
+  }
+#endif
   for (const String& d : dirsToRemove) {
     removeDirectoryRecursive(d);
   }

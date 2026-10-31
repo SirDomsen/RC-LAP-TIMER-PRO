@@ -2,6 +2,7 @@
 #include "ir_decoder.h"
 #include "storage.h"
 #include "web_server.h"
+#include "buzzer.h"
 #include <sys/time.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -131,7 +132,7 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
   char buffer[192];
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld}",
-    carId, driverNames[carId].c_str(), sectorNum, sectorTimeMs, splitTimeMs,
+    carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
     isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs);
   broadcastWebSocket(buffer);
 }
@@ -140,7 +141,7 @@ void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8
   char buffer[256];
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"pos\":%d,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
-    carId, driverNames[carId].c_str(), lapNum, lapTimeMs, pos, 
+    carId, driverNames[carId].c_str(), lapNum, (unsigned long)lapTimeMs, pos, 
     isPB ? "true" : "false", isOverallBest ? "true" : "false",
     isTrackRecord ? "true" : "false", isDailyRecord ? "true" : "false",
     isOutLap ? "true" : "false");
@@ -449,10 +450,11 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
       char finishJson[192];
       snprintf(finishJson, sizeof(finishJson),
         "{\"type\":\"drag_finish\",\"carId\":%d,\"driver\":\"%s\",\"time\":%lu,\"isPB\":%s,\"isOverallBest\":%s}",
-        carId, driverNames[carId].c_str(), elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
+        carId, driverNames[carId].c_str(), (unsigned long)elapsedMs, isPB ? "true" : "false", isOverall ? "true" : "false");
       broadcastWebSocket(finishJson);
 
       broadcastLapEvent(carId, completedRun, elapsedMs, 1, isPB, isOverall, false, false, false);
+      if (isOverall) playBuzzerRecord(); else playBuzzerLap();
       return;
     }
 
@@ -844,6 +846,11 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     queueLapForStorage(carId, completedLap, currentLapTimeMs, savedSz1, savedSz2, savedSz3, savedSz4, pos, (uint8_t)currentMode, currentTsMs, currentLapIsOutLap);
 
     broadcastLapEvent(carId, completedLap, currentLapTimeMs, pos, isLapPB, isLapOverall, isNewTrackRecord, isNewDailyRecord, currentLapIsOutLap);
+    if (isNewTrackRecord || isLapOverall) {
+      playBuzzerRecord();
+    } else {
+      playBuzzerLap();
+    }
   }
 
   if (lapCounted) {
@@ -852,7 +859,6 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     readyLedOffTime = millis() + 200;
   }
 }
-
 void processLapLogic() {
   if (!newCodeAvailable) return;
 

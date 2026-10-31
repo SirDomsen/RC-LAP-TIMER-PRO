@@ -14,19 +14,22 @@
 
 ### ⚙️ PlatformIO Build-Environments (`platformio.ini`)
 - `basisstation`: NodeMCU V2 (`nodemcuv2`, 160 MHz, LittleFS, LWIP2 Low Memory), AsyncWebServer, ArduinoJson 7.
+- `basisstation_s3`: ESP32-S3 DevKitC-1 N16R8 (240 MHz Dual-Core, 16MB Flash Quad, 8MB PSRAM Octal SPI `qio_opi`, USB-CDC), AsyncWebServer, AsyncTCP, ArduinoJson 7.
 - `sz1`, `sz2`, `sz3`: ESP-01S (`esp01_1m`, 160 MHz), Flags `-DSECTOR_STATION -DSTATION_ID=1/2/3`.
 
 ### 🔧 Backend Basisstation (`esp8266_rx/src/`)
-- **Hardware:** TSOP4838 IR-Empfänger an **D2 (GPIO4)**, Status-LEDs an **D5 (Grün)** & **D6 (Gelb/Signal)**.
+- **Hardware ESP8266:** TSOP4838 IR-Empfänger an **D2 (GPIO4)**, Status-LEDs an **D5 (Grün)** & **D6 (Gelb/Signal)**, **Arcade-Speaker an D1 (GPIO5)** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand).
+- **Hardware ESP32-S3:** TSOP4838 IR-Empfänger an **GPIO 4**, Status-LEDs an **GPIO 5 (Grün)** & **GPIO 6 (Gelb/Signal)**, **Arcade-Speaker an GPIO 7** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand). *(Hinweis: GPIO 33–37 sind für Octal-PSRAM/Flash reserviert, GPIO 19/20 für USB-CDC).*
 - `ir_decoder.cpp`: Interrupt an D2, strikte Flanken- & Timingprüfung (Leader 1.8–4.2 ms, Bitgrenze 950 µs) mit kompromisslosem Reset bei Störsignalen.
+- `buzzer.cpp` / `buzzer.h` / `Sound/`: Non-blocking Chiptune-Soundtreiber (0 Byte dynamischer Heap, alle Sequenzen in `PROGMEM` in `Sound/soundtracks.h`) an **D1 (GPIO5)** via BC337-Transistor. GPC Startampel (Rot 260 Hz ➔ Grün 1050 Hz), Lap-Tick (1760 Hz, 35 ms), Streckenrekord-Fanfare sowie Accolade Arcade Audio Jukebox mit 8 Original-Soundtracks (Grand Prix Circuit Title & Menu, Test Drive 1 Intro & Menu Beat, Test Drive 3 Passion Theme & Radiosender 1–3) im nahtlosen Dauerloop mit adaptiver Staccato-Artikulation. Web-API `/api/buzzer` (`cmd=play&track=<id>&loop=1|0`, `cmd=start|lap|record|stop`, `enable=1|0`). Rennleiter-Modal mit Kassetten-Icon `📼 Arcade Audio` in `admin.html`.
 - `lap_logic.cpp`: Live-Zeitmessung für 5 Rennmodi (0=Training, 1=Quali, 2=Rundenrennen, 3=Zeitrennen, 4=Dragrace). Erfasst Sektorzeiten SZ1–SZ4, PBs und Purple Sectors. 2-Frame-Validierungsfilter (85 ms), einstellbare Deadtime (Standard 2 s), dynamische Boxen-/Outlap-Erkennung (Schwellenwert 250% von AvgLap).
 - `esp_now_base.cpp`: Empfängt Zwischenzeiten von Sektorstationen via **ESP-NOW**. Sendet periodische Beacons (Stratum 0) für Mikrosekunden-Zeitsynchronisation und Remote-OTA-Befehle.
 - `storage.cpp`: `LittleFS`-Dateisystem (`/tracks.json` mit Top 5 Rekorden, `/sessions.json`, `/wifi.json`, `/names.json`, `/schema.json`). Session-Dateien unter `/<track>/<mode>/<timestamp>.json` mit ultrakompakten 1-Buchstaben-Keys gem. Telemetrie-Schema (`c, l, t, p, s, s1..s4, o`). RAM-Puffer (`lapQueue[30]`) gegen Schreibblockaden, EEPROM-Speicherung, 95%-Flash-Schreibschutz.
-- `web_server.cpp` / `web_handlers.cpp`: Asynchroner Webserver & WebSockets (`/ws`), REST-APIs, dynamischer Heap-Schutz (HTTP 503 Busy Guard auch auf `/api/laps` / WS-Code 1013 bei <16 kB Heap, >55% Fragmentierung oder <3 kB freiem Block, ausgenommen kritische Core-Assets wie `.css` und `.js`). Dreistufige WLAN-Kaskade (Heim ➔ Hotspot ➔ AP), Geister-WLAN (`LT_<SSID>-<IP>`), SoftAP auf 802.11n mit gelernter IP, hartem 4-Stationen-Limit (`max_connection = 4` gegen Beacon-/Heap-Erschöpfung) und ChipID-Suffix (`RC-LapTimer-XXXX`).
+- `web_server.cpp` / `web_handlers.cpp`: Asynchroner Webserver & WebSockets (`/ws`), REST-APIs, synchronisierte Countdown- und Session-Start-Broadcasts (`/api/countdown`, `session_start`), dynamischer Heap-Schutz (HTTP 503 Busy Guard auch auf `/api/laps` / WS-Code 1013 bei <16 kB Heap, >55% Fragmentierung oder <3 kB freiem Block, ausgenommen kritische Core-Assets wie `.css` und `.js`). Robuste 4-Säulen Client-Lifecycle-Verwaltung (tabId-basierte Tab-Zuordnung via `sessionStorage`, TCP-Sendestau-Erkennung für abgerissene/gesperrte Handys mit 8s-Timeout, `ws.cleanupClients(3)` zur PCB-Reservierung für HTTP-Assets, Apple-Touch-Icon Interception). Dreistufige WLAN-Kaskade (Heim ➔ Hotspot ➔ AP), Geister-WLAN (`LT_<SSID>-<IP>`), SoftAP auf 802.11n mit gelernter IP, hartem 4-Stationen-Limit (`max_connection = 4` gegen Beacon-/Heap-Erschöpfung) und ChipID-Suffix (`RC-LapTimer-XXXX`).
 
 ### 📡 Backend Sektorstationen (`esp8266_rx/src_sz/`)
 - **Hardware:** ESP-01S, TSOP4838 an **GPIO3 (RX)**, Akkumessung an **A0** (8k2/1k8 Teiler).
-- `main.cpp`: Smart-Parent Routing (Zero-Heap Unicast an nächsten Hop mit HW-ACK & 7 Retries) mit sofortigem Broadcast-Failover, 802.11b/g PHY-Modus (-98 dBm Empfindlichkeit), beruhigtes Kanal-Handling (15s Timeout, 1200ms Verweildauer), Pre-OTA Timeout (16s), Totmannschaltung (120s Inaktivität) und Arm-and-Confirm Bestätigung.
+- `main.cpp`: Dynamische Selbstheilung (Unicast zur Basis mit HW-ACK, 2,5s Basis-Lease Timeout auf Broadcast, sofortiger HW-ACK Failover im Loop), 802.11g PHY-Modus, beruhigtes Kanal-Handling (15s Timeout, 1200ms Verweildauer), 4-Stufen-Failsafe OTA (100% reines DHCP & automatischer Basis-AP Scan `RC-LapTimer*`), autarker Rettungs-AP `RescueSZ<ChipId>` auf 192.168.4.1.
 
 ### 🚗 Transponder (`attiny13_tx/`)
 - **Hardware:** ATtiny13A (9.6 MHz intern), IR-LED an **PB3** getrieben über **BC337-Transistor** (für hohe gepulste IR-Ströme), Spannungsversorgung stabilisiert mit Keramikkondensator (KerKo).
@@ -41,8 +44,8 @@
 - `modes.js`: Rennabläufe, automatischer 3-2-1-Los Sprachcountdown, Rennabbruch.
 - `stats.js`: Multi-Filter-Statistiken (Strecken & Modi), Fahrerprofile, Rundenhistorie, Backup (.json) & Restore, transparenter `normalizeLap()`-Parser für alte und neue Formate, Client-seitiger Session-Index-Rebuild mit automatischer Flash-Komprimierung alter Session-Dateien, browser-gesteuertes Session-Löschen mit No-Cache-Headers.
 - `config.js`: Modals für WLAN-Kaskade, Transponder-Namen, Sensorparameter (Deadtime, 2-Frame-Filter), SZ-OTA-Trigger.
-- `tts.js` / `websocket.js`: Web Speech API Sprachausgabe (`de-DE`) mit 100% Echtzeit-WebSocket-Anbindung (<15 ms Latenz bei Zieldurchfahrt), Vorrang-Ansagen ("Noch 1 Minute/30s/10s" und Runden-Countdown "Noch 5/3 Runden, letzte Runde"), 50 ms Audio-Puffer-Entprellung, Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto") und iOS-Audio-Unlock.
-- `update.html` & `debug.html`: LittleFS-Dateimanager (Ordneransicht, ZIP-Download), Firmware-OTA-Upload, universelles Dialog-Modal für Datei-/Ordner-/Flash-Aktionen und Live-Paketmonitor.
+- `tts.js` / `websocket.js`: Web Speech API Sprachausgabe (`de-DE`) mit 100% Echtzeit-WebSocket-Anbindung (<15 ms Latenz bei Zieldurchfahrt), Vorrang-Ansagen ("Noch 1 Minute/30s/10s" und Runden-Countdown "Noch 5/3 Runden, letzte Runde"), globale Siegerehrung (`announceRaceResults`), zentral vom Admin synchronisierter Startampel-Sprachcountdown (`/api/countdown`), Stau-Schutz (max. 3 Ansagen gegen Minutenverzögerungen), Live-Splitscreen-Aktualisierung beider Fahrer im OLED-Dimmer, 50 ms Audio-Puffer-Entprellung, Warteschlange mit Watchdog, Einzelfahrer-Filterung ("Nur mein Auto") und iOS-Audio-Unlock.
+- `update.html` & `debug.html`: LittleFS-Dateimanager (Ordneransicht, ZIP-Download), Firmware-OTA-Upload, universelles Dialog-Modal für Datei-/Ordner-/Flash-Aktionen, Live-Paketmonitor und integrierte Frontend- & Asset-Live-Diagnose (HTTP-Status, GZIP-Prüfung, Syntax-Check, WebSocket-Handshake).
 
 ---
 
@@ -65,9 +68,9 @@ Diese Regeln resultieren aus einem fatalen OTA-Brick und sind **absolut unverhan
    - Kaskadierende Sends (z. B. Unicast + Broadcast direkt nacheinander) oder blockierende Delays im Callback führen sofort zum Heap-Crash oder Watchdog-Reset (WDT).
    - **Lösung:** Im Callback werden *ausschließlich* Flags gesetzt (z. B. `pendingOtaAck = true`). Das tatsächliche Senden der Antwortpakete passiert asynchron und sicher im `loop()`.
 
-2. **Die 3-stufige OTA-Rettungskaskade (Kein Restart!):**
+2. **Die 4-stufige OTA-Rettungskaskade (100% DHCP, Kein Restart!):**
    - Wenn eine Sektorstation den Wartungsmodus (`connectOtaNetwork()`) betritt, darf sie bei einem fehlgeschlagenen WLAN-Verbindungsversuch **niemals** über `ESP.restart()` neustarten. Ein Restart wirft sie zurück in den Rennbetrieb und sperrt sie dauerhaft aus, wenn die Basis falsche Credentials sendet.
-   - **Pflicht-Ablauf:** Stufe 1 (DHCP) ➔ Stufe 2 (Statische IP) ➔ **Stufe 3 (Notfall-AP `SZ-RESCUE-X`)**.
+   - **Pflicht-Ablauf:** Stufe 1 (Basis-Vorgabe per DHCP) ➔ Stufe 2 (Heimnetz secrets.h per DHCP) ➔ Stufe 3 (Automatischer Basis-AP Scan `RC-LapTimer*` per DHCP) ➔ **Stufe 4 (Autarker Notfall-AP `RescueSZ<ChipId>` auf 192.168.4.1)**.
    - Die Station MUSS als Fallback immer ihren eigenen Access Point aufspannen und endlos warten, bis der User sie per OTA rettet.
 
 3. **Kein PHY-Mode Zwang nach unten:**

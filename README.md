@@ -15,6 +15,7 @@ A standalone, Wi-Fi-based infrared lap timing system for RC cars built on the **
 * **Dynamic Storage:** Saves driver names, car profiles, lap histories, and session results to flash memory via LittleFS.
 * **Flexible Wi-Fi Connectivity:** Creates its own Access Point or connects to an existing home network.
 * **Over-The-Air (OTA) Updates:** Convenient firmware and web interface updates straight through the browser.
+* **Arcade Sound Effects:** Authentic 1-bit PC-speaker sounds (Grand Prix Circuit 2-1-GO start lights, lap ticks, track record fanfares).
 
 ---
 
