@@ -8,19 +8,81 @@ if (!wsTabId) {
   sessionStorage.setItem('lp_tab_id', wsTabId);
 }
 
+// --- GRAND PRIX CIRCUIT STARTAMPEL (WEBSITE STATUS HEARTBEAT) ---
+let lastHeartbeatPacketTs = 0;
+let lastPingSentTs = 0;
+let heartbeatWatchdogTimer = null;
+
+function setStartampelStatus(state, latencyMs = null, customText = null) {
+  const redLamps = document.querySelectorAll('.lamp-red');
+  const yellowLamps = document.querySelectorAll('.lamp-yellow');
+  const greenLamps = document.querySelectorAll('.lamp-green');
+  const textElem = document.getElementById('heartbeatStatusText');
+  const dimmerText = document.getElementById('dimmerStatusText');
+
+  redLamps.forEach(l => l.classList.toggle('active', state === 'red'));
+  yellowLamps.forEach(l => l.classList.toggle('active', state === 'yellow'));
+  greenLamps.forEach(l => l.classList.toggle('active', state === 'green'));
+
+  let label = customText;
+  if (!label) {
+    if (state === 'green') {
+      label = (latencyMs !== null && latencyMs > 0) ? `LIVE ${latencyMs}ms` : 'LIVE';
+    } else if (state === 'yellow') {
+      label = 'SYNC...';
+    } else {
+      label = 'STANDBY';
+    }
+  }
+
+  const cls = (state === 'green') ? 'status-green' : (state === 'yellow') ? 'status-yellow' : 'status-red';
+
+  if (textElem) {
+    textElem.className = 'startampel-text ' + cls;
+    textElem.innerText = label;
+  }
+  if (dimmerText) {
+    dimmerText.className = 'startampel-text ' + cls;
+    dimmerText.innerText = label;
+  }
+}
+
+function startHeartbeatWatchdog() {
+  if (heartbeatWatchdogTimer) return;
+  heartbeatWatchdogTimer = setInterval(() => {
+    if (isPageUnloading || document.visibilityState === 'hidden') return;
+    let now = Date.now();
+    if (lastHeartbeatPacketTs > 0 && (now - lastHeartbeatPacketTs > 4500)) {
+      setStartampelStatus('red', null, (!socket || socket.readyState !== WebSocket.OPEN) ? 'OFFLINE' : 'STALL');
+    } else if (socket && socket.readyState === WebSocket.OPEN) {
+      if (now - lastHeartbeatPacketTs >= 2500) {
+        lastPingSentTs = now;
+        try {
+          socket.send(JSON.stringify({ ping: lastPingSentTs }));
+        } catch (e) {}
+      }
+    }
+  }, 1500);
+}
+
 function initWebSocket() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
+  startHeartbeatWatchdog();
   let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   let wsUrl = wsProtocol + '//' + window.location.host + '/ws';
   try {
     socket = new WebSocket(wsUrl);
     socket.onopen = function() {
       console.log("[WebSocket] Verbunden mit Basis");
+      lastHeartbeatPacketTs = Date.now();
+      setStartampelStatus('green', null, 'LIVE');
       hideConnectionNotice();
       try {
         socket.send(JSON.stringify({ cmd: "hello", tab: wsTabId }));
+        lastPingSentTs = Date.now();
+        socket.send(JSON.stringify({ ping: lastPingSentTs }));
       } catch (e) {}
       // Nach Verbindungsaufbau oder Wakeup sofort aktuelle Telemetrie abrufen
       if (typeof requestUpdateData === 'function') {
@@ -31,15 +93,24 @@ function initWebSocket() {
       }
     };
     socket.onmessage = function(event) {
+      lastHeartbeatPacketTs = Date.now();
       try {
         let msg = JSON.parse(event.data);
+        if (msg.ping) {
+          let latency = Math.max(0, Date.now() - Number(msg.ping));
+          setStartampelStatus('green', latency);
+        } else {
+          setStartampelStatus('green', null, 'LIVE');
+        }
         handleLiveEvent(msg);
       } catch (e) {
+        setStartampelStatus('green', null, 'LIVE');
         console.error("[WebSocket] Parse-Fehler:", e);
       }
     };
     socket.onclose = function(event) {
       if (isPageUnloading) return;
+      setStartampelStatus('yellow', null, 'SYNC...');
       if (event.code === 1013) {
         console.log("[WebSocket] Server überlastet (1013), warte auf Freigabe...");
         showConnectionNotice("⏳ Boxengasse voll: Verbinde in wenigen Sekunden...");
@@ -50,10 +121,12 @@ function initWebSocket() {
       }
     };
     socket.onerror = function(err) {
+      setStartampelStatus('yellow', null, 'SYNC...');
       console.error("[WebSocket] Fehler:", err);
       try { socket.close(); } catch (e) {}
     };
   } catch (e) {
+    setStartampelStatus('red', null, 'OFFLINE');
     console.error("[WebSocket] Setup-Fehler:", e);
   }
 }
@@ -61,6 +134,7 @@ function initWebSocket() {
 // Sauberes Teardown bei Reload & Verlassen der Seite (ohne Geister-Reconnects)
 function closeWebSocketOnUnload() {
   isPageUnloading = true;
+  if (heartbeatWatchdogTimer) clearInterval(heartbeatWatchdogTimer);
   if (socket) {
     socket.onclose = null; // Reconnect-Timer beim Verlassen der Seite unterbinden
     try {
@@ -83,18 +157,33 @@ function handleWakeupFromStandby() {
 
     if (wakeupDebounceTimer) clearTimeout(wakeupDebounceTimer);
 
+    let now = Date.now();
+    // Wenn das Handy aus dem Schlaf kommt: Sofort Rot (STANDBY) anzeigen, wenn älter als 3.5s
+    if (lastHeartbeatPacketTs > 0 && (now - lastHeartbeatPacketTs > 3500)) {
+      setStartampelStatus('red', null, 'STANDBY');
+    }
+
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       showConnectionNotice("🔄 Synchronisiere mit Basisstation...");
     }
+
+    // 150ms nach Entsperren: Startampel schaltet auf GELB (SYNC...), während WLAN assoziiert
+    setTimeout(() => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        setStartampelStatus('yellow', null, 'SYNC...');
+      }
+    }, 150);
 
     // 500ms Puffer: Dem Smartphone-WLAN Zeit geben, die Verbindung zur Basis nach Standby zu stabilisieren
     wakeupDebounceTimer = setTimeout(() => {
       if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
         console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
+        setStartampelStatus('yellow', null, 'SYNC...');
         initWebSocket();
       } else if (socket.readyState === WebSocket.OPEN) {
         try {
-          socket.send(JSON.stringify({ cmd: "ping" }));
+          lastPingSentTs = Date.now();
+          socket.send(JSON.stringify({ ping: lastPingSentTs }));
           if (typeof requestUpdateData === 'function') {
             requestUpdateData(true, true);
           }
@@ -104,6 +193,7 @@ function handleWakeupFromStandby() {
             socket.onclose = null;
             try { socket.close(); } catch (err) {}
           }
+          setStartampelStatus('yellow', null, 'SYNC...');
           initWebSocket();
         }
       }

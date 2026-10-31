@@ -103,6 +103,9 @@
   2. TCP-Sendestau-Erkennung (`queueLen() > 0` für $\ge 8\,\text{s}$) für gesperrte Handys im Standby.
   3. `ws.cleanupClients(3)` garantiert stets min. 2 freie lwIP-PCBs für HTTP-Assets.
   4. Sauberes Teardown via `pagehide` / `beforeunload` ohne Reconnect-Stürme.
+* **Grand Prix Circuit Startampel & Standby-Re-Sync:**
+  * Visuelle Ampel-Heartbeat-Anzeige (Rot=Standby, Gelb=Sync, Grün=Live) auf Fahrer- und Admin-Seite sowie im OLED-Dimmer.
+  * Automatischer Reconnect mit 500 ms WLAN-Stabilisierungspuffer beim Entsperren des Smartphones ohne manuelles Neuladen.
 
 ---
 

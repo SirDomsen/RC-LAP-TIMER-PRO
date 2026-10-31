@@ -628,6 +628,112 @@ body.role-admin .driver-only {
   word-break: break-word;
 }
 
+/* --- GRAND PRIX CIRCUIT STARTAMPEL (WEBSITE STATUS HEARTBEAT) --- */
+.startampel-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.startampel-housing {
+  position: relative;
+  width: 26px;
+  height: 38px;
+  background: #0d0d0f;
+  border: 1px solid #2a2a30;
+  border-radius: 4px;
+  box-shadow: inset 0 0 4px #000, 0 2px 4px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 2px 3px;
+  box-sizing: border-box;
+}
+
+/* Nieten in den 4 Ecken (Grand Prix Circuit Style) */
+.startampel-housing::before,
+.startampel-housing::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #777;
+  border-radius: 0.5px;
+}
+.startampel-housing::before { top: 1px; left: 1px; box-shadow: 20px 0 0 #777; }
+.startampel-housing::after { bottom: 1px; left: 1px; box-shadow: 20px 0 0 #777; }
+
+.startampel-row {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  align-items: center;
+}
+
+.startampel-lamp {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  transition: all 0.15s ease-in-out;
+}
+
+/* Inaktive Linsen (Dunkel mit dezentem Glanzpunkt) */
+.startampel-lamp.lamp-red {
+  background: radial-gradient(circle at 35% 35%, #551a1a 0%, #200505 85%);
+  border: 1px solid #3a1010;
+}
+.startampel-lamp.lamp-yellow {
+  background: radial-gradient(circle at 35% 35%, #554411 0%, #221a05 85%);
+  border: 1px solid #3a3010;
+}
+.startampel-lamp.lamp-green {
+  background: radial-gradient(circle at 35% 35%, #114422 0%, #051a08 85%);
+  border: 1px solid #103a18;
+}
+
+/* Aktive Linsen (Glühend mit Reflex) */
+.startampel-lamp.lamp-red.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ff5555 45%, #ff0000 100%);
+  border: 1px solid #ff8888;
+  box-shadow: 0 0 6px var(--neon-red), inset 0 0 2px #fff;
+}
+.startampel-lamp.lamp-yellow.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ffcc00 45%, #ff9900 100%);
+  border: 1px solid #ffee88;
+  box-shadow: 0 0 6px var(--neon-orange), inset 0 0 2px #fff;
+  animation: ampel-yellow-blink 0.7s infinite alternate;
+}
+.startampel-lamp.lamp-green.active {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #00ff66 45%, #00cc44 100%);
+  border: 1px solid #88ffaa;
+  box-shadow: 0 0 6px var(--neon-green), inset 0 0 2px #fff;
+  animation: ampel-green-breathe 2s infinite ease-in-out;
+}
+
+@keyframes ampel-yellow-blink {
+  0% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+@keyframes ampel-green-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.1); filter: brightness(1.25); }
+}
+
+.startampel-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-family: var(--font-display);
+}
+.startampel-text.status-green { color: var(--neon-green); text-shadow: 0 0 6px rgba(0,255,136,0.4); }
+.startampel-text.status-yellow { color: var(--neon-orange); text-shadow: 0 0 6px rgba(255,153,0,0.4); }
+.startampel-text.status-red { color: var(--neon-red); text-shadow: 0 0 6px rgba(255,68,68,0.4); }
+
 .timer-display {
   color: var(--neon-cyan) !important;
   font-size: 24px !important;

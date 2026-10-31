@@ -46,6 +46,26 @@
           <span class="dimmer-top-stat-label">🏎️ Schnellste Runde</span>
           <span id="dimmerSessionBestText" class="dimmer-top-stat-val best-val">--:--</span>
         </div>
+        <div class="dimmer-top-stat-item">
+          <span class="dimmer-top-stat-label">Status</span>
+          <div class="startampel-container" style="gap:5px;">
+            <div class="startampel-housing" style="width:20px; height:30px; padding:1px 2px;">
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-red dimmer-ampel-red" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-red dimmer-ampel-red" style="width:5px; height:5px;"></span>
+              </div>
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-yellow dimmer-ampel-yellow" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-yellow dimmer-ampel-yellow" style="width:5px; height:5px;"></span>
+              </div>
+              <div class="startampel-row" style="gap:2px;">
+                <span class="startampel-lamp lamp-green active dimmer-ampel-green" style="width:5px; height:5px;"></span>
+                <span class="startampel-lamp lamp-green active dimmer-ampel-green" style="width:5px; height:5px;"></span>
+              </div>
+            </div>
+            <span id="dimmerStatusText" class="startampel-text status-green" style="font-size:11px;">LIVE</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -108,6 +128,26 @@
             SZ2:<span id="sz2Status" style="color:var(--neon-red);">●</span> 
             SZ3:<span id="sz3Status" style="color:var(--neon-red);">●</span>
           </span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Website Status</span>
+          <div class="status-val startampel-container" id="statusAmpelContainer" title="Verbindung zur Basisstation">
+            <div class="startampel-housing">
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-red" id="ampelRed1"></span>
+                <span class="startampel-lamp lamp-red" id="ampelRed2"></span>
+              </div>
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-yellow" id="ampelYellow1"></span>
+                <span class="startampel-lamp lamp-yellow" id="ampelYellow2"></span>
+              </div>
+              <div class="startampel-row">
+                <span class="startampel-lamp lamp-green active" id="ampelGreen1"></span>
+                <span class="startampel-lamp lamp-green active" id="ampelGreen2"></span>
+              </div>
+            </div>
+            <span id="heartbeatStatusText" class="startampel-text status-green">LIVE</span>
+          </div>
         </div>
       </div>
 

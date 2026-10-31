@@ -1262,7 +1262,15 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     if (res.ok) {
       await loadTracks();
       await updateData(true);
-      renderTrackRecordsModalContent(trackId);
+      if (typeof renderTrackRecordsModalContent === 'function') {
+        renderTrackRecordsModalContent(trackId);
+      }
+      if (typeof updateStatsModalDailyBest === 'function') {
+        updateStatsModalDailyBest();
+      }
+      if (typeof renderRecordsOverview === 'function') {
+        renderRecordsOverview();
+      }
     } else {
       await showAlert({
         title: "❌ FEHLER",
