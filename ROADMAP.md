@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.4.2 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.4.8 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 
@@ -98,6 +98,11 @@
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.
 * **Dynamischer Heap-Schutz:** Weist Verbindungen und `/api/laps`-Anfragen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der freie RAM unter 16 kB sinkt, die Fragmentierung 55 % übersteigt oder der freie Block < 3 kB ist.
+* **4-Säulen Client-Lifecycle:** Verhindert TCP-PCB-Erschöpfung auf dem ESP8266 im AP-Modus:
+  1. `tabId`-Zuordnung via `sessionStorage` (Reloads im selben Browser-Tab ersetzen alte Sockets gezielt).
+  2. TCP-Sendestau-Erkennung (`queueLen() > 0` für $\ge 8\,\text{s}$) für gesperrte Handys im Standby.
+  3. `ws.cleanupClients(3)` garantiert stets min. 2 freie lwIP-PCBs für HTTP-Assets.
+  4. Sauberes Teardown via `pagehide` / `beforeunload` ohne Reconnect-Stürme.
 
 ---
 
@@ -126,6 +131,7 @@
   * LittleFS-Dateimanager (Ordner-Ansicht, ZIP-Download einzelner Ordner oder des gesamten Speichers) und Firmware-OTA-Upload.
 * **`debug.html`:**
   * Live-Monitoring von ESP-Loop-Zeiten, Heap, ESP-NOW Funkpaketen und Signalstärken.
+  * Integrierte **Frontend- & Asset-Live-Diagnose** (HTTP-Status, GZIP-Prüfung, Syntax-Check, WebSocket-Handshake).
 
 ---
 

@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.4.6'; 
+window.UI_VERSION = '4.4.8'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
@@ -1725,6 +1725,13 @@ let lastUpdateDataTime = 0;
 const MIN_UPDATE_INTERVAL_MS = 1000;
 let updateDataTimer = null;
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
 function requestUpdateData(fullSync = false, priority = false) {
   if (fullSync) pendingUpdateFullSync = true;
   pendingUpdateRequested = true;
@@ -1765,10 +1772,20 @@ function requestUpdateData(fullSync = false, priority = false) {
 
 async function updateData(fullSync = false) {
   let now = Date.now();
-  if (isUpdatingData || (now - lastUpdateDataTime < MIN_UPDATE_INTERVAL_MS)) {
+  if (isUpdatingData) {
+    if (now - lastUpdateDataTime > 5000) {
+      console.warn("[Telemetry] Stale update lock detected (>5s), resetting lock");
+      isUpdatingData = false;
+    } else {
+      pendingUpdateRequested = true;
+      if (fullSync) pendingUpdateFullSync = true;
+      return;
+    }
+  }
+  if (now - lastUpdateDataTime < MIN_UPDATE_INTERVAL_MS) {
     pendingUpdateRequested = true;
     if (fullSync) pendingUpdateFullSync = true;
-    if (!updateDataTimer && !isUpdatingData) {
+    if (!updateDataTimer) {
       let isDriver = (userRole === 'driver');
       let jitter = isDriver ? Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 300);
       let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime)) + jitter;
@@ -1786,7 +1803,7 @@ async function updateData(fullSync = false) {
   lastUpdateDataTime = now;
 
   try {
-    let response = await fetch('/api/laps');
+    let response = await fetchWithTimeout('/api/laps', {}, 4500);
     if (response.status === 503) {
       isUpdatingData = false;
       return;
@@ -2037,7 +2054,7 @@ async function updateData(fullSync = false) {
   if (!fullSync) return;
 
   try {
-    let r = await fetch('/api/timeleft');
+    let r = await fetchWithTimeout('/api/timeleft', {}, 4000);
     if (r.ok) {
       let info = await r.json();
 
@@ -2084,7 +2101,7 @@ async function updateData(fullSync = false) {
   } catch (err) {}
 
   try {
-    let resStations = await fetch('/api/stations');
+    let resStations = await fetchWithTimeout('/api/stations', {}, 4000);
     if (resStations.ok) {
       let stations = await resStations.json();
       let sz1 = document.getElementById('sz1Status');
@@ -2116,7 +2133,7 @@ async function updateData(fullSync = false) {
 
   if (userRole === 'admin') {
     try {
-      let r = await fetch('/api/recent');
+      let r = await fetchWithTimeout('/api/recent', {}, 4000);
       if (r.ok) {
         let ids = await r.json();
         let html = '';

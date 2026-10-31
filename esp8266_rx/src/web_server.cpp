@@ -146,7 +146,7 @@ void triggerWifiSwitch(uint8_t mode) {
   pendingWifiSwitch = true;
 }
 
-// --- WEBSOCKET CLIENT-LIFECYCLE & ZOMBIE-KILLER ---
+// --- WEBSOCKET CLIENT-LIFECYCLE & SESSION-VERWALTUNG ---
 struct WsTabSession {
   uint32_t clientId;
   char tabId[12];
@@ -175,7 +175,7 @@ static void addWsClient(uint32_t clientId) {
 static void registerWsTab(uint32_t clientId, const char* tabId) {
   if (!tabId || tabId[0] == '\0') return;
 
-  // 1. Wenn derselbe Tab sich neu verbindet -> alter Socket ist eine Zombie-Leiche
+  // 1. Wenn derselbe Tab sich neu verbindet -> vorherigen Socket dieses Tabs schließen
   for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
     if (wsSessions[i].clientId != 0 && wsSessions[i].clientId != clientId && strncmp(wsSessions[i].tabId, tabId, sizeof(wsSessions[i].tabId)) == 0) {
       uint32_t oldId = wsSessions[i].clientId;
@@ -704,11 +704,11 @@ void handleNetworkTasks() {
   MDNS.update();
 #endif
   ArduinoOTA.handle();
-  // Zyklischer Check auf verstaute / abgerissene Zombie-Sockets (alle 3 Sekunden)
-  static uint32_t lastZombieCheck = 0;
+  // Zyklischer Check auf verstaute Sockets (alle 3 Sekunden)
+  static uint32_t lastClientStallCheck = 0;
   uint32_t now = millis();
-  if (now - lastZombieCheck >= 3000) {
-    lastZombieCheck = now;
+  if (now - lastClientStallCheck >= 3000) {
+    lastClientStallCheck = now;
     if (ws.count() > 0) {
       for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
         if (wsSessions[i].clientId != 0) {

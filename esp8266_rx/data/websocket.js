@@ -22,6 +22,13 @@ function initWebSocket() {
       try {
         socket.send(JSON.stringify({ cmd: "hello", tab: wsTabId }));
       } catch (e) {}
+      // Nach Verbindungsaufbau oder Wakeup sofort aktuelle Telemetrie abrufen
+      if (typeof requestUpdateData === 'function') {
+        requestUpdateData(true, true);
+      }
+      if (typeof loadTracks === 'function') {
+        loadTracks();
+      }
     };
     socket.onmessage = function(event) {
       try {
@@ -64,25 +71,48 @@ function closeWebSocketOnUnload() {
 window.addEventListener('pagehide', closeWebSocketOnUnload);
 window.addEventListener('beforeunload', closeWebSocketOnUnload);
 
-// Standby-Wakeup bei entsperrtem Handy
-document.addEventListener('visibilitychange', function() {
+// Standby-Wakeup bei entsperrtem Handy (Automatischer Re-Sync)
+let wakeupDebounceTimer = null;
+
+function handleWakeupFromStandby() {
+  if (isPageUnloading) return;
   if (document.visibilityState === 'visible') {
-    if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
-      console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
-      initWebSocket();
-    } else if (socket.readyState === WebSocket.OPEN) {
-      try {
-        socket.send(JSON.stringify({ cmd: "ping" }));
-      } catch (e) {
-        if (socket) {
-          socket.onclose = null;
-          try { socket.close(); } catch (err) {}
-        }
-        initWebSocket();
-      }
+    // Hängengebliebene Netzwerk-Sperren aus vorherigem Standby auflösen
+    if (typeof isUpdatingData !== 'undefined') isUpdatingData = false;
+    if (typeof isPolling !== 'undefined') isPolling = false;
+
+    if (wakeupDebounceTimer) clearTimeout(wakeupDebounceTimer);
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      showConnectionNotice("🔄 Synchronisiere mit Basisstation...");
     }
+
+    // 500ms Puffer: Dem Smartphone-WLAN Zeit geben, die Verbindung zur Basis nach Standby zu stabilisieren
+    wakeupDebounceTimer = setTimeout(() => {
+      if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+        console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
+        initWebSocket();
+      } else if (socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(JSON.stringify({ cmd: "ping" }));
+          if (typeof requestUpdateData === 'function') {
+            requestUpdateData(true, true);
+          }
+          hideConnectionNotice();
+        } catch (e) {
+          if (socket) {
+            socket.onclose = null;
+            try { socket.close(); } catch (err) {}
+          }
+          initWebSocket();
+        }
+      }
+    }, 500);
   }
-});
+}
+
+document.addEventListener('visibilitychange', handleWakeupFromStandby);
+window.addEventListener('focus', handleWakeupFromStandby);
 
 function showConnectionNotice(text) {
   let notice = document.getElementById('connectionNoticeBanner');

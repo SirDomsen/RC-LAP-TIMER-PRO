@@ -284,6 +284,14 @@ function setRecordsScope(scope) {
   renderRecordsOverview();
 }
 
+function onRecordsTrackFilterChange(val) {
+  currentStatsTrackFilter = val;
+  let topSel = document.getElementById('statsTrackFilterSelect');
+  if (topSel) topSel.value = val;
+  updateStatsModalDailyBest();
+  renderRecordsOverview();
+}
+
 function onRecordsCarFilterChange(val) {
   recordsCarFilter = val;
   renderRecordsOverview();
@@ -422,6 +430,23 @@ function renderRecordsOverview() {
 
   let allRecords = getAggregatedRecords();
 
+  // Alle verfügbaren Strecken sammeln (aus allTracksList und allSessionsCache)
+  let tracksMap = new Map();
+  if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {
+    allTracksList.forEach(t => {
+      tracksMap.set(t.id, t.name || t.id);
+    });
+  }
+  if (Array.isArray(allSessionsCache)) {
+    allSessionsCache.forEach(s => {
+      let tId = s.trackId || 'standard';
+      if (!tracksMap.has(tId)) {
+        tracksMap.set(tId, getTrackNameById(tId, s.trackName));
+      }
+    });
+  }
+  let sortedTracks = Array.from(tracksMap.entries()).map(([id, name]) => ({ id, name }));
+
   // Eindeutige Fahrzeug- und Fahrernamen sammeln
   let carsSet = new Set();
   let driversSet = new Set();
@@ -431,6 +456,14 @@ function renderRecordsOverview() {
   });
   let sortedCars = Array.from(carsSet).sort((a, b) => a.localeCompare(b));
   let sortedDrivers = Array.from(driversSet).sort((a, b) => a.localeCompare(b));
+
+  // Filter-Rückfall, falls gewähltes Auto / Fahrer auf gefilterter Strecke nicht existiert
+  if (recordsCarFilter !== 'all' && !carsSet.has(recordsCarFilter)) {
+    recordsCarFilter = 'all';
+  }
+  if (recordsDriverFilter !== 'all' && !driversSet.has(recordsDriverFilter)) {
+    recordsDriverFilter = 'all';
+  }
 
   // Filtern
   let filtered = allRecords.filter(r => {
@@ -476,9 +509,17 @@ function renderRecordsOverview() {
 
       <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px; margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">📍 STRECKE:</span>
+          <select onchange="onRecordsTrackFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
+            <option value="all" ${currentStatsTrackFilter === 'all' ? 'selected' : ''}>Alle Strecken (${sortedTracks.length})</option>
+            ${sortedTracks.map(t => `<option value="${escapeHtml(t.id)}" ${currentStatsTrackFilter === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px;">
           <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">🏎️ FAHRZEUG:</span>
           <select onchange="onRecordsCarFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all">Alle Fahrzeuge (${sortedCars.length})</option>
+            <option value="all" ${recordsCarFilter === 'all' ? 'selected' : ''}>Alle Fahrzeuge (${sortedCars.length})</option>
             ${sortedCars.map(c => `<option value="${escapeHtml(c)}" ${recordsCarFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
           </select>
         </div>
@@ -486,7 +527,7 @@ function renderRecordsOverview() {
         <div style="display:flex; align-items:center; gap:6px;">
           <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">👤 FAHRER:</span>
           <select onchange="onRecordsDriverFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all">Alle Fahrer (${sortedDrivers.length})</option>
+            <option value="all" ${recordsDriverFilter === 'all' ? 'selected' : ''}>Alle Fahrer (${sortedDrivers.length})</option>
             ${sortedDrivers.map(d => `<option value="${escapeHtml(d)}" ${recordsDriverFilter === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
         </div>
