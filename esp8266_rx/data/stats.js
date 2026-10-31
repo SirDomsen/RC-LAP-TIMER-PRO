@@ -313,7 +313,14 @@ function toggleRecordsSort(col) {
   renderRecordsOverview();
 }
 
-function openSessionFromRecord(mode, sessionId) {
+async function openSessionFromRecord(mode, sessionId) {
+  if (typeof closeTrackRecordsModal === 'function') closeTrackRecordsModal();
+  let m = document.getElementById('statsOverviewModal');
+  if (!m || m.style.display !== 'block') {
+    if (typeof openStatsOverviewModal === 'function') {
+      await openStatsOverviewModal();
+    }
+  }
   let targetTab = modeToTabName(mode);
   switchStatsTab(targetTab);
   let safeId = sanitizeDomId(sessionId);
@@ -325,9 +332,10 @@ function openSessionFromRecord(mode, sessionId) {
     card.classList.add('session-highlight-flash');
     setTimeout(() => {
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
+    }, 150);
   }
 }
+window.openSessionFromRecord = openSessionFromRecord;
 
 function getAggregatedRecords() {
   let records = [];
@@ -356,17 +364,20 @@ function getAggregatedRecords() {
           if (!entry || entry.lap <= 0) return;
           let dName = entry.driver || getCarDriverName(entry.carId);
           let cName = entry.car || getCarCarName(entry.carId);
+          let matchedSession = (typeof findSessionForRecord === 'function') ? findSessionForRecord(entry, t.id) : null;
           records.push({
             lap: entry.lap,
             driver: dName,
             car: cName,
             carId: entry.carId,
-            date: entry.date || '',
+            date: entry.date || (matchedSession && matchedSession.startTs ? new Date(matchedSession.startTs * 1000).toLocaleDateString() : ''),
             prevLap: entry.prevLap || 0,
             trackId: t.id,
             trackName: t.name || t.id,
             source: 'official',
-            index: idx
+            index: idx,
+            sessionId: matchedSession ? matchedSession.id : null,
+            mode: matchedSession ? (matchedSession.mode !== undefined ? matchedSession.mode : 0) : 0
           });
         });
       });
@@ -574,18 +585,27 @@ function renderRecordsOverview() {
       ? `<span style="font-size:10px; color:var(--text-muted);">(vorher: ${(r.prevLap/1000).toFixed(2)}s)</span>`
       : '';
 
+    let rowClickAttr = r.sessionId
+      ? `onclick="openSessionFromRecord(${r.mode !== undefined ? r.mode : 0}, '${r.sessionId}')" title="🔍 Klick öffnet Session in Statistiken"`
+      : '';
+    let rowClickClass = r.sessionId ? 'clickable' : '';
+    let sessionHint = r.sessionId
+      ? `<span style="font-size:10px; color:var(--neon-cyan); margin-left:4px;" title="Session verfügbar">🔍</span>`
+      : '';
+
     let delBtnHtml = (isAdmin && r.source === 'official' && typeof deleteTrackRecordEntryUI === 'function')
-      ? `<button class="top5-del-btn" onclick="deleteTrackRecordEntryUI('${r.trackId}', '${recordsTimeScope === 'daily' ? 'daily' : 'alltime'}', ${r.index})" title="Diesen Rekordeintrag löschen">✕</button>`
+      ? `<button class="top5-del-btn" onclick="event.stopPropagation(); deleteTrackRecordEntryUI('${r.trackId}', '${recordsTimeScope === 'daily' ? 'daily' : 'alltime'}', ${r.index})" title="Diesen Rekordeintrag löschen">✕</button>`
       : '';
 
     html += `
-      <div class="top5-entry-row" style="background:#0d1117; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:8px 12px;">
+      <div class="top5-entry-row ${rowClickClass}" ${rowClickAttr} style="background:#0d1117; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:8px 12px;">
         <div style="display:flex; align-items:center; gap:10px;">
           <span class="top5-rank-badge ${rankClass}">P${rank}</span>
           <div style="text-align:left;">
             <div>
               <strong style="color:var(--neon-cyan); font-size:13px;">${escapeHtml(r.driver)}</strong>
               <span style="color:var(--text-muted); font-size:12px; margin-left:4px;">(${escapeHtml(r.car)})</span>
+              ${sessionHint}
             </div>
             <div style="font-size:11px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:3px;">
               ${dateHtml}

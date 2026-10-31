@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.4.10 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.4.12 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 
@@ -135,6 +135,9 @@
 * **`debug.html`:**
   * Live-Monitoring von ESP-Loop-Zeiten, Heap, ESP-NOW Funkpaketen und Signalstärken.
   * Integrierte **Frontend- & Asset-Live-Diagnose** (HTTP-Status, GZIP-Prüfung, Syntax-Check, WebSocket-Handshake).
+* **`banner.webp` & `style.css`:**
+  * Synthwave/Arcade Hero-Banner (1024×254 px, ~23 kB) im `.hero-header` von Fahrer- und Admin-Page.
+  * Dunkles Kontrast-Overlay für optimale Lesbarkeit (`h1`, Role-Badge mit Backdrop-Blur) und nativer CSS-Gradient-Fallback bei fehlender Datei.
 
 ---
 
