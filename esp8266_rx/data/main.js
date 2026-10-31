@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.4.8'; 
+window.UI_VERSION = '4.4.10'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
@@ -1203,6 +1203,72 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     dailyArr = [{ lap: trackObj.bestLap, carId: trackObj.bestCarId || 0, driver: trackObj.bestDriver || '', car: trackObj.bestCar || '', date: trackObj.bestDate || '' }];
   }
 
+  let matchedSession = null;
+  let matchedLap = null;
+
+  if (index >= 0) {
+    let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
+    if (targetEntry) {
+      if (typeof fetchSessionsAndStorageInfo === 'function' && (typeof allSessionsCache === 'undefined' || !allSessionsCache || allSessionsCache.length === 0)) {
+        try { await fetchSessionsAndStorageInfo(); } catch (e) {}
+      }
+
+      if (typeof allSessionsCache !== 'undefined' && Array.isArray(allSessionsCache) && allSessionsCache.length > 0) {
+        // 1. Alle Sessions dieser Strecke sammeln
+        let candidateSessions = allSessionsCache.filter(s => {
+          let sTrack = s.trackId || 'standard';
+          if (sTrack !== targetId) return false;
+          return true;
+        });
+
+        // 2. Bevorzuge Sessions, an denen dieses Auto oder dieser Fahrer teilgenommen hat
+        let driverFiltered = candidateSessions.filter(s => {
+          if (!Array.isArray(s.results)) return false;
+          return s.results.some(r => {
+            let matchCar = (targetEntry.carId && r.id === targetEntry.carId);
+            let matchDriver = (targetEntry.driver && r.driver && r.driver.toLowerCase() === targetEntry.driver.toLowerCase());
+            return matchCar || matchDriver;
+          });
+        });
+        if (driverFiltered.length > 0) candidateSessions = driverFiltered;
+
+        // 3. Durchsuche die Sessions nach der konkreten Runde mit Zeit == targetEntry.lap
+        for (let s of candidateSessions) {
+          if (!s.file) continue;
+          try {
+            let sData = null;
+            if (typeof fetchSessionFileData === 'function') {
+              sData = await fetchSessionFileData(s.file);
+            } else {
+              let sRes = await fetch('/api/sessionfile?file=' + encodeURIComponent(s.file) + '&_t=' + Date.now(), { cache: 'no-store' });
+              if (sRes.ok) sData = await sRes.json();
+            }
+
+            if (sData && Array.isArray(sData.laps)) {
+              let found = sData.laps.find(l => {
+                let lCar = l.c !== undefined ? l.c : (l.carId || 0);
+                let lTime = l.t !== undefined ? l.t : (l.time || 0);
+                let lDriver = (l.driver || '').trim();
+                let matchCar = (!targetEntry.carId || lCar === targetEntry.carId);
+                let matchDriver = (!targetEntry.driver || !lDriver || lDriver.toLowerCase() === targetEntry.driver.toLowerCase());
+                return (matchCar || matchDriver) && lTime === targetEntry.lap;
+              });
+              if (found) {
+                matchedLap = {
+                  carId: found.c !== undefined ? found.c : (found.carId || targetEntry.carId),
+                  lap: found.l !== undefined ? found.l : (found.lap || 0),
+                  time: found.t !== undefined ? found.t : (found.time || targetEntry.lap)
+                };
+                matchedSession = s;
+                break;
+              }
+            }
+          } catch (err) {}
+        }
+      }
+    }
+  }
+
   if (index < 0) {
     desc = isDaily
       ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?'
@@ -1210,36 +1276,38 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     boxInfo = isDaily ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
   } else {
     let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
-    if (targetEntry) {
-      let driverName = targetEntry.driver || (carNamesMap[targetEntry.carId]?.driver) || ('Fahrer ' + (targetEntry.carId || '?'));
-      let timeStr = (targetEntry.lap / 1000).toFixed(2) + 's';
-      boxInfo = `Platz ${index + 1}: ${driverName} (${timeStr})`;
+    let driverName = targetEntry ? (targetEntry.driver || (carNamesMap[targetEntry.carId]?.driver) || ('Fahrer ' + (targetEntry.carId || '?'))) : ('Platz ' + (index + 1));
+    let timeStr = targetEntry ? ((targetEntry.lap / 1000).toFixed(2) + 's') : '';
+
+    if (matchedSession && matchedLap) {
+      title = isDaily ? '⏱️ TAGESBESTZEIT & RUNDE LÖSCHEN' : '🏆 REKORD & RUNDE LÖSCHEN';
+      boxInfo = `Runde ${matchedLap.lap}: ${driverName} (${timeStr}) in Session ${matchedSession.id}`;
+      desc = `Möchtest du diesen Rekord und die zugehörige <strong>Runde ${matchedLap.lap}</strong> dauerhaft aus der Session löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Die Runde wird vollständig aus dem Protokoll entfernt (Rundenanzahl -1) und die vorherige Bestzeit rückt nach.</span>`;
     } else {
-      boxInfo = `Platz ${index + 1}`;
+      boxInfo = `Platz ${index + 1}: ${driverName} (${timeStr})`;
+      desc = `Platz ${index + 1} löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Bestzeit wird aus der Rekordliste entfernt (vorherige Bestzeit rückt nach).</span>`;
     }
 
     if (isDaily) {
-      desc = `Platz ${index + 1} der Tagesbestzeit löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
       if (targetEntry) {
         let matchInAllTime = allTimeArr.some(at =>
           at.lap === targetEntry.lap &&
           ((targetEntry.driver && at.driver && at.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && at.carId === targetEntry.carId))
         );
         if (matchInAllTime) {
-          cascadeInfo = `<span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Diese Zeit ist gleichzeitig als <strong>All-Time Streckenrekord</strong> eingetragen und wird auch dort automatisch entfernt (vorherige Bestzeit rückt nach).</span>`;
+          cascadeInfo = `<span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Diese Zeit ist gleichzeitig als <strong>All-Time Streckenrekord</strong> eingetragen und wird auch dort automatisch entfernt.</span>`;
         }
       }
     } else {
-      desc = `Platz ${index + 1} des Streckenrekords löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Falls dieser Fahrer zuvor schon eine Zeit hatte, wird diese automatisch wiederhergestellt.</span>`;
       if (targetEntry) {
         let matchInDaily = dailyArr.some(d =>
           d.lap === targetEntry.lap &&
           ((targetEntry.driver && d.driver && d.driver.toLowerCase() === targetEntry.driver.toLowerCase()) || (targetEntry.carId && d.carId === targetEntry.carId))
         );
         if (matchInDaily) {
-          cascadeInfo = `<span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Dieser Streckenrekord stammt von heute und steht in der <strong>Tagesbestzeit</strong>. Er wird auch dort automatisch entfernt.</span>`;
+          cascadeInfo = `<span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">⚡ <strong>Automatische Synchronisierung:</strong> Dieser Streckenrekord stammt von heute und steht in der <strong>Tagesbestzeit</strong>. Er wird auch dort entfernt.</span>`;
         } else if (targetEntry.date) {
-          cascadeInfo = `<span style="color:var(--text-muted); font-size:12px; display:block; margin-top:8px;">ℹ️ Dieser Streckenrekord stammt vom <strong>${formatRecordDate(targetEntry.date)}</strong>. Die heutige Tagesbestzeit bleibt unberührt.</span>`;
+          cascadeInfo = `<span style="color:var(--text-muted); font-size:12px; display:block; margin-top:8px;">ℹ️ Dieser Streckenrekord stammt vom <strong>${formatRecordDate(targetEntry.date)}</strong>.</span>`;
         }
       }
     }
@@ -1257,11 +1325,37 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
   if (!ok) return;
 
   try {
-    let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(trackId)}&type=${encodeURIComponent(type)}&index=${index}`;
-    let res = await fetch(url, { method: 'POST' });
-    if (res.ok) {
+    let success = false;
+    if (matchedSession && matchedLap) {
+      try {
+        let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}&file=${encodeURIComponent(matchedSession.file)}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
+        let lapRes = await fetch(lapUrl, { method: 'POST' });
+        if (lapRes.ok) success = true;
+        if (typeof sessionFileCache !== 'undefined' && matchedSession.file) {
+          delete sessionFileCache[matchedSession.file];
+        }
+        let safeId = (typeof sanitizeDomId === 'function') ? sanitizeDomId(matchedSession.id) : String(matchedSession.id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        let elemId = `s_${safeId}_driver_${matchedLap.carId}`;
+        if (typeof embeddedLapsState !== 'undefined' && embeddedLapsState[elemId]) {
+          delete embeddedLapsState[elemId].laps;
+        }
+      } catch (lapErr) {
+        console.warn("Fehler beim Löschen der Runde aus Session:", lapErr);
+      }
+    }
+
+    if (!success) {
+      let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(trackId)}&type=${encodeURIComponent(type)}&index=${index}`;
+      let res = await fetch(url, { method: 'POST' });
+      if (res.ok) success = true;
+    }
+
+    if (success) {
       await loadTracks();
       await updateData(true);
+      if (typeof fetchSessionsAndStorageInfo === 'function') {
+        await fetchSessionsAndStorageInfo();
+      }
       if (typeof renderTrackRecordsModalContent === 'function') {
         renderTrackRecordsModalContent(trackId);
       }
@@ -1270,6 +1364,9 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
       }
       if (typeof renderRecordsOverview === 'function') {
         renderRecordsOverview();
+      }
+      if (typeof renderDriversOverview === 'function' && typeof currentTab !== 'undefined' && currentTab === 'drivers') {
+        renderDriversOverview();
       }
     } else {
       await showAlert({

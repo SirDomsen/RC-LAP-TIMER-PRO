@@ -1646,32 +1646,38 @@ void deleteSessionById(const String& sessionId) {
   filterSessionsIndexFile(sessionId, "", "", "");
 }
 
-void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNum) {
-  if (sessionId.length() == 0) return;
+void deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (sessionId.length() == 0 && filePath.length() == 0) return;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
   // 1. Dateipfad der Session ermitteln
-  String targetFile = "";
-  if (currentSessionActive && currentSessionId == sessionId) {
-    targetFile = currentSessionFilePath;
-  } else if (LittleFS.exists("/sessions.json")) {
-    File fIn = LittleFS.open("/sessions.json", "r");
-    if (fIn) {
-      String needle = "\"id\":\"" + sessionId + "\"";
-      while (fIn.available()) {
-        String line = fIn.readStringUntil('}');
-        int idx = line.indexOf(needle);
-        if (idx >= 0) {
-          int fIdx = line.indexOf("\"file\":\"");
-          if (fIdx >= 0) {
-            int startQ = fIdx + 8;
-            int endQ = line.indexOf("\"", startQ);
-            if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+  String targetFile = filePath;
+  if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
+    targetFile = "/" + targetFile;
+  }
+
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
+    if (currentSessionActive && currentSessionId == sessionId) {
+      targetFile = currentSessionFilePath;
+    } else if (LittleFS.exists("/sessions.json")) {
+      File fIn = LittleFS.open("/sessions.json", "r");
+      if (fIn) {
+        String needle = "\"id\":\"" + sessionId + "\"";
+        while (fIn.available()) {
+          String line = fIn.readStringUntil('}');
+          int idx = line.indexOf(needle);
+          if (idx >= 0) {
+            int fIdx = line.indexOf("\"file\":\"");
+            if (fIdx >= 0) {
+              int startQ = fIdx + 8;
+              int endQ = line.indexOf("\"", startQ);
+              if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+            }
+            break;
           }
-          break;
         }
+        fIn.close();
       }
-      fIn.close();
     }
   }
 
@@ -1691,8 +1697,14 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
   for (size_t i = 0; i < laps.size(); i++) {
     uint8_t cId = laps[i]["c"] | (laps[i]["carId"] | 0);
     uint16_t lNum = laps[i]["l"] | (laps[i]["lap"] | 0);
-    if (cId == carId && lNum == lapNum) {
-      deletedLapTimeMs = laps[i]["t"] | (laps[i]["time"] | 0);
+    uint32_t lTime = laps[i]["t"] | (laps[i]["time"] | 0);
+
+    bool carMatch = (carId == 0 || cId == carId);
+    bool lapMatch = (lapNum > 0 && lNum == lapNum);
+    bool timeMatch = (lapTimeMs > 0 && lTime == lapTimeMs);
+
+    if (carMatch && (lapMatch || timeMatch)) {
+      deletedLapTimeMs = lTime;
       laps.remove(i);
       break;
     }
@@ -1721,8 +1733,38 @@ void deleteLapFromSession(const String& sessionId, uint8_t carId, uint16_t lapNu
         }
       }
     } else {
-      // Session auf einer anderen (nicht aktiven) Strecke
-      deleteTrackRecordEntry(sessTrackId, true, 0); // Kaskadiert in tracks.json falls zutreffend
+      // Session auf einer anderen (nicht aktiven) Strecke: passenden Eintrag in tracks.json suchen
+      if (LittleFS.exists("/tracks.json")) {
+        File f = LittleFS.open("/tracks.json", "r");
+        if (f) {
+          JsonDocument doc;
+          DeserializationError err = deserializeJson(doc, f);
+          f.close();
+          if (!err) {
+            JsonArray arr = doc["tracks"].as<JsonArray>();
+            for (JsonObject t : arr) {
+              if (t["id"].as<String>() == sessTrackId) {
+                RecordEntry dList[MAX_TRACK_RECORDS];
+                uint8_t dCount = 0;
+                loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
+                int8_t dIdx = findMatchingRecordIndex(dList, dCount, deletedLapTimeMs, carId, "", "");
+                if (dIdx >= 0) {
+                  deleteTrackRecordEntry(sessTrackId, true, dIdx);
+                } else {
+                  RecordEntry aList[MAX_TRACK_RECORDS];
+                  uint8_t aCount = 0;
+                  loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
+                  int8_t aIdx = findMatchingRecordIndex(aList, aCount, deletedLapTimeMs, carId, "", "");
+                  if (aIdx >= 0) {
+                    deleteTrackRecordEntry(sessTrackId, false, aIdx);
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
     }
   }
 

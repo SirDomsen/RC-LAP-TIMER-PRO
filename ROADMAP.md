@@ -1,7 +1,7 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.4.8 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.4.10 | Platform: ESP8266 (160 MHz) + ATtiny13*
 
 ---
 

@@ -343,11 +343,13 @@ void handleGetSessionFile(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteLap(AsyncWebServerRequest *request) {
-  if (request->hasParam("sessionId") && request->hasParam("id") && request->hasParam("lap")) {
-    String sessionId = request->getParam("sessionId")->value();
-    uint8_t id = request->getParam("id")->value().toInt();
-    uint16_t lap = request->getParam("lap")->value().toInt();
-    deleteLapFromSession(sessionId, id, lap);
+  if (request->hasParam("sessionId") || request->hasParam("file")) {
+    String sessionId = request->hasParam("sessionId") ? request->getParam("sessionId")->value() : "";
+    String filePath = request->hasParam("file") ? request->getParam("file")->value() : "";
+    uint8_t id = request->hasParam("id") ? (uint8_t)request->getParam("id")->value().toInt() : 0;
+    uint16_t lap = request->hasParam("lap") ? (uint16_t)request->getParam("lap")->value().toInt() : 0;
+    uint32_t lapTime = request->hasParam("time") ? (uint32_t)request->getParam("time")->value().toInt() : 0;
+    deleteLapFromSession(sessionId, filePath, id, lap, lapTime);
     request->send(200, "text/plain", "OK");
   } else {
     request->send(400, "text/plain", "Bad Request");

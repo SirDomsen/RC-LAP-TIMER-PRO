@@ -1209,7 +1209,8 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
   });
   if (!ok) return;
   try {
-    await fetch(`/api/deletelap?sessionId=${encodeURIComponent(sessionId)}&id=${carId}&lap=${lapNum}`, { method: 'POST' });
+    let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(sessionId)}${sessionFile ? `&file=${encodeURIComponent(sessionFile)}` : ''}&id=${carId}&lap=${lapNum}`;
+    await fetch(lapUrl, { method: 'POST' });
     delete sessionFileCache[sessionFile];
     let safeId = sanitizeDomId(sessionId);
     let elemId = `s_${safeId}_driver_${carId}`;
