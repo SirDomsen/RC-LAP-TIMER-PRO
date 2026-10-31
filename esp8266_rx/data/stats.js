@@ -1258,6 +1258,15 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
     }
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
+    if (typeof refillTrackRecordsFromSessions === 'function') {
+      let sObj = allSessionsCache.find(s => s.id === sessionId);
+      let tId = (sObj && sObj.trackId) ? sObj.trackId : (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+      try {
+        await refillTrackRecordsFromSessions(tId);
+        if (typeof loadTracks === 'function') await loadTracks();
+      } catch (refillErr) {}
+    }
+    if (typeof updateStatsModalDailyBest === 'function') updateStatsModalDailyBest();
     switchStatsTab(currentTab);
     if (openDriverDetailsMap[elemId]) {
       let sObj = allSessionsCache.find(s => s.id === sessionId);
@@ -1313,6 +1322,15 @@ async function deleteSession(sessionId) {
     delete openSessionsMap[safeId];
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
+    if (typeof refillTrackRecordsFromSessions === 'function') {
+      let sObj = allSessionsCache.find(s => s.id === sessionId);
+      let tId = (sObj && sObj.trackId) ? sObj.trackId : (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+      try {
+        await refillTrackRecordsFromSessions(tId);
+        if (typeof loadTracks === 'function') await loadTracks();
+      } catch (refillErr) {}
+    }
+    if (typeof updateStatsModalDailyBest === 'function') updateStatsModalDailyBest();
     switchStatsTab(currentTab);
   } catch (e) {
     console.error("Fehler beim Löschen der Session:", e);

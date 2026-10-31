@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.5.0">
+  <link rel="stylesheet" href="style.css?v=4.5.2">
 </head>
 <body class="role-driver">
 
@@ -30,7 +30,7 @@
         </div>
       </div>
       <div>
-        <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+        <div id="dimmerModeText" class="dimmer-mode-badge" onclick="if(typeof currentMode !== 'undefined' && currentMode === 5 && typeof openGhostHuntModal === 'function') openGhostHuntModal();" title="Klicken für Geisterjagd-Einstellungen" style="cursor:pointer;">FREIES TRAINING</div>
       </div>
       
       <div class="dimmer-top-stats">
@@ -68,6 +68,9 @@
         </div>
       </div>
     </div>
+
+    <!-- GEISTERJAGD HUD SLOT (OLED DASHBOARD) -->
+    <div id="ghostHudSlotDimmer"></div>
 
     <div id="dimmerDriversContainer" class="dimmer-drivers-container single-driver">
       <!-- FAHRER 1 SPALTE -->
@@ -251,68 +254,71 @@
         <div id="poleBannerText" class="pole-banner-val">---</div>
       </div>
 
-      <!-- GEISTERJAGD BANNER (BEATEN) -->
-      <div id="ghostBeatenBanner" class="ghost-beaten-banner" style="display:none;">
-        <div class="ghost-beaten-title">👑 GEIST GESCHLAGEN – NEUE BESTZEIT! 👑</div>
-        <div id="ghostBeatenBannerText" class="ghost-beaten-val">---</div>
-      </div>
+      <!-- GEISTERJAGD HUD SLOT (NORMAL) -->
+      <div id="ghostHudSlotNormal">
+        <!-- GEISTERJAGD BANNER (BEATEN) -->
+        <div id="ghostBeatenBanner" class="ghost-beaten-banner" style="display:none;">
+          <div class="ghost-beaten-title">👑 GEIST GESCHLAGEN – NEUE BESTZEIT! 👑</div>
+          <div id="ghostBeatenBannerText" class="ghost-beaten-val">---</div>
+        </div>
 
-      <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
-      <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
-        <div class="ghost-card-wrapper">
-          <!-- GEIST KARTE -->
-          <div class="ghost-card ghost-target-card">
-            <div class="ghost-card-header">
-              <span class="ghost-icon">👻</span>
-              <div>
-                <div class="ghost-card-subtitle">DER GEIST (ZIEL)</div>
-                <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
+        <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
+        <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
+          <div class="ghost-card-wrapper">
+            <!-- GEIST KARTE -->
+            <div class="ghost-card ghost-target-card">
+              <div class="ghost-card-header">
+                <span class="ghost-icon">👻</span>
+                <div>
+                  <div class="ghost-card-subtitle">DER GEIST (ZIEL)</div>
+                  <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
+                </div>
+              </div>
+              <div class="ghost-time-box">
+                <span id="ghostTargetTime" class="ghost-time-val">--:--</span>
+              </div>
+              <div class="ghost-sectors-mini" id="ghostTargetSectors">
+                <span id="ghostTargetSz1">SZ1: ---</span>
+                <span id="ghostTargetSz2">SZ2: ---</span>
+                <span id="ghostTargetSz3">SZ3: ---</span>
+                <span id="ghostTargetSz4">Ziel: ---</span>
               </div>
             </div>
-            <div class="ghost-time-box">
-              <span id="ghostTargetTime" class="ghost-time-val">--:--</span>
-            </div>
-            <div class="ghost-sectors-mini" id="ghostTargetSectors">
-              <span id="ghostTargetSz1">SZ1: ---</span>
-              <span id="ghostTargetSz2">SZ2: ---</span>
-              <span id="ghostTargetSz3">SZ3: ---</span>
-              <span id="ghostTargetSz4">Ziel: ---</span>
-            </div>
-          </div>
 
-          <!-- JÄGER KARTE -->
-          <div class="ghost-card ghost-hunter-card">
-            <div class="ghost-card-header">
-              <span class="ghost-icon">🏎️</span>
-              <div>
-                <div class="ghost-card-subtitle">DEINE RUNDE (<span id="ghostHunterLapNum">Runde 0</span>)</div>
-                <div id="ghostHunterName" class="ghost-card-title">Fahrer 1</div>
+            <!-- JÄGER KARTE -->
+            <div class="ghost-card ghost-hunter-card">
+              <div class="ghost-card-header">
+                <span class="ghost-icon">🏎️</span>
+                <div>
+                  <div class="ghost-card-subtitle">DEINE RUNDE (<span id="ghostHunterLapNum">Runde 0</span>)</div>
+                  <div id="ghostHunterName" class="ghost-card-title">Fahrer 1</div>
+                </div>
               </div>
-            </div>
-            <div class="ghost-time-box">
-              <span id="ghostHunterLastTime" class="ghost-time-val">--:--</span>
-              <span id="ghostLiveDeltaPill" class="ghost-delta-pill" style="display:none;">±0.00</span>
-            </div>
-            <div class="ghost-sectors-grid" id="ghostHunterSectors">
-              <div class="ghost-sector-cell" id="ghostHunterCell1">
-                <span class="ghost-sec-lbl">SZ 1</span>
-                <span id="ghostHunterSz1" class="ghost-sec-val">---</span>
-                <span id="ghostDeltaSz1" class="ghost-sec-delta"></span>
+              <div class="ghost-time-box">
+                <span id="ghostHunterLastTime" class="ghost-time-val">--:--</span>
+                <span id="ghostLiveDeltaPill" class="ghost-delta-pill" style="display:none;">±0.00</span>
               </div>
-              <div class="ghost-sector-cell" id="ghostHunterCell2">
-                <span class="ghost-sec-lbl">SZ 2</span>
-                <span id="ghostHunterSz2" class="ghost-sec-val">---</span>
-                <span id="ghostDeltaSz2" class="ghost-sec-delta"></span>
-              </div>
-              <div class="ghost-sector-cell" id="ghostHunterCell3">
-                <span class="ghost-sec-lbl">SZ 3</span>
-                <span id="ghostHunterSz3" class="ghost-sec-val">---</span>
-                <span id="ghostDeltaSz3" class="ghost-sec-delta"></span>
-              </div>
-              <div class="ghost-sector-cell" id="ghostHunterCell4">
-                <span class="ghost-sec-lbl">Ziel</span>
-                <span id="ghostHunterSz4" class="ghost-sec-val">---</span>
-                <span id="ghostDeltaSz4" class="ghost-sec-delta"></span>
+              <div class="ghost-sectors-grid" id="ghostHunterSectors">
+                <div class="ghost-sector-cell" id="ghostHunterCell1">
+                  <span class="ghost-sec-lbl">SZ 1</span>
+                  <span id="ghostHunterSz1" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz1" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell2">
+                  <span class="ghost-sec-lbl">SZ 2</span>
+                  <span id="ghostHunterSz2" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz2" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell3">
+                  <span class="ghost-sec-lbl">SZ 3</span>
+                  <span id="ghostHunterSz3" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz3" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell4">
+                  <span class="ghost-sec-lbl">Ziel</span>
+                  <span id="ghostHunterSz4" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz4" class="ghost-sec-delta"></span>
+                </div>
               </div>
             </div>
           </div>
@@ -552,14 +558,14 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.0</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.2</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.5.0"></script>
-  <script src="websocket.js?v=4.5.0"></script>
-  <script src="main.js?v=4.5.0"></script>
+  <script src="tts.js?v=4.5.2"></script>
+  <script src="websocket.js?v=4.5.2"></script>
+  <script src="main.js?v=4.5.2"></script>
 </body>
 </html>

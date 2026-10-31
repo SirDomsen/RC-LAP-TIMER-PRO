@@ -102,6 +102,7 @@ function stopSession() {
   if (ghostHud) ghostHud.style.display = 'none';
 
   currentMode = 0;
+  if (typeof syncGhostHudSlot === 'function') syncGhostHudSlot();
   isSessionActive = false;
   isSessionFinished = false;
   qualiFinishedHold = false;

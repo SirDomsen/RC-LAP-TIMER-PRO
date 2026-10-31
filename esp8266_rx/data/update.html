@@ -84,10 +84,17 @@
       background: rgba(0, 229, 255, 0.02);
       cursor: pointer;
       margin-bottom: 15px;
+      transition: all 0.2s ease;
     }
     .file-dropzone:hover {
       border-color: var(--neon-cyan);
       background: rgba(0, 229, 255, 0.05);
+    }
+    .file-dropzone.dragover {
+      border-color: var(--neon-green) !important;
+      background: rgba(0, 255, 102, 0.12) !important;
+      box-shadow: 0 0 20px rgba(0, 255, 102, 0.4);
+      transform: scale(1.01);
     }
     .btn {
       font-family: 'Orbitron', sans-serif;
@@ -139,15 +146,14 @@
       border: 1px solid var(--card-border);
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
       transition: border-color 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
+      animation: modalFadeIn 0.25s ease-out;
     }
     .modal-content.theme-purple { border-color: var(--neon-purple); box-shadow: 0 0 35px rgba(181, 50, 255, 0.45); }
     .modal-content.theme-danger { border-color: var(--neon-red); box-shadow: 0 0 35px rgba(255, 51, 102, 0.45); }
     .modal-content.theme-orange { border-color: var(--neon-orange); box-shadow: 0 0 35px rgba(255, 153, 0, 0.45); }
     .modal-content.theme-cyan   { border-color: var(--neon-cyan); box-shadow: 0 0 35px rgba(0, 229, 255, 0.4); }
     .modal-content.theme-green  { border-color: var(--neon-green); box-shadow: 0 0 35px rgba(0, 255, 102, 0.4); }
-      box-sizing: border-box;
-      animation: modalFadeIn 0.25s ease-out;
-    }
     @keyframes modalFadeIn {
       from { opacity: 0; transform: translateY(-15px) scale(0.97); }
       to { opacity: 1; transform: translateY(0) scale(1); }
@@ -309,10 +315,23 @@
         </label>
       </div>
 
-      <div class="file-dropzone" onclick="document.getElementById('fileInput').click()">
-        <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFileSelect(this)">
-        <div id="dropLabel" style="color:var(--text-main);">📁 Klicke hier, um Dateien auszuwählen (.html, .js, .css, .json, ...)</div>
-        <small id="fileCountLabel" style="color:var(--text-muted); display:block; margin-top:5px;"></small>
+      <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFileSelect(this)">
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;" onchange="handleFolderSelect(this)">
+      <input type="file" id="zipRestoreInput" accept=".zip" style="display:none;" onchange="handleZipBackupSelect(this)">
+
+      <div class="file-dropzone" id="fileDropzone" onclick="if (event.target === this || event.target.id === 'dropLabel' || event.target.tagName === 'STRONG') document.getElementById('fileInput').click()">
+        <div id="dropLabel" style="color:var(--text-main); font-size:14px; margin-bottom:10px;">
+          📁 <strong>Dateien, Ordner oder .zip-Backup hier ablegen</strong>
+        </div>
+        <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" class="btn btn-cyan" style="width:auto; padding:6px 14px; font-size:12px;" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">📄 Dateien wählen</button>
+          <button type="button" class="btn btn-purple" style="width:auto; padding:6px 14px; font-size:12px;" onclick="event.stopPropagation(); document.getElementById('folderInput').click()">📁 Ordner wählen</button>
+          <button type="button" class="btn btn-orange" style="width:auto; padding:6px 14px; font-size:12px;" onclick="event.stopPropagation(); document.getElementById('zipRestoreInput').click()">📦 Backup (.zip) einspielen</button>
+        </div>
+        <div id="fileCountBox" style="margin-top:10px; display:none; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap;">
+          <small id="fileCountLabel" style="color:var(--text-muted);"></small>
+          <button type="button" class="btn-icon" style="color:var(--neon-red); font-size:12px; cursor:pointer; background:rgba(255,51,102,0.1); border:1px solid rgba(255,51,102,0.3); border-radius:4px; padding:2px 8px;" title="Auswahl aufheben" onclick="event.stopPropagation(); clearSelectedFiles()">✕ Leeren</button>
+        </div>
       </div>
 
       <button id="uploadBtn" class="btn btn-green" onclick="startBatchUpload()" disabled>Upload starten</button>
@@ -330,6 +349,7 @@
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <button id="viewToggleBtn" class="btn btn-purple" style="width:auto; padding:5px 12px; font-size:11px;" onclick="toggleViewMode()">📁 Ordner-Ansicht</button>
           <button id="backupZipBtn" class="btn btn-green" style="width:auto; padding:5px 12px; font-size:11px;" onclick="downloadAllFilesZip()">📦 Backup (.zip)</button>
+          <button id="restoreZipBtn" class="btn btn-orange" style="width:auto; padding:5px 12px; font-size:11px;" onclick="document.getElementById('zipRestoreInput').click()">📥 Backup (.zip) einspielen</button>
           <button class="btn btn-cyan" style="width:auto; padding:5px 12px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
         </div>
       </div>
@@ -508,25 +528,452 @@
       }
     }
 
-    function handleFileSelect(input) {
-      selectedFiles = Array.from(input.files);
+    function clearSelectedFiles() {
+      selectedFiles = [];
+      let fi = document.getElementById('fileInput');
+      if (fi) fi.value = '';
+      let fo = document.getElementById('folderInput');
+      if (fo) fo.value = '';
       let btn = document.getElementById('uploadBtn');
+      if (btn) btn.disabled = true;
+      let countBox = document.getElementById('fileCountBox');
+      if (countBox) countBox.style.display = 'none';
+      let countLbl = document.getElementById('fileCountLabel');
+      if (countLbl) countLbl.innerText = '';
+    }
+
+    function queueSelectedFiles(files, append = true) {
+      if (!append || selectedFiles.length === 0) {
+        selectedFiles = Array.from(files);
+      } else {
+        let existingPaths = new Set(selectedFiles.map(f => f.relativePath || f.name));
+        for (let f of files) {
+          let p = f.relativePath || f.name;
+          if (!existingPaths.has(p)) {
+            selectedFiles.push(f);
+            existingPaths.add(p);
+          }
+        }
+      }
+
+      let btn = document.getElementById('uploadBtn');
+      let countBox = document.getElementById('fileCountBox');
       let countLbl = document.getElementById('fileCountLabel');
       
       if (selectedFiles.length > 0) {
-        btn.disabled = false;
-        let details = selectedFiles.map(f => {
-          return isCompressibleFile(f.name) ? `${f.name} (⚡ Auto-Gzip)` : f.name;
+        if (btn) btn.disabled = false;
+        if (countBox) countBox.style.display = 'inline-flex';
+        let folders = new Set();
+        for (let f of selectedFiles) {
+          let path = f.relativePath || f.name;
+          let parts = path.split('/');
+          if (parts.length > 1) {
+            folders.add(parts[0]);
+          }
+        }
+        let folderInfo = folders.size > 0 ? ` (in ${folders.size} Ordner(n): ${Array.from(folders).slice(0, 3).join(', ')}${folders.size > 3 ? '...' : ''})` : '';
+        let details = selectedFiles.slice(0, 3).map(f => {
+          let p = f.relativePath || f.name;
+          return isCompressibleFile(p) ? `${p} (⚡ Auto-Gzip)` : p;
         }).join(', ');
-        countLbl.innerText = `${selectedFiles.length} Datei(en) ausgewählt: ${details}`;
+        if (selectedFiles.length > 3) details += ` und ${selectedFiles.length - 3} weitere`;
+        countLbl.innerText = `${selectedFiles.length} Datei(en) bereit${folderInfo}: ${details}`;
       } else {
-        btn.disabled = true;
-        countLbl.innerText = '';
+        clearSelectedFiles();
       }
+    }
+
+    function handleFileSelect(input) {
+      let files = Array.from(input.files || []);
+      for (let f of files) {
+        f.relativePath = f.name;
+      }
+      queueSelectedFiles(files, true);
+      input.value = '';
+    }
+
+    function handleFolderSelect(input) {
+      let files = Array.from(input.files || []);
+      if (files.length === 0) return;
+      for (let f of files) {
+        f.relativePath = f.webkitRelativePath || f.name;
+      }
+      queueSelectedFiles(files, true);
+      input.value = '';
+    }
+
+    async function getFilesFromDataTransfer(dt) {
+      let files = [];
+      let items = dt.items;
+
+      if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+        let entries = [];
+        for (let i = 0; i < items.length; i++) {
+          let entry = items[i].webkitGetAsEntry();
+          if (entry) entries.push(entry);
+        }
+
+        async function scanEntry(entry, path = '') {
+          if (entry.isFile) {
+            return new Promise((resolve) => {
+              entry.file((file) => {
+                let rel = path ? (path + '/' + file.name) : file.name;
+                file.relativePath = rel;
+                files.push(file);
+                resolve();
+              }, () => resolve());
+            });
+          } else if (entry.isDirectory) {
+            let dirReader = entry.createReader();
+            let readBatch = () => {
+              return new Promise((resolve) => {
+                dirReader.readEntries(async (entriesBatch) => {
+                  if (!entriesBatch || entriesBatch.length === 0) {
+                    resolve();
+                  } else {
+                    for (let child of entriesBatch) {
+                      await scanEntry(child, path ? (path + '/' + entry.name) : entry.name);
+                    }
+                    await readBatch();
+                    resolve();
+                  }
+                }, () => resolve());
+              });
+            };
+            await readBatch();
+          }
+        }
+
+        for (let entry of entries) {
+          await scanEntry(entry, '');
+        }
+      } else if (dt.files && dt.files.length > 0) {
+        for (let i = 0; i < dt.files.length; i++) {
+          let file = dt.files[i];
+          file.relativePath = file.name;
+          files.push(file);
+        }
+      }
+      return files;
+    }
+
+    async function readZipArchive(buf) {
+      let view = new DataView(buf);
+      let eocdOffset = -1;
+      let minOffset = Math.max(0, buf.byteLength - 65557);
+      for (let i = buf.byteLength - 22; i >= minOffset; i--) {
+        if (view.getUint32(i, true) === 0x06054b50) {
+          eocdOffset = i;
+          break;
+        }
+      }
+      if (eocdOffset === -1) {
+        throw new Error("Ungültiges ZIP-Archiv (End-of-Central-Directory nicht gefunden)");
+      }
+
+      let totalEntries = view.getUint16(eocdOffset + 10, true);
+      let cdOffset = view.getUint32(eocdOffset + 16, true);
+
+      let offset = cdOffset;
+      let files = [];
+      let textDecoder = new TextDecoder('utf-8');
+
+      for (let i = 0; i < totalEntries && offset < eocdOffset; i++) {
+        if (view.getUint32(offset, true) !== 0x02014b50) break;
+
+        let method = view.getUint16(offset + 10, true);
+        let dosTime = view.getUint16(offset + 12, true);
+        let dosDate = view.getUint16(offset + 14, true);
+        let compSize = view.getUint32(offset + 20, true);
+        let uncompSize = view.getUint32(offset + 24, true);
+        let nameLen = view.getUint16(offset + 28, true);
+        let extraLen = view.getUint16(offset + 30, true);
+        let commentLen = view.getUint16(offset + 32, true);
+        let localOffset = view.getUint32(offset + 42, true);
+
+        let nameBytes = new Uint8Array(buf, offset + 46, nameLen);
+        let fileName = textDecoder.decode(nameBytes);
+        offset += 46 + nameLen + extraLen + commentLen;
+
+        fileName = fileName.replace(/\\/g, '/');
+        while (fileName.startsWith('/')) fileName = fileName.substring(1);
+
+        // Skip directories and metadata
+        if (fileName.endsWith('/') || fileName.startsWith('__MACOSX/') || fileName.includes('/.DS_Store') || fileName === '.DS_Store' || !fileName) {
+          continue;
+        }
+
+        if (view.getUint32(localOffset, true) !== 0x04034b50) {
+          throw new Error(`Ungültiger lokaler Datei-Header für "${fileName}"`);
+        }
+        let localNameLen = view.getUint16(localOffset + 26, true);
+        let localExtraLen = view.getUint16(localOffset + 28, true);
+        let dataOffset = localOffset + 30 + localNameLen + localExtraLen;
+
+        let fileDate = new Date(
+          ((dosDate >> 9) + 1980),
+          ((dosDate >> 5) & 15) - 1,
+          dosDate & 31,
+          dosTime >> 11,
+          (dosTime >> 5) & 63,
+          (dosTime & 31) * 2
+        );
+        if (isNaN(fileDate.getTime())) fileDate = new Date();
+
+        let dataBytes;
+        if (method === 0) {
+          // STORE (uncompressed - standard for our generated backups)
+          dataBytes = new Uint8Array(buf.slice(dataOffset, dataOffset + uncompSize));
+        } else if (method === 8) {
+          // DEFLATE (standard compressed zip)
+          if (typeof DecompressionStream === 'undefined') {
+            throw new Error(`Browser unterstützt kein DecompressionStream für komprimierte ZIP-Archive`);
+          }
+          let compData = new Uint8Array(buf.slice(dataOffset, dataOffset + compSize));
+          let ds = new DecompressionStream('deflate-raw');
+          let decompressedBlob = await new Response(new Response(compData).body.pipeThrough(ds)).blob();
+          dataBytes = new Uint8Array(await decompressedBlob.arrayBuffer());
+        } else {
+          throw new Error(`Nicht unterstützte Kompressionsmethode (${method}) bei "${fileName}"`);
+        }
+
+        files.push({
+          name: fileName,
+          data: dataBytes,
+          date: fileDate,
+          size: uncompSize
+        });
+      }
+
+      return files;
+    }
+
+    async function restoreZipFiles(files, archiveName) {
+      if (!files || files.length === 0) {
+        await showAlert({
+          title: "ℹ️ HINWEIS",
+          theme: "orange",
+          message: "Das ZIP-Archiv enthält keine wiederherstellbaren Dateien."
+        });
+        return;
+      }
+
+      let trackFolders = new Set();
+      let totalBytes = 0;
+      for (let f of files) {
+        totalBytes += f.size;
+        let parts = f.name.split('/');
+        if (parts.length > 1) {
+          trackFolders.add(parts[0]);
+        }
+      }
+
+      let folderSummary = trackFolders.size > 0 
+        ? `Strecken/Ordner: ${Array.from(trackFolders).join(', ')}`
+        : 'Dateien im Hauptverzeichnis';
+
+      let ok = await showConfirm({
+        title: "📦 BACKUP WIEDERHERSTELLEN",
+        theme: "orange",
+        boxLabel: `Archiv: ${archiveName || 'Backup.zip'}`,
+        boxContent: `${files.length} Datei(en) – ${(totalBytes / 1024).toFixed(1)} KB`,
+        boxSub: folderSummary,
+        message: `Möchtest du diese <strong>${files.length} Dateien</strong> jetzt auf dem ESP8266 wiederherstellen?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Vorhandene Dateien mit gleichem Namen werden überschrieben.</span>`,
+        confirmText: "WIEDERHERSTELLEN 📥",
+        cancelText: "ABBRECHEN"
+      });
+
+      if (!ok) return;
+
+      let btn = document.getElementById('uploadBtn');
+      let pBg = document.getElementById('progressBg');
+      let pBar = document.getElementById('progressBar');
+      let status = document.getElementById('statusText');
+
+      if (btn) btn.disabled = true;
+      if (pBg) pBg.style.display = 'block';
+      if (pBar) pBar.style.width = '0%';
+
+      let successCount = 0;
+      for (let i = 0; i < files.length; i++) {
+        let f = files[i];
+        let mtimeSec = Math.floor(f.date.getTime() / 1000);
+        if (status) {
+          status.style.color = 'var(--neon-cyan)';
+          status.innerText = `[${i + 1}/${files.length}] Wiederherstellen: ${f.name}...`;
+        }
+
+        let blob = new Blob([f.data]);
+        let formData = new FormData();
+        formData.append('data', blob, f.name);
+
+        try {
+          let res = await fetch(`/api/upload?mtime=${mtimeSec}`, {
+            method: 'POST',
+            body: formData
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          successCount++;
+          if (pBar) {
+            let pct = Math.round(((i + 1) / files.length) * 100);
+            pBar.style.width = pct + '%';
+          }
+        } catch (err) {
+          if (status) {
+            status.style.color = 'var(--neon-red)';
+            status.innerText = `Fehler bei ${f.name}: ${err.message}`;
+          }
+          if (btn) btn.disabled = false;
+          return;
+        }
+
+        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz)
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      if (status) {
+        status.style.color = 'var(--neon-green)';
+        status.innerText = `✅ ${successCount} Datei(en) erfolgreich wiederhergestellt!`;
+      }
+      if (btn) btn.disabled = false;
+      setTimeout(loadFilesList, 600);
+
+      await showAlert({
+        title: "✅ BACKUP EINGESPIELT",
+        theme: "success",
+        message: `${successCount} Dateien wurden erfolgreich im Flash gespeichert.<br><br><span style="color:var(--neon-orange); font-size:12px;">💡 Tipp: Führe nach dem Einspielen einen kurzen <strong>ESP8266-Neustart</strong> (unten) durch, um den Speicher komplett zu defragmentieren.</span>`
+      });
+    }
+
+    async function handleZipBackupSelect(input) {
+      let file = input.files && input.files[0];
+      if (!file) return;
+
+      let status = document.getElementById('statusText');
+      if (status) {
+        status.style.color = 'var(--neon-cyan)';
+        status.innerText = `⏳ Lese ZIP-Archiv "${file.name}"...`;
+      }
+
+      try {
+        let buf = await file.arrayBuffer();
+        let files = await readZipArchive(buf);
+        input.value = '';
+        await restoreZipFiles(files, file.name);
+      } catch (err) {
+        if (status) {
+          status.style.color = 'var(--neon-red)';
+          status.innerText = `Fehler beim Entpacken: ${err.message}`;
+        }
+        await showAlert({
+          title: "❌ ZIP-FEHLER",
+          theme: "danger",
+          message: `Fehler beim Lesen des ZIP-Archivs:<br><strong>${err.message}</strong>`
+        });
+      } finally {
+        input.value = '';
+      }
+    }
+
+    function initDragAndDrop() {
+      let dropzone = document.getElementById('fileDropzone');
+      if (!dropzone) return;
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.add('dragover');
+        }, false);
+      });
+
+      ['dragleave', 'dragend'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.remove('dragover');
+        }, false);
+      });
+
+      dropzone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('dragover');
+
+        let dt = e.dataTransfer;
+        if (!dt) return;
+
+        // Check if a single ZIP file was dropped
+        if (dt.files && dt.files.length === 1 && dt.files[0].name.toLowerCase().endsWith('.zip')) {
+          let zipFile = dt.files[0];
+          let ok = await showConfirm({
+            title: "📦 ZIP-ARCHIV ERKANNT",
+            theme: "orange",
+            boxLabel: "Gedroppte Datei:",
+            boxContent: zipFile.name,
+            boxSub: (zipFile.size / 1024).toFixed(1) + " KB",
+            message: "Möchtest du dieses ZIP-Archiv als <strong>Backup wiederherstellen</strong> (Dateien entpacken und einspielen) oder als <strong>einzelne Datei</strong> hochladen?",
+            confirmText: "ALS BACKUP ENTPACKEN 📦",
+            cancelText: "ALS DATEI HOCHLADEN"
+          });
+
+          if (ok) {
+            let status = document.getElementById('statusText');
+            if (status) {
+              status.style.color = 'var(--neon-cyan)';
+              status.innerText = `⏳ Lese ZIP-Archiv "${zipFile.name}"...`;
+            }
+            try {
+              let buf = await zipFile.arrayBuffer();
+              let files = await readZipArchive(buf);
+              await restoreZipFiles(files, zipFile.name);
+            } catch (err) {
+              await showAlert({
+                title: "❌ ZIP-FEHLER",
+                theme: "danger",
+                message: `Fehler beim Entpacken:<br><strong>${err.message}</strong>`
+              });
+            }
+            return;
+          }
+        }
+
+        let scannedFiles = await getFilesFromDataTransfer(dt);
+        if (scannedFiles.length > 0) {
+          queueSelectedFiles(scannedFiles);
+        }
+      }, false);
     }
 
     async function startBatchUpload() {
       if (selectedFiles.length === 0) return;
+
+      let folders = new Set();
+      let totalBytes = 0;
+      for (let f of selectedFiles) {
+        totalBytes += f.size || 0;
+        let path = f.relativePath || f.name;
+        let parts = path.split('/');
+        if (parts.length > 1) {
+          folders.add(parts[0]);
+        }
+      }
+      let folderSummary = folders.size > 0 
+        ? `Strecken/Ordner: ${Array.from(folders).join(', ')}`
+        : 'Hauptverzeichnis';
+
+      let ok = await showConfirm({
+        title: "🚀 DATEIEN HOCHLADEN",
+        theme: "cyan",
+        boxLabel: "Bereit zum Upload:",
+        boxContent: `${selectedFiles.length} Datei(en) – ${(totalBytes / 1024).toFixed(1)} KB`,
+        boxSub: folderSummary,
+        message: `Möchtest du diese <strong>${selectedFiles.length} Datei(en)</strong> jetzt auf den ESP8266 übertragen?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;">⚡ Vorhandene Dateien mit gleichem Namen werden aktualisiert.</span>`,
+        confirmText: "HOCHLADEN 🚀",
+        cancelText: "ABBRECHEN"
+      });
+
+      if (!ok) return;
 
       let btn = document.getElementById('uploadBtn');
       let pBg = document.getElementById('progressBg');
@@ -546,7 +993,19 @@
 
         let { blob, uploadName, wasCompressed } = await compressFileToGzip(file);
 
-        let uploadTargetName = (currentFolder && viewMode === 'folder') ? (currentFolder + uploadName) : uploadName;
+        let origRel = file.relativePath || file.name;
+        let lastSlash = origRel.lastIndexOf('/');
+        let dirPrefix = lastSlash >= 0 ? origRel.substring(0, lastSlash + 1) : '';
+        let targetPath = dirPrefix + uploadName;
+
+        let uploadTargetName;
+        if (dirPrefix) {
+          uploadTargetName = (currentFolder && viewMode === 'folder' && !targetPath.startsWith(currentFolder))
+            ? (currentFolder + targetPath)
+            : targetPath;
+        } else {
+          uploadTargetName = (currentFolder && viewMode === 'folder') ? (currentFolder + uploadName) : uploadName;
+        }
 
         if (wasCompressed) {
           let origKb = (file.size / 1024).toFixed(1);
@@ -574,13 +1033,15 @@
           btn.disabled = false;
           return;
         }
+
+        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz)
+        await new Promise(r => setTimeout(r, 50));
       }
 
       status.style.color = 'var(--neon-green)';
       status.innerText = 'Alle Dateien erfolgreich im LittleFS gespeichert!';
-      document.getElementById('fileInput').value = '';
-      selectedFiles = [];
-      setTimeout(loadFilesList, 500);
+      clearSelectedFiles();
+      setTimeout(loadFilesList, 600);
     }
 
     function handleFirmwareSelect(input) {
@@ -1534,6 +1995,7 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+      initDragAndDrop();
       let nowSec = Math.floor(Date.now() / 1000);
       let tzOffsetSec = -(new Date().getTimezoneOffset() * 60);
       fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { method: 'POST' }).finally(() => {

@@ -1500,6 +1500,20 @@ footer {
 .ghost-hud {
   margin-bottom: 16px;
 }
+#ghostHudSlotDimmer {
+  width: 100%;
+  max-width: 960px;
+  margin: 10px auto 15px auto;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+#ghostHudSlotDimmer .ghost-card {
+  background: #000000;
+  border-width: 2px;
+}
+#ghostHudSlotDimmer .ghost-time-val {
+  font-size: 38px;
+}
 .ghost-card-wrapper {
   display: grid;
   grid-template-columns: 1fr 1fr;
