@@ -1,9 +1,8 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
-let countdownTimeouts = [];
-window.UI_VERSION = '4.4.4'; 
+window.countdownTimeouts = window.countdownTimeouts || [];
+window.UI_VERSION = '4.4.6'; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
-let socket = null;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 

@@ -1,3 +1,13 @@
+let socket = null;
+let isPageUnloading = false;
+
+// Eindeutige, tab-spezifische ID im sessionStorage (bleibt bei Page-Reloads im selben Tab erhalten)
+let wsTabId = sessionStorage.getItem('lp_tab_id');
+if (!wsTabId) {
+  wsTabId = 't_' + Math.random().toString(36).substring(2, 8);
+  sessionStorage.setItem('lp_tab_id', wsTabId);
+}
+
 function initWebSocket() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
@@ -9,6 +19,9 @@ function initWebSocket() {
     socket.onopen = function() {
       console.log("[WebSocket] Verbunden mit Basis");
       hideConnectionNotice();
+      try {
+        socket.send(JSON.stringify({ cmd: "hello", tab: wsTabId }));
+      } catch (e) {}
     };
     socket.onmessage = function(event) {
       try {
@@ -19,40 +32,54 @@ function initWebSocket() {
       }
     };
     socket.onclose = function(event) {
+      if (isPageUnloading) return;
       if (event.code === 1013) {
         console.log("[WebSocket] Server überlastet (1013), warte auf Freigabe...");
         showConnectionNotice("⏳ Boxengasse voll: Verbinde in wenigen Sekunden...");
         setTimeout(initWebSocket, 3500);
       } else {
-        console.log("[WebSocket] Getrennt, verbinde neu in 2s...");
-        setTimeout(initWebSocket, 3000);
+        console.log("[WebSocket] Getrennt, verbinde neu...");
+        setTimeout(initWebSocket, 2500);
       }
     };
     socket.onerror = function(err) {
       console.error("[WebSocket] Fehler:", err);
-      socket.close();
+      try { socket.close(); } catch (e) {}
     };
   } catch (e) {
     console.error("[WebSocket] Setup-Fehler:", e);
   }
 }
 
-// Hebel 2: Frontend-Lifecycle-Hooks für sauberes Socket-Teardown bei Reload & Standby
+// Sauberes Teardown bei Reload & Verlassen der Seite (ohne Geister-Reconnects)
 function closeWebSocketOnUnload() {
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+  isPageUnloading = true;
+  if (socket) {
+    socket.onclose = null; // Reconnect-Timer beim Verlassen der Seite unterbinden
     try {
-      socket.close(1000, "pagehide");
+      socket.close(1000, "page_unload");
     } catch (e) {}
   }
 }
 window.addEventListener('pagehide', closeWebSocketOnUnload);
 window.addEventListener('beforeunload', closeWebSocketOnUnload);
 
+// Standby-Wakeup bei entsperrtem Handy
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible') {
     if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
       console.log("[WebSocket] Wakeup: Socket getrennt, verbinde neu...");
       initWebSocket();
+    } else if (socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify({ cmd: "ping" }));
+      } catch (e) {
+        if (socket) {
+          socket.onclose = null;
+          try { socket.close(); } catch (err) {}
+        }
+        initWebSocket();
+      }
     }
   }
 });

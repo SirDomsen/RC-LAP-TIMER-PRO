@@ -2254,23 +2254,3 @@ async function rebuildSessionsIndexUI() {
     }
   }
 }
-
-    sessionFileCache = {};
-    openSessionsMap = {};
-    openDriverDetailsMap = {};
-    await fetchSessionsAndStorageInfo();
-    switchStatsTab(currentTab);
-
-  } catch (err) {
-    await showAlert({
-      title: "❌ FEHLER BEIM REBUILD",
-      theme: "danger",
-      message: "Der Index konnte nicht neu aufgebaut werden: " + err.message
-    });
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = origText;
-    }
-  }
-}

@@ -147,34 +147,63 @@ void triggerWifiSwitch(uint8_t mode) {
 }
 
 // --- WEBSOCKET CLIENT-LIFECYCLE & ZOMBIE-KILLER ---
-struct WsClientTracker {
-  uint32_t id;
-  uint32_t lastSeen;
+struct WsTabSession {
+  uint32_t clientId;
+  char tabId[12];
+  uint32_t stuckQueueSince;
 };
-static const size_t MAX_WS_TRACKERS = 8;
-static WsClientTracker wsTrackers[MAX_WS_TRACKERS] = {};
+static const size_t MAX_WS_SESSIONS = 4;
+static WsTabSession wsSessions[MAX_WS_SESSIONS] = {};
 
-static void updateWsClientActivity(uint32_t id) {
-  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
-    if (wsTrackers[i].id == id) {
-      wsTrackers[i].lastSeen = millis();
+static void addWsClient(uint32_t clientId) {
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      wsSessions[i].stuckQueueSince = 0;
       return;
     }
   }
-  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
-    if (wsTrackers[i].id == 0) {
-      wsTrackers[i].id = id;
-      wsTrackers[i].lastSeen = millis();
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == 0) {
+      wsSessions[i].clientId = clientId;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
       return;
     }
   }
 }
 
-static void removeWsClientTracker(uint32_t id) {
-  for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
-    if (wsTrackers[i].id == id) {
-      wsTrackers[i].id = 0;
-      wsTrackers[i].lastSeen = 0;
+static void registerWsTab(uint32_t clientId, const char* tabId) {
+  if (!tabId || tabId[0] == '\0') return;
+
+  // 1. Wenn derselbe Tab sich neu verbindet -> alter Socket ist eine Zombie-Leiche
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId != 0 && wsSessions[i].clientId != clientId && strncmp(wsSessions[i].tabId, tabId, sizeof(wsSessions[i].tabId)) == 0) {
+      uint32_t oldId = wsSessions[i].clientId;
+      wsSessions[i].clientId = 0;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      ws.close(oldId, 1000, "Tab reloaded");
+      break;
+    }
+  }
+
+  // 2. Tab-ID fuer diesen Client speichern
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      strncpy(wsSessions[i].tabId, tabId, sizeof(wsSessions[i].tabId) - 1);
+      wsSessions[i].tabId[sizeof(wsSessions[i].tabId) - 1] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
+      return;
+    }
+  }
+}
+
+static void unregisterWsClient(uint32_t clientId) {
+  for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+    if (wsSessions[i].clientId == clientId) {
+      wsSessions[i].clientId = 0;
+      wsSessions[i].tabId[0] = '\0';
+      wsSessions[i].stuckQueueSince = 0;
       return;
     }
   }
@@ -187,36 +216,31 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
       return;
     }
     triggerGhostWlanEarlyShutdown();
-    // Hebel 1A: Gleiche IP-Erkennung -> Sofortige Zombie-Exekution bei Smartphone-Reload
-    IPAddress newIp = client->remoteIP();
-    uint32_t newId = client->id();
-    for (const auto& c : ws.getClients()) {
-      if (c.id() != newId && c.status() == WS_CONNECTED && c.remoteIP() == newIp) {
-        uint32_t oldId = c.id();
-        ws.close(oldId, 1000, "Replaced");
-        removeWsClientTracker(oldId);
-      }
-    }
-
-    // Hebel 1C: ESPAsyncTCP RX-Timeout auf Socket-Ebene (15s Inaktivitaets-Schranke)
-    if (client->client()) {
-      client->client()->setRxTimeout(15);
-    }
-
-    updateWsClientActivity(newId);
+    client->keepAlivePeriod(30);
+    addWsClient(client->id());
   } else if (type == WS_EVT_DATA) {
-    updateWsClientActivity(client->id());
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
-      if (strncmp((char*)data, "{\"ping\":", 8) == 0) {
-        client->text((char*)data);
+      char* str = (char*)data;
+      if (strncmp(str, "{\"cmd\":\"hello\"", 14) == 0) {
+        char* tabKey = strstr(str, "\"tab\":\"");
+        if (tabKey) {
+          tabKey += 7;
+          char* end = strchr(tabKey, '\"');
+          if (end) {
+            *end = '\0';
+            registerWsTab(client->id(), tabKey);
+          }
+        }
+      } else if (strncmp(str, "{\"cmd\":\"ping\"", 13) == 0) {
+        client->text(F("{\"cmd\":\"pong\"}"));
+      } else if (strncmp(str, "{\"ping\":", 8) == 0) {
+        client->text(str);
       }
     }
-  } else if (type == WS_EVT_PONG) {
-    updateWsClientActivity(client->id());
   } else if (type == WS_EVT_DISCONNECT) {
-    removeWsClientTracker(client->id());
+    unregisterWsClient(client->id());
   }
 }
 
@@ -680,27 +704,40 @@ void handleNetworkTasks() {
   MDNS.update();
 #endif
   ArduinoOTA.handle();
-  // Hebel 1B: Zyklischer RFC-6455 Ping/Pong Heartbeat & Inaktivitaets-Timeout
-  static uint32_t lastWsHeartbeat = 0;
+  // Zyklischer Check auf verstaute / abgerissene Zombie-Sockets (alle 3 Sekunden)
+  static uint32_t lastZombieCheck = 0;
   uint32_t now = millis();
-  if (now - lastWsHeartbeat >= 5000) {
-    lastWsHeartbeat = now;
+  if (now - lastZombieCheck >= 3000) {
+    lastZombieCheck = now;
     if (ws.count() > 0) {
-      for (size_t i = 0; i < MAX_WS_TRACKERS; i++) {
-        if (wsTrackers[i].id != 0) {
-          if (now - wsTrackers[i].lastSeen >= 12000) {
-            uint32_t deadId = wsTrackers[i].id;
-            ws.close(deadId, 1001, "Timeout");
-            wsTrackers[i].id = 0;
-            wsTrackers[i].lastSeen = 0;
+      for (size_t i = 0; i < MAX_WS_SESSIONS; i++) {
+        if (wsSessions[i].clientId != 0) {
+          AsyncWebSocketClient* c = ws.client(wsSessions[i].clientId);
+          if (c) {
+            // Wenn der Client unquittierte Pakete staut (z. B. Handy im Standby/gesperrt)
+            if (c->queueLen() > 0) {
+              if (wsSessions[i].stuckQueueSince == 0) {
+                wsSessions[i].stuckQueueSince = now;
+              } else if (now - wsSessions[i].stuckQueueSince >= 8000) {
+                uint32_t deadId = wsSessions[i].clientId;
+                unregisterWsClient(deadId);
+                c->close(1008, "Queue stalled");
+              }
+            } else {
+              wsSessions[i].stuckQueueSince = 0;
+            }
+          } else {
+            wsSessions[i].clientId = 0;
+            wsSessions[i].tabId[0] = '\0';
+            wsSessions[i].stuckQueueSince = 0;
           }
         }
       }
-      ws.pingAll((const uint8_t*)"LT", 2);
     }
   }
 
-  ws.cleanupClients(4);
+  // Haelt max. 3 WebSockets aktiv, damit min. 2 TCP-PCBs fuer HTTP-Assets frei bleiben
+  ws.cleanupClients(3);
 }
 
 void broadcastWebSocket(const String& msg) {

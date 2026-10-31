@@ -132,9 +132,7 @@ if ('speechSynthesis' in window) {
   } catch (e) {}
 }
 
-if (typeof countdownTimeouts === 'undefined') {
-  var countdownTimeouts = [];
-}
+window.countdownTimeouts = window.countdownTimeouts || [];
 
 function cancelRaceCountdown(notifyBackend = false) {
   if (typeof countdownTimeouts !== 'undefined') {
