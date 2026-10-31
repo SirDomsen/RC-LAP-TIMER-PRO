@@ -1,7 +1,25 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.4.12'; 
+window.UI_VERSION = '4.4.13'; 
+
+function formatLapTime(ms, fallback = '---') {
+  if (!ms || isNaN(ms) || ms <= 0) return fallback;
+  let totalSec = Math.round(ms) / 1000;
+  let min = Math.floor(totalSec / 60);
+  let sec = totalSec - (min * 60);
+  if (sec >= 59.995) {
+    min++;
+    sec = 0;
+  }
+  let secStr = sec.toFixed(2);
+  if (min > 0) {
+    if (sec < 10) secStr = '0' + secStr;
+    return `${min}:${secStr}`;
+  }
+  return secStr;
+}
+window.formatLapTime = formatLapTime; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
@@ -544,14 +562,14 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     }
   }
 
-  if (dPb) dPb.innerText = rowData.bestLap > 0 ? (rowData.bestLap / 1000).toFixed(2) + 's' : '--:--';
+  if (dPb) dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
 
   if (dLast) {
     if (rowData.lastLapIsOutLap) {
-      dLast.innerText = rowData.lastLap > 0 ? "Outlap (" + (rowData.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      dLast.innerText = rowData.lastLap > 0 ? "Outlap (" + formatLapTime(rowData.lastLap) + ")" : "Outlap";
       dLast.style.color = 'var(--text-muted)';
     } else {
-      dLast.innerText = rowData.lastLap > 0 ? (rowData.lastLap / 1000).toFixed(2) + 's' : '--:--';
+      dLast.innerText = formatLapTime(rowData.lastLap, '--:--');
       let isOverall = (sessionOverallBestLap > 0 && rowData.lastLap <= sessionOverallBestLap);
       let isPb = (rowData.bestLap > 0 && rowData.lastLap <= rowData.bestLap);
       if (isOverall) dLast.style.color = 'var(--neon-purple)';
@@ -758,7 +776,7 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
         colorStyle = 'color:var(--neon-green);';
       }
 
-      let secStr = (val / 1000).toFixed(2) + 's';
+      let secStr = formatLapTime(val);
       return `<td><span style="font-weight:700; ${colorStyle} ${shadowStyle}">${secStr}</span></td>`;
     };
 
@@ -771,10 +789,10 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
     let lastDisp = '---';
     let lastColor = 'color:var(--text-main);';
     if (row.lastLapIsOutLap) {
-      lastDisp = row.lastLap > 0 ? "Outlap (" + (row.lastLap / 1000).toFixed(2) + "s)" : "Outlap";
+      lastDisp = row.lastLap > 0 ? "Outlap (" + formatLapTime(row.lastLap) + ")" : "Outlap";
       lastColor = 'color:var(--text-muted);';
     } else if (row.lastLap > 0) {
-      lastDisp = (row.lastLap / 1000).toFixed(2) + 's';
+      lastDisp = formatLapTime(row.lastLap);
       let isOverallLast = (minBestLap > 0 && row.lastLap <= minBestLap);
       let isPbLast = (row.bestLap > 0 && row.lastLap <= row.bestLap);
       if (isOverallLast) lastColor = 'color:var(--neon-purple);';
@@ -804,7 +822,7 @@ function updateDimmerLeaderboard(displayData, minBestLap, minSz1, minSz2, minSz3
     let bestDisp = '---';
     let bestColor = 'color:var(--text-muted);';
     if (row.bestLap > 0) {
-      bestDisp = (row.bestLap / 1000).toFixed(2) + 's';
+      bestDisp = formatLapTime(row.bestLap);
       if (minBestLap > 0 && row.bestLap <= minBestLap) {
         bestColor = 'color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-weight:900;';
       } else {
@@ -1313,11 +1331,11 @@ function renderTrackRecordsModalContent(trackId) {
       let rankClass = rank === 1 ? 'top5-rank-1' : (rank === 2 ? 'top5-rank-2' : (rank === 3 ? 'top5-rank-3' : 'top5-rank-other'));
       let driverName = entry.driver || (carNamesMap[entry.carId]?.driver) || ('Fahrer ' + (entry.carId || '?'));
       let carName = entry.car || (carNamesMap[entry.carId]?.car) || ('Auto ' + (entry.carId || '?'));
-      let timeStr = (entry.lap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(entry.lap);
       let dateFormatted = formatRecordDate(entry.date);
       let dateHtml = (isAllTime && dateFormatted) ? `<span class="top5-entry-date">📅 ${dateFormatted}</span>` : '';
       let prevHintHtml = (isAdmin && entry.prevLap && entry.prevLap > 0)
-        ? `<span style="font-size:10px; color:var(--text-muted); margin-left:4px;" title="Wird beim Löschen dieser Zeit automatisch wiederhergestellt">(vorher: ${(entry.prevLap / 1000).toFixed(2)}s)</span>`
+        ? `<span style="font-size:10px; color:var(--text-muted); margin-left:4px;" title="Wird beim Löschen dieser Zeit automatisch wiederhergestellt">(vorher: ${formatLapTime(entry.prevLap)})</span>`
         : '';
 
       let timeColor = (rank === 1)
@@ -1509,7 +1527,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
   } else {
     let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
     let driverName = targetEntry ? (targetEntry.driver || (carNamesMap[targetEntry.carId]?.driver) || ('Fahrer ' + (targetEntry.carId || '?'))) : ('Platz ' + (index + 1));
-    let timeStr = targetEntry ? ((targetEntry.lap / 1000).toFixed(2) + 's') : '';
+    let timeStr = targetEntry ? formatLapTime(targetEntry.lap) : '';
 
     if (matchedSession && matchedLap) {
       title = isDaily ? '⏱️ TAGESBESTZEIT & RUNDE LÖSCHEN' : '🏆 REKORD & RUNDE LÖSCHEN';
@@ -2013,7 +2031,7 @@ function updateTrackRecordBar(info) {
   }
   if (dimAllTimeVal) {
     if (hasAllTime) {
-      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(recLap);
       let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
       let dFmt = formatRecordDate(recDate);
       let dSuffix = dFmt ? ` <small style="color:var(--text-muted); font-size:10px;">(${dFmt})</small>` : '';
@@ -2024,7 +2042,7 @@ function updateTrackRecordBar(info) {
   }
   if (dimDailyVal) {
     if (hasDailyBest) {
-      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(dailyLap);
       let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
       dimDailyVal.innerHTML = `${driver} — <span style="color:var(--neon-green); font-size:13px;">${timeStr}</span>`;
     } else {
@@ -2042,7 +2060,7 @@ function updateTrackRecordBar(info) {
 
   if (allTimeDisp) {
     if (hasAllTime) {
-      let timeStr = (recLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(recLap);
       let driver = recDriver || (carNamesMap[recCarId]?.driver) || ('Fahrer ' + recCarId);
       let car = recCar || (carNamesMap[recCarId]?.car) || ('Auto ' + recCarId);
       let dFmt = formatRecordDate(recDate);
@@ -2055,7 +2073,7 @@ function updateTrackRecordBar(info) {
 
   if (dailyDisp) {
     if (hasDailyBest) {
-      let timeStr = (dailyLap / 1000).toFixed(2) + 's';
+      let timeStr = formatLapTime(dailyLap);
       let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
       let car = dailyCar || (carNamesMap[dailyCarId]?.car) || ('Auto ' + dailyCarId);
       dailyDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small> — <span style="color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-size:16px;">${timeStr}</span>`;
@@ -2287,7 +2305,7 @@ async function updateData(fullSync = false) {
           if (row.state === 'drag_running') {
             lastDisplay = '<span class="pit-badge" style="color:var(--neon-green); border-color:var(--neon-green);">Auf Strecke</span>';
           } else if (row.lastLap > 0) {
-            lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            lastDisplay = formatLapTime(row.lastLap);
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
             if (isOverall && isPB) lastClass = 'lap-time-purple';
@@ -2295,10 +2313,10 @@ async function updateData(fullSync = false) {
           }
         } else {
           if (row.lastLapIsOutLap) {
-            lastDisplay = row.lastLap > 0 ? '<span class="outlap-badge">Outlap</span> <span style="font-size:12px; opacity:0.85;">(' + (row.lastLap / 1000).toFixed(2) + 's)</span>' : '<span class="outlap-badge">Outlap</span>';
+            lastDisplay = row.lastLap > 0 ? '<span class="outlap-badge">Outlap</span> <span style="font-size:12px; opacity:0.85;">(' + formatLapTime(row.lastLap) + ')</span>' : '<span class="outlap-badge">Outlap</span>';
             lastClass = 'lap-time-neutral';
           } else if (row.lastLap > 0) {
-            lastDisplay = (row.lastLap / 1000).toFixed(2) + 's';
+            lastDisplay = formatLapTime(row.lastLap);
             let isOverall = (activeCarsWithLaps > 1 && minBestLap > 0 && row.lastLap <= minBestLap);
             let isPB = (row.bestLap > 0 && row.lastLap <= row.bestLap);
 
@@ -2321,16 +2339,16 @@ async function updateData(fullSync = false) {
           }
         }
 
-        let bestDisplay = row.bestLap > 0 ? (row.bestLap / 1000).toFixed(2) + 's' : '---';
+        let bestDisplay = row.bestLap > 0 ? formatLapTime(row.bestLap) : '---';
         let bestClass = 'lap-time-green';
         if (activeCarsWithLaps > 1 && minBestLap > 0 && row.bestLap > 0 && row.bestLap <= minBestLap) {
           bestClass = 'lap-time-purple';
         }
 
         let formatSectorCell = (sectorNum, szVal, splitVal) => {
-          let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
+          let valDisp = szVal > 0 ? formatLapTime(szVal) : '---';
           if (currentMode === 4) {
-            let splitDisp = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+            let splitDisp = splitVal > 0 ? formatLapTime(splitVal) : '---';
             return `<div class="drag-cell"><span class="drag-split">Spl: ${splitDisp}</span><span class="drag-sector">${valDisp}</span></div>`;
           }
           return valDisp;
@@ -2400,7 +2418,7 @@ async function updateData(fullSync = false) {
     if (dLeaderLap) dLeaderLap.innerText = leaderLaps || 0;
 
     let dSessionBest = document.getElementById('dimmerSessionBestText') || document.getElementById('dimmerOverallText');
-    if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? (minBestLap / 1000).toFixed(2) + 's' : '--:--';
+    if (dSessionBest) dSessionBest.innerText = (minBestLap > 0) ? formatLapTime(minBestLap, '--:--') : '--:--';
 
     // 1) Rennleiter Dashboard (Leaderboard-Tabelle für alle tatsächlich erfassten Fahrzeuge)
     let dLeaderboardBody = document.getElementById('dimmerLeaderboardBody');
@@ -2571,7 +2589,7 @@ function finishSessionNow() {
       let pole = activeCars[0];
       let poleDriver = pole.driver || (carNamesMap[pole.id]?.driver || ("Fahrer " + pole.id));
       let poleCar = pole.car || (carNamesMap[pole.id]?.car || ("Auto " + pole.id));
-      let poleTimeDisp = (pole.bestLap / 1000).toFixed(2) + 's';
+      let poleTimeDisp = formatLapTime(pole.bestLap);
       let poleTimeSpeech = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(pole.bestLap) : (pole.bestLap / 1000).toFixed(2).replace('.', ',');
 
       let banner = document.getElementById('poleBanner');

@@ -2,6 +2,25 @@ let allSessionsCache = [];
 let sessionFileCache = {};
 let currentStatsTrackFilter = 'all';
 
+if (typeof formatLapTime !== 'function') {
+  window.formatLapTime = function(ms, fallback = '---') {
+    if (!ms || isNaN(ms) || ms <= 0) return fallback;
+    let totalSec = Math.round(ms) / 1000;
+    let min = Math.floor(totalSec / 60);
+    let sec = totalSec - (min * 60);
+    if (sec >= 59.995) {
+      min++;
+      sec = 0;
+    }
+    let secStr = sec.toFixed(2);
+    if (min > 0) {
+      if (sec < 10) secStr = '0' + secStr;
+      return `${min}:${secStr}`;
+    }
+    return secStr;
+  };
+}
+
 let driversSortCol = 'laps';
 let driversSortDir = 'desc';
 
@@ -118,7 +137,7 @@ function updateStatsModalDailyBest() {
     });
     if (allTimeElem) {
       if (recBest > 0) {
-        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${(recBest / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${recDriver} - ${recTrack})</small>`;
+        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(recBest)}</span> <small style="color:var(--neon-cyan);">(${recDriver} - ${recTrack})</small>`;
       } else {
         allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
       }
@@ -137,7 +156,7 @@ function updateStatsModalDailyBest() {
     });
     if (dailyElem) {
       if (best > 0) {
-        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${(best / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${bestDriver} - ${bestTrack})</small>`;
+        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(best)}</span> <small style="color:var(--neon-cyan);">(${bestDriver} - ${bestTrack})</small>`;
       } else {
         dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
       }
@@ -150,7 +169,7 @@ function updateStatsModalDailyBest() {
         let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || ('Fahrer ' + t.recordCarId));
         let rc = t.recordCar || (carNamesMap[t.recordCarId]?.car || '');
         let carPart = rc ? ` (${rc})` : '';
-        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${(rLap / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${rd}${carPart})</small>`;
+        allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(rLap)}</span> <small style="color:var(--neon-cyan);">(${rd}${carPart})</small>`;
       } else {
         allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
       }
@@ -160,7 +179,7 @@ function updateStatsModalDailyBest() {
         let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
         let c = t.bestCar || (carNamesMap[t.bestCarId]?.car || '');
         let carPart = c ? ` (${c})` : '';
-        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${(t.bestLap / 1000).toFixed(2)}s</span> <small style="color:var(--neon-cyan);">(${d}${carPart})</small>`;
+        dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(t.bestLap)}</span> <small style="color:var(--neon-cyan);">(${d}${carPart})</small>`;
       } else {
         dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
       }
@@ -582,7 +601,7 @@ function renderRecordsOverview() {
       ? `<span style="color:var(--neon-cyan); cursor:pointer; text-decoration:underline;" onclick="openSessionFromRecord(${r.mode}, '${r.sessionId}')" title="Session öffnen">🔍 Session</span>`
       : '';
     let prevHint = (isAdmin && r.prevLap > 0)
-      ? `<span style="font-size:10px; color:var(--text-muted);">(vorher: ${(r.prevLap/1000).toFixed(2)}s)</span>`
+      ? `<span style="font-size:10px; color:var(--text-muted);">(vorher: ${formatLapTime(r.prevLap)})</span>`
       : '';
 
     let rowClickAttr = r.sessionId
@@ -616,7 +635,7 @@ function renderRecordsOverview() {
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
-          <span style="${timeColor}; font-size:15px; font-weight:bold; font-family:var(--font-display);">${(r.lap/1000).toFixed(2)}s</span>
+          <span style="${timeColor}; font-size:15px; font-weight:bold; font-family:var(--font-display);">${formatLapTime(r.lap)}</span>
           ${delBtnHtml}
         </div>
       </div>
@@ -752,13 +771,13 @@ function renderDriversOverview() {
 
   let cardsHtml = '';
   driversList.forEach(ds => {
-    let bestDisp = ds.bestLap > 0 ? (ds.bestLap / 1000).toFixed(2) + 's' : '---';
+    let bestDisp = formatLapTime(ds.bestLap);
     let trackPillsHtml = '';
     let tbValues = Object.values(ds.trackBests);
     if (tbValues.length > 0) {
       trackPillsHtml = '<div style="margin-top:6px;">';
       tbValues.forEach(tb => {
-        let tSec = (tb.bestLap / 1000).toFixed(2) + 's';
+        let tSec = formatLapTime(tb.bestLap);
         trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${ds.id})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${tb.trackName}: <strong>${tSec}</strong> 🔗</span>`;
       });
       trackPillsHtml += '</div>';
@@ -902,8 +921,8 @@ function renderSessionsByMode(mode, containerId) {
     sortedResults.forEach(r => {
       let isOverallWinner = (sessionOverallBest > 0 && r.bestLap > 0 && r.bestLap <= sessionOverallBest);
       let bestColor = isOverallWinner ? 'var(--neon-purple)' : 'var(--neon-green)';
-      let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
-      let avgStr = r.avgLap > 0 ? (r.avgLap / 1000).toFixed(2) + 's' : '---';
+      let bestStr = formatLapTime(r.bestLap);
+      let avgStr = formatLapTime(r.avgLap);
       let driverDetailId = `s_${safeId}_driver_${r.id}`;
       let dName = carNamesMap[r.id]?.driver || r.driver || ("Fahrer " + r.id);
       let cName = carNamesMap[r.id]?.car || r.car || ("Auto " + r.id);
@@ -1179,9 +1198,9 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
     let styleTime = getTimeStyle(l.time, minTime, maxTime);
 
     let formatCell = (szVal, splitVal, style) => {
-      let valDisp = szVal > 0 ? (szVal / 1000).toFixed(2) + 's' : '---';
+      let valDisp = szVal > 0 ? formatLapTime(szVal) : '---';
       if (isDrag) {
-        let splitDisp = splitVal > 0 ? (splitVal / 1000).toFixed(2) + 's' : '---';
+        let splitDisp = splitVal > 0 ? formatLapTime(splitVal) : '---';
         return `<div class="drag-cell"><span class="drag-split" style="font-size:10px; color:var(--text-muted); display:block;">Spl: ${splitDisp}</span><span class="drag-sector" style="${style}">${valDisp}</span></div>`;
       }
       return `<span style="${style}">${valDisp}</span>`;
@@ -1206,7 +1225,7 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
       ${showSz2Col ? `<td>${sz2Content}</td>` : ''}
       ${showSz3Col ? `<td>${sz3Content}</td>` : ''}
       ${showSz4Col ? `<td>${sz4Content}</td>` : ''}
-      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${(l.time / 1000).toFixed(2)}s)</small>` : `<span style="${styleTime}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</span>`}</td>
+      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${formatLapTime(l.time)})</small>` : `<span style="${styleTime}; font-weight:bold;">${formatLapTime(l.time)}</span>`}</td>
       <td style="color:var(--neon-orange); font-weight:bold;">${l.pos ? 'P' + l.pos : '---'}</td>
       <td style="color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
       ${delCol}
@@ -1521,11 +1540,11 @@ function renderDriverProfileAllLapsTable() {
   sorted.forEach(l => {
     let isBest = (!l.outlap && l.time > 0 && l.time === minTime);
     let timeCol = isBest ? 'var(--neon-purple)' : 'var(--text-main)';
-    let szDisp = (v) => v > 0 ? (v / 1000).toFixed(2) + 's' : '---';
+    let szDisp = (v) => formatLapTime(v);
 
     html += `<tr>
       <td>${l.mode === 4 ? 'Lauf' : 'Rnd'} ${l.lap}</td>
-      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${(l.time / 1000).toFixed(2)}s)</small>` : `<span style="color:${timeCol}; font-weight:bold;">${(l.time / 1000).toFixed(2)}s</span>`}</td>
+      <td>${l.outlap ? `<span class="outlap-badge">Outlap</span> <small style="color:var(--text-muted); font-weight:normal;">(${formatLapTime(l.time)})</small>` : `<span style="color:${timeCol}; font-weight:bold;">${formatLapTime(l.time)}</span>`}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz1)}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz2)}</td>
       <td style="color:var(--text-muted); font-size:11px;">${szDisp(l.sz3)}</td>
@@ -1640,7 +1659,7 @@ function renderDriverProfile(carId) {
 
   let overallCardHtml = '';
   if (overallBest) {
-    let obSec = (overallBest.bestLap / 1000).toFixed(2) + 's';
+    let obSec = formatLapTime(overallBest.bestLap);
     overallCardHtml = `
       <div style="background:rgba(181,50,255,0.1); border:1px solid var(--neon-purple); border-radius:8px; padding:12px; text-align:center; cursor:pointer;" onclick="jumpToSessionInStats('${overallBest.sessionId}', ${overallBest.mode}, '${overallBest.trackId}', ${carId})" title="Klicken, um direkt zur Session dieser Bestzeit zu springen">
         <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Schnellste Runde (Gesamt)</div>
@@ -1674,7 +1693,7 @@ function renderDriverProfile(carId) {
     <div class="driver-pb-track-grid">`;
 
   Object.values(trackBestsMap).forEach(tb => {
-    let bestStr = tb.bestLap > 0 ? (tb.bestLap / 1000).toFixed(2) + 's' : '---';
+    let bestStr = formatLapTime(tb.bestLap);
     let dateStr = formatTimestamp(tb.ts);
     html += `
       <div class="driver-pb-track-card" onclick="jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${carId})">
@@ -1716,7 +1735,7 @@ function renderDriverProfile(carId) {
     let s = item.session;
     let r = item.result;
     let dateStr = formatTimestamp(s.endTs || s.startTs);
-    let bestStr = r.bestLap > 0 ? (r.bestLap / 1000).toFixed(2) + 's' : '---';
+    let bestStr = formatLapTime(r.bestLap);
 
     let modeCol = 'var(--neon-green)';
     if (s.mode === 1) modeCol = 'var(--neon-purple)';
