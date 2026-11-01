@@ -504,6 +504,20 @@
       isMetricsEnabled = document.getElementById('metricsToggle').checked;
       if (isMetricsEnabled) {
         fetchSystemMetrics();
+      } else {
+        currentUptimeSec = null;
+        ['valUptime', 'valCpu', 'valHeap', 'valFrag', 'valMaxLoop', 'valPing'].forEach(id => {
+          let el = document.getElementById(id);
+          if (el) {
+            el.style.color = 'var(--text-muted)';
+            if (id === 'valUptime') el.innerText = '--:--:--';
+            else if (id === 'valCpu') el.innerText = '-- MHz';
+            else if (id === 'valHeap') el.innerText = '-- KB';
+            else if (id === 'valFrag') el.innerText = '-- %';
+            else if (id === 'valMaxLoop') el.innerText = '-- ms';
+            else if (id === 'valPing') el.innerText = '-- ms';
+          }
+        });
       }
     }
 
@@ -512,9 +526,9 @@
       
       let tStart = performance.now();
       try {
-        let res = await fetch('/api/system/metrics');
+        let res = await fetch('/api/debug/system');
         if (!res.ok && res.status === 404) {
-          res = await fetch('/api/debug/system');
+          res = await fetch('/api/system/metrics');
         }
         let tEnd = performance.now();
         if (res.ok) {
@@ -523,22 +537,53 @@
           let cpu = data.cpu_mhz ?? data.cpuMhz ?? "--";
           let heap = data.free_heap ?? data.freeHeap ?? 0;
           let frag = data.frag ?? 0;
-          let maxLoop = data.max_loop_ms ?? (data.maxLoopUs !== undefined ? (data.maxLoopUs / 1000).toFixed(1) : "--");
+          let maxLoopUs = data.maxLoopUs ?? (data.max_loop_ms ? (data.max_loop_ms * 1000) : 0);
+          let maxLoopMs = data.max_loop_ms ?? (data.maxLoopUs !== undefined ? (data.maxLoopUs / 1000).toFixed(1) : "--");
+          let pingMs = Math.round(tEnd - tStart);
 
           currentUptimeSec = uptime;
-          document.getElementById('valUptime').innerText = formatUptime(uptime);
-          document.getElementById('valCpu').innerText = cpu + " MHz";
-          document.getElementById('valHeap').innerText = Math.round(heap / 1024) + " KB";
+          let elUptime = document.getElementById('valUptime');
+          if (elUptime) {
+            elUptime.innerText = formatUptime(uptime);
+            elUptime.style.color = 'var(--neon-cyan)';
+          }
+
+          let elCpu = document.getElementById('valCpu');
+          if (elCpu) {
+            elCpu.innerText = cpu + " MHz";
+            elCpu.style.color = 'var(--neon-cyan)';
+          }
+
+          let elHeap = document.getElementById('valHeap');
+          if (elHeap) {
+            elHeap.innerText = Math.round(heap / 1024) + " KB";
+            elHeap.style.color = 'var(--neon-cyan)';
+          }
           
           let fragEl = document.getElementById('valFrag');
-          fragEl.innerText = frag + " %";
-          fragEl.style.color = frag > 30 ? "var(--neon-orange)" : (frag > 50 ? "var(--neon-red)" : "var(--neon-green)");
+          if (fragEl) {
+            fragEl.innerText = frag + " %";
+            fragEl.style.color = frag > 30 ? "var(--neon-red)" : "var(--neon-green)";
+          }
           
-          document.getElementById('valMaxLoop').innerText = maxLoop + " ms";
-          document.getElementById('valPing').innerText = Math.round(tEnd - tStart) + " ms";
+          let elLoop = document.getElementById('valMaxLoop');
+          if (elLoop) {
+            elLoop.innerText = maxLoopMs + " ms";
+            elLoop.style.color = maxLoopUs > 15000 ? 'var(--neon-red)' : (maxLoopUs > 5000 ? 'var(--neon-orange)' : 'var(--neon-green)');
+          }
+
+          let elPing = document.getElementById('valPing');
+          if (elPing) {
+            elPing.innerText = pingMs + " ms";
+            elPing.style.color = 'var(--neon-cyan)';
+          }
         }
       } catch (e) {
-        document.getElementById('valPing').innerText = "Err";
+        let elPing = document.getElementById('valPing');
+        if (elPing) {
+          elPing.innerText = "Err";
+          elPing.style.color = 'var(--neon-red)';
+        }
       }
     }
 
@@ -590,7 +635,11 @@
     setInterval(() => {
       if (currentUptimeSec !== null && isMetricsEnabled && isPageVisible) {
         currentUptimeSec++;
-        document.getElementById('valUptime').innerText = formatUptime(currentUptimeSec);
+        let el = document.getElementById('valUptime');
+        if (el) {
+          el.innerText = formatUptime(currentUptimeSec);
+          el.style.color = 'var(--neon-cyan)';
+        }
       }
     }, 1000);
     setInterval(pollPackets, 1000); // 1 Sekunde für Funkpakete
