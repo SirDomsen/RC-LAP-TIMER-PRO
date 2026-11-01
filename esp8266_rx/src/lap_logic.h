@@ -35,6 +35,7 @@ extern uint8_t activeDragCarId;
 
 // Dynamische Boxen- / Pause- / Outlap-Flags
 extern bool inPitOrPause[MAX_CARS + 1];
+extern uint32_t pitEnteredMs[MAX_CARS + 1];
 extern bool isOutLap[MAX_CARS + 1];
 extern bool lastLapIsOutLap[MAX_CARS + 1];
 

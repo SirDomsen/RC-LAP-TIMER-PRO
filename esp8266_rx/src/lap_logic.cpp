@@ -28,6 +28,7 @@ bool dragTrackOccupied               = false;
 uint8_t activeDragCarId              = 0;
 
 bool inPitOrPause[MAX_CARS + 1]      = {false};
+uint32_t pitEnteredMs[MAX_CARS + 1]  = {0};
 bool isOutLap[MAX_CARS + 1]          = {false};
 bool lastLapIsOutLap[MAX_CARS + 1]   = {false};
 
@@ -285,6 +286,7 @@ void resetAllLaps(bool isHardReset) {
     finishedFinalLap[i] = false;
     dragRunActive[i] = false;
     inPitOrPause[i] = false;
+    pitEnteredMs[i] = 0;
     isOutLap[i] = false;
     lastLapIsOutLap[i] = false;
     sectorPassedInLap[i] = 0;
@@ -372,8 +374,19 @@ uint8_t getActiveCarsCount(uint32_t timeoutMs) {
   uint32_t now = millis();
   uint8_t count = 0;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (lastSeenMs[i] > 0 && (now - lastSeenMs[i] < timeoutMs)) {
-      count++;
+    if (lastSeenMs[i] == 0) continue;
+
+    if (inPitOrPause[i]) {
+      // Auto ist im Status PIT: 300s Boxen-Timer laeuft ab
+      if (pitEnteredMs[i] > 0 && (now - pitEnteredMs[i] < timeoutMs)) {
+        count++; // Noch innerhalb der 300s Boxenpause -> zaehlt noch als aktiv
+      }
+      // Nach 300s ohne Zwischenzeit/Start-Ziel Durchfahrt -> inaktiv
+    } else {
+      // Auto faehrt auf der Strecke (nicht in der Box)
+      if (now - lastSeenMs[i] < timeoutMs) {
+        count++;
+      }
     }
   }
   return count;
@@ -400,6 +413,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   if (currentMode != MODE_DRAGRACE && inPitOrPause[carId]) {
     lastLapIsOutLap[carId] = false;
     inPitOrPause[carId] = false;
+    pitEnteredMs[carId] = 0;
     isOutLap[carId] = true;
     readyForNextLap[carId] = true;
     char outlapJson[96];
@@ -762,6 +776,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     awaitingBaseCross[carId] = false;
     lastLapIsOutLap[carId] = false;
     inPitOrPause[carId] = false;
+    pitEnteredMs[carId] = 0;
     isOutLap[carId] = false;
     sectorPassedInLap[carId] = 0;
     lapCounter[carId] = 1;
@@ -926,6 +941,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     lastLapIsOutLap[carId] = currentLapIsOutLap;
     inPitOrPause[carId] = false;
+    pitEnteredMs[carId] = 0;
     isOutLap[carId] = false;
     sectorPassedInLap[carId] = 0;
     split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
@@ -1042,6 +1058,9 @@ void updateLapLogicTasks() {
           uint32_t thresholdMs = (avgMs * PIT_PAUSE_FACTOR_PERCENT) / 100;
           if (currentElapsedMs > thresholdMs) {
             inPitOrPause[i] = true;
+            if (pitEnteredMs[i] == 0) {
+              pitEnteredMs[i] = now;
+            }
           }
         }
       }
