@@ -72,16 +72,16 @@ bool isHeapCriticalForFileTransfer() {
 }
 
 static const char* getContentType(const String& path) {
-  if (path.endsWith(".html")) return "text/html";
-  if (path.endsWith(".css"))  return "text/css";
-  if (path.endsWith(".js"))   return "application/javascript";
-  if (path.endsWith(".json")) return "application/json";
+  if (path.endsWith(".html")) return "text/html; charset=utf-8";
+  if (path.endsWith(".css"))  return "text/css; charset=utf-8";
+  if (path.endsWith(".js"))   return "application/javascript; charset=utf-8";
+  if (path.endsWith(".json")) return "application/json; charset=utf-8";
   if (path.endsWith(".svg"))  return "image/svg+xml";
   if (path.endsWith(".ico"))  return "image/x-icon";
   if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
   if (path.endsWith(".png"))  return "image/png";
   if (path.endsWith(".webp")) return "image/webp";
-  return "text/plain";
+  return "text/plain; charset=utf-8";
 }
 
 static void triggerGhostWlanEarlyShutdown() {

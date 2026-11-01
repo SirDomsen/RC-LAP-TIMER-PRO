@@ -297,6 +297,12 @@ function toggleTTS() {
 }
 
 function unmuteIOSAudio() {
+  if (typeof getWebAudioContext === 'function') {
+    let ctx = getWebAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
   if ('speechSynthesis' in window) {
     synth.cancel();
     speechQueue = [];

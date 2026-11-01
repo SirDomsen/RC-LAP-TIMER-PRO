@@ -534,6 +534,12 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
   localStorage.setItem('localGhostTarget', JSON.stringify(gTarget));
 
   closeGhostHuntModal();
+  if (typeof getWebAudioContext === 'function') {
+    let ctx = getWebAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
   if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
   if (typeof renderGhostHud === 'function') renderGhostHud();
 
@@ -547,6 +553,12 @@ function stopDriverLocalGhostHunt() {
   localStorage.removeItem('localGhostTarget');
 
   closeGhostHuntModal();
+  if (typeof getWebAudioContext === 'function') {
+    let ctx = getWebAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
   if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
 
   if (currentMode === 5) {

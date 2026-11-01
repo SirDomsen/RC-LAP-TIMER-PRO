@@ -1,9 +1,9 @@
 <!DOCTYPE HTML>
 <html lang="de">
 <head>
+  <meta charset="UTF-8">
   <title>RC Lap Timer Pro - Debug Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
   <style>
     :root {
@@ -16,6 +16,7 @@
       --neon-red: #ff3366;
       --neon-purple: #b532ff;
       --neon-yellow: #f2ff00;
+      --neon-gold: #ffcc00;
       --text-main: #f0f6fc;
       --text-muted: #8b949e;
     }
@@ -86,10 +87,61 @@
       font-family: 'Orbitron', sans-serif;
       background: #111827; color: var(--neon-cyan); border: 1px solid var(--neon-cyan);
       padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;
+      transition: all 0.2s ease;
     }
     .btn:hover { background: var(--neon-cyan); color: #000; }
     .btn-danger { color: var(--neon-red); border-color: var(--neon-red); }
     .btn-danger:hover { background: var(--neon-red); color: #fff; }
+    .btn-green { color: var(--neon-green); border-color: var(--neon-green); }
+    .btn-green:hover { background: var(--neon-green); color: #000; }
+    .btn-purple { color: var(--neon-purple); border-color: var(--neon-purple); }
+    .btn-purple:hover { background: var(--neon-purple); color: #fff; }
+    .btn-warning { color: var(--neon-orange); border-color: var(--neon-orange); }
+    .btn-warning:hover { background: var(--neon-orange); color: #000; }
+    .btn-gold { color: #ffcc00; border-color: #ffcc00; }
+    .btn-gold:hover { background: #ffcc00; color: #000; }
+
+    .audio-group {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .audio-group-title {
+      font-size: 13px;
+      font-weight: bold;
+      font-family: 'Orbitron', sans-serif;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .audio-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .audio-btn {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: bold;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #111827;
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      transition: all 0.15s ease-in-out;
+    }
+    .audio-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
     
     .toggle-container { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: flex-start; margin-bottom:10px; }
     .toggle-box { font-size: 15px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -113,7 +165,7 @@
       <button class="btn" onclick="location.href='/admin.html'">← Zurück</button>
     </div>
 
-    <div id="pollingStatus">⚠️ TAB MINIMIERT - POLLING & AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG</div>
+    <div id="pollingStatus">⚠️ TAB MINIMIERT - POLLING &amp; AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG</div>
 
     <!-- SYSTEM RESSOURCEN METRIKEN -->
     <div class="card">
@@ -178,6 +230,105 @@
         </div>
         <div id="diagWsBox" style="margin-top:12px; padding:10px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); font-family:monospace; font-size:12px;">
           <strong>WebSocket (/ws):</strong> <span id="diagWsStatus">Nicht getestet</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIO & BUZZER TEST KONSOLE -->
+    <div class="card" style="border: 1px solid var(--neon-purple); box-shadow: 0 0 20px rgba(181, 50, 255, 0.2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-purple); display:flex; align-items:center; gap:8px;">
+          <span>🔊</span> Audio &amp; Buzzer Test-Konsole
+        </h3>
+        <span id="audioStatusBadge" style="font-size:12px; font-family:monospace; color:var(--text-muted); background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:4px; border:1px solid rgba(255,255,255,0.1);">Bereit</span>
+      </div>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
+        Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des ESP8266 (GPIO5), lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.
+      </div>
+
+      <!-- TEIL 1: ESP8266 HARDWARE-BUZZER -->
+      <div class="audio-group" style="border-left: 3px solid var(--neon-cyan);">
+        <div class="audio-group-title" style="color:var(--neon-cyan);">
+          <span>📟</span> 1. ESP8266 Hardware-Buzzer (PC-Speaker an GPIO5 / D1)
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+          Sendet HTTP-Kommandos an <code>/api/buzzer</code> zur direkten Tonausgabe über den Basisstations-Lautsprecher.
+        </div>
+        
+        <!-- Renn-Soundeffekte -->
+        <div style="font-size:11px; font-weight:bold; color:var(--text-main); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Renn-Soundeffekte (FX):</div>
+        <div class="audio-btn-row" style="margin-bottom:12px;">
+          <button class="audio-btn btn-purple" onclick="sendHwBuzzer('start_lights')">🚦 Startampel (2-1-GO!)</button>
+          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="sendHwBuzzer('lap')">⏱️ Runden-Tick</button>
+          <button class="audio-btn btn-gold" onclick="sendHwBuzzer('record')">🏆 Streckenrekord-Fanfare</button>
+          <button class="audio-btn btn-green" onclick="sendHwBuzzer('ghost_win')">👻 Sieg über Geist</button>
+          <button class="audio-btn btn-green" onclick="sendHwBuzzer('ghost_ahead')">🟢 Sektor Grün (Vorsprung)</button>
+          <button class="audio-btn btn-danger" onclick="sendHwBuzzer('ghost_behind')">🔴 Sektor Rot (Rückstand)</button>
+          <button class="audio-btn btn-danger" onclick="sendHwBuzzer('stop')" style="font-weight:bold;">⏹️ Ton Stoppen</button>
+        </div>
+
+        <!-- Accolade Soundtracks -->
+        <div style="font-size:11px; font-weight:bold; color:var(--text-main); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Accolade MS-DOS Chiptune Jukebox:</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <select id="debugArcadeSelect" style="flex:1; min-width:240px; padding:6px 10px;">
+            <optgroup label="Grand Prix Circuit (1988)">
+              <option value="gpc_title" selected>🏎️ Title Theme (Chiptune)</option>
+              <option value="gpc_menu">🏁 Menu Theme (Upbeat Chiptune)</option>
+            </optgroup>
+            <optgroup label="Test Drive 1 (1987)">
+              <option value="td1_title">🚗 Intro / Title Theme</option>
+              <option value="td1_menu">⚡ Menu Beat (Original Groove)</option>
+            </optgroup>
+            <optgroup label="Test Drive 3: The Passion (1990)">
+              <option value="td3_theme">🔥 The Passion (Main Theme)</option>
+              <option value="td3_radio1">📻 Radio 1 (Synth-Rock)</option>
+              <option value="td3_radio2">📻 Radio 2 (Synth-Bass)</option>
+              <option value="td3_radio3">📻 Radio 3 (Melodic Groove)</option>
+            </optgroup>
+          </select>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; margin:0; user-select:none;">
+            <input type="checkbox" id="debugArcadeLoop" checked style="transform:scale(1.2);"> Loop
+          </label>
+          <button class="audio-btn btn-green" onclick="playSelectedHwTrack()">▶ Track starten</button>
+          <button class="audio-btn btn-danger" onclick="sendHwBuzzer('stop')">⏹ Stopp</button>
+        </div>
+      </div>
+
+      <!-- TEIL 2: SMARTPHONE WEB AUDIO SYNTHESIZER -->
+      <div class="audio-group" style="border-left: 3px solid var(--neon-green);">
+        <div class="audio-group-title" style="color:var(--neon-green);">
+          <span>📱</span> 2. Smartphone Web Audio Synthesizer (Lokal im Browser)
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+          Wird via Web Audio API (Square-Wave Oszillator) latenzfrei direkt auf dem Handy-Lautsprecher erzeugt.
+        </div>
+        <div class="audio-btn-row">
+          <button class="audio-btn btn-green" onclick="playWebGhostAhead()">🟢 Sektor-Vorsprung (Doppel-Beep)</button>
+          <button class="audio-btn btn-danger" onclick="playWebGhostBehind()">🔴 Sektor-Rückstand (Bass-Beep)</button>
+          <button class="audio-btn btn-gold" onclick="playWebGhostVictory()">👻 Geist geschlagen (Fanfare)</button>
+          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="playWebLapTick()">⏱️ Runden-Tick (1760 Hz)</button>
+          <button class="audio-btn btn-purple" onclick="playWebStartLights()">🚦 Startampel (Rot-Rot-Grün)</button>
+          <button class="audio-btn" style="color:var(--text-muted); border-color:rgba(255,255,255,0.2);" onclick="unlockWebAudio()">🔓 Audio freischalten (iOS)</button>
+        </div>
+      </div>
+
+      <!-- TEIL 3: SMARTPHONE SPRACHAUSGABE (TTS) -->
+      <div class="audio-group" style="border-left: 3px solid var(--neon-gold);">
+        <div class="audio-group-title" style="color:var(--neon-gold);">
+          <span>🗣️</span> 3. Smartphone Sprachausgabe (Web Speech API / TTS)
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+          Rennleiter-Sprachausgabe im Browser mit phonetischer Optimierung für deutsche Aussprache.
+        </div>
+        <div class="audio-btn-row">
+          <button class="audio-btn btn-purple" onclick="playTtsCountdownTest()">🚦 Start-Countdown (3-2-1-Los)</button>
+          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="speakDebugTest('Fahrer 1, Runde 3, 14 25')">⏱️ Rundenansage</button>
+          <button class="audio-btn btn-gold" onclick="speakDebugTest('Neuer Streckenrekord! 12 null 5 von Mike')">🏆 Streckenrekord</button>
+          <button class="audio-btn btn-green" onclick="speakDebugTest('Minus null 35')">🟢 Delta Vorsprung (-0.35s)</button>
+          <button class="audio-btn btn-danger" onclick="speakDebugTest('Plus eins 12')">🔴 Delta Rückstand (+1.12s)</button>
+          <button class="audio-btn btn-warning" onclick="speakDebugTest('Achtung: Akku leer bei Zwischenzeit 1!')">🔋 Akku-Warnung</button>
+          <button class="audio-btn btn-green" onclick="speakDebugTest('Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an Dominik auf Senton zum Sieg!')">🏁 Siegerehrung (Ziel)</button>
+          <button class="audio-btn btn-danger" onclick="stopDebugTts()" style="font-weight:bold;">⏹️ TTS Stopp</button>
         </div>
       </div>
     </div>
@@ -348,109 +499,79 @@
       tbody.innerHTML = html;
     }
 
-    // --- POLLING & BACKEND ---
-    function toggleMetrics() {
+    // --- NETZWERK & METRIKEN ---
+    async function toggleMetrics() {
       isMetricsEnabled = document.getElementById('metricsToggle').checked;
-      if (!isMetricsEnabled) {
-        document.getElementById('valUptime').innerText = '--:--:--';
-        currentUptimeSec = null;
-        document.getElementById('valCpu').innerText = '-- MHz';
-        document.getElementById('valHeap').innerText = '-- KB';
-        document.getElementById('valFrag').innerText = '-- %';
-        document.getElementById('valMaxLoop').innerText = '-- ms';
-        document.getElementById('valPing').innerText = '-- ms';
-      } else {
-        fetchSystemMetrics(); // Sofortiger Erstaufruf
+      if (isMetricsEnabled) {
+        fetchSystemMetrics();
       }
-    }
-
-    async function toggleDebugMode() {
-      isRecordingEnabled = document.getElementById('debugToggle').checked;
-      // Befehl an ESP: Aufzeichnung Start/Stop
-      await fetch('/api/debug/set?active=' + (isRecordingEnabled ? "1" : "0"), { method: 'POST' });
-      renderTable();
     }
 
     async function fetchSystemMetrics() {
       if (!isMetricsEnabled || !isPageVisible) return;
-      let t0 = performance.now();
+      
+      let tStart = performance.now();
       try {
-        let res = await fetch('/api/debug/system');
+        let res = await fetch('/api/system/metrics');
+        let tEnd = performance.now();
         if (res.ok) {
-          let rtt = Math.round(performance.now() - t0);
-          document.getElementById('valPing').innerText = rtt + ' ms';
-          document.getElementById('valPing').style.color = 'var(--neon-cyan)';
-
           let data = await res.json();
-          document.getElementById('valCpu').innerText = data.cpuMhz + ' MHz';
-          document.getElementById('valCpu').style.color = 'var(--neon-cyan)';
+          currentUptimeSec = data.uptime;
+          document.getElementById('valUptime').innerText = formatUptime(data.uptime);
+          document.getElementById('valCpu').innerText = data.cpu_mhz + " MHz";
+          document.getElementById('valHeap').innerText = Math.round(data.free_heap / 1024) + " KB";
           
-          document.getElementById('valHeap').innerText = (data.freeHeap / 1024).toFixed(1) + ' KB';
-          document.getElementById('valHeap').style.color = 'var(--neon-cyan)';
+          let fragEl = document.getElementById('valFrag');
+          fragEl.innerText = data.frag + " %";
+          fragEl.style.color = data.frag > 30 ? "var(--neon-orange)" : (data.frag > 50 ? "var(--neon-red)" : "var(--neon-green)");
           
-          let fragElem = document.getElementById('valFrag');
-          fragElem.innerText = data.frag + ' %';
-          fragElem.style.color = data.frag > 30 ? 'var(--neon-red)' : 'var(--neon-green)';
-
-          let loopElem = document.getElementById('valMaxLoop');
-          let loopMs = (data.maxLoopUs / 1000).toFixed(1);
-          loopElem.innerText = loopMs + ' ms';
-          loopElem.style.color = data.maxLoopUs > 15000 ? 'var(--neon-red)' : (data.maxLoopUs > 5000 ? 'var(--neon-orange)' : 'var(--neon-green)');
-
-          let uptimeSec = data.uptimeSec;
-          if (uptimeSec === undefined) {
-            try {
-              let tlRes = await fetch('/api/timeleft');
-              if (tlRes.ok) {
-                let tlData = await tlRes.json();
-                if (tlData.serverMillis) uptimeSec = Math.floor(tlData.serverMillis / 1000);
-              }
-            } catch(e) {}
-          }
-
-          if (uptimeSec !== undefined) {
-            currentUptimeSec = uptimeSec;
-            let uptimeElem = document.getElementById('valUptime');
-            if (uptimeElem) {
-              uptimeElem.innerText = formatUptime(currentUptimeSec);
-              uptimeElem.style.color = 'var(--neon-cyan)';
-            }
-          }
+          document.getElementById('valMaxLoop').innerText = data.max_loop_ms + " ms";
+          document.getElementById('valPing').innerText = Math.round(tEnd - tStart) + " ms";
         }
-      } catch(e) {}
+      } catch (e) {
+        document.getElementById('valPing').innerText = "Err";
+      }
     }
 
-    async function fetchDebugPackets() {
+    async function toggleDebugMode() {
+      let cb = document.getElementById('debugToggle');
+      isRecordingEnabled = cb.checked;
+      try {
+        await fetch(`/api/debug/set?active=${isRecordingEnabled ? 1 : 0}`, { method: 'POST' });
+        renderTable();
+      } catch (e) {
+        cb.checked = !isRecordingEnabled;
+        isRecordingEnabled = cb.checked;
+        alert("Fehler beim Umschalten des Debug-Modus");
+      }
+    }
+
+    async function pollPackets() {
       if (!isRecordingEnabled || !isPageVisible) return;
-      let isFrozen = document.getElementById('freezeToggle')?.checked;
-      if (isFrozen) return;
+      if (document.getElementById('freezeToggle').checked) return;
 
       try {
         let res = await fetch('/api/debug/packets');
-        if (!res.ok) return;
-        let packets = await res.json();
-        
-        let addedNew = false;
-        packets.forEach(p => {
-          // Eindeutiger Hash zur Deduplizierung (Zeit + Station + Auto + Raw)
-          let hash = `${p.time}_${p.st}_${p.car}_${p.raw}`;
-          if (!packetHashSet.has(hash)) {
-            packetHashSet.add(hash);
-            allPackets.push(p);
-            addedNew = true;
-          }
-        });
+        if (res.ok) {
+          let newPackets = await res.json();
+          let added = false;
+          
+          newPackets.forEach(p => {
+            let hash = `${p.time}_${p.st}_${p.car}_${p.raw}`;
+            if (!packetHashSet.has(hash)) {
+              packetHashSet.add(hash);
+              allPackets.push(p);
+              added = true;
+            }
+          });
 
-        if (addedNew) {
-          // Historie begrenzen
           if (allPackets.length > MAX_HISTORY) {
-            let toRemove = allPackets.length - MAX_HISTORY;
-            let removedPackets = allPackets.splice(0, toRemove);
-            removedPackets.forEach(rp => {
-              packetHashSet.delete(`${rp.time}_${rp.st}_${rp.car}_${rp.raw}`);
-            });
+            allPackets = allPackets.slice(allPackets.length - MAX_HISTORY);
           }
-          renderTable();
+
+          if (added) {
+            renderTable();
+          }
         }
       } catch (e) {}
     }
@@ -460,23 +581,19 @@
     setInterval(() => {
       if (currentUptimeSec !== null && isMetricsEnabled && isPageVisible) {
         currentUptimeSec++;
-        let uptimeElem = document.getElementById('valUptime');
-        if (uptimeElem) uptimeElem.innerText = formatUptime(currentUptimeSec);
+        document.getElementById('valUptime').innerText = formatUptime(currentUptimeSec);
       }
     }, 1000);
-    setInterval(fetchDebugPackets, 1000);  // Flotte 1 Sekunde für Funkpakete
+    setInterval(pollPackets, 1000); // 1 Sekunde für Funkpakete
 
-    // --- VISIBILITY / STANDBY LOGIK ---
+    // --- PAGE VISIBILITY API (ESP SCHONUNG) ---
     document.addEventListener("visibilitychange", () => {
-      isPageVisible = !document.hidden;
       let statusBanner = document.getElementById('pollingStatus');
+      isPageVisible = !document.hidden;
       
       if (isPageVisible) {
         statusBanner.style.display = 'none';
-        // Wenn Haken gesetzt war, dem ESP sagen: "Wir sind wieder da!"
-        if (isRecordingEnabled) {
-          fetch('/api/debug/set?active=1', { method: 'POST' }).then(() => fetchDebugPackets());
-        }
+        if (isRecordingEnabled) fetch('/api/debug/set?active=1', { method: 'POST' });
         if (isMetricsEnabled) fetchSystemMetrics();
       } else {
         statusBanner.style.display = 'block';
@@ -485,6 +602,7 @@
       }
     });
 
+    // --- FRONTEND & ASSET LIVE-DIAGNOSE ---
     async function runFrontendAssetDiagnostics() {
       let box = document.getElementById('diagResults');
       let tbody = document.getElementById('diagTableBody');
@@ -602,6 +720,219 @@
 
     function goBackToMain() {
       location.href = '/admin.html';
+    }
+
+    // --- AUDIO & BUZZER TEST KONSOLE ---
+    function updateAudioBadge(text, color = 'var(--neon-green)') {
+      let b = document.getElementById('audioStatusBadge');
+      if (b) {
+        b.innerText = text;
+        b.style.color = color;
+      }
+    }
+
+    // 1. ESP8266 Hardware Buzzer API
+    async function sendHwBuzzer(cmd, track = '', loop = false) {
+      updateAudioBadge('ESP8266: Sende ' + cmd + '...', 'var(--neon-gold)');
+      try {
+        let url = '/api/buzzer?cmd=' + encodeURIComponent(cmd);
+        if (track) {
+          url += '&track=' + encodeURIComponent(track) + '&loop=' + (loop ? '1' : '0');
+        }
+        let res = await fetch(url, { method: 'POST' });
+        if (res.ok) {
+          let label = (cmd === 'stop') ? 'Ton gestoppt' : ('Ton aktiv (' + cmd + ')');
+          updateAudioBadge('ESP8266: ' + label, (cmd === 'stop') ? 'var(--neon-orange)' : 'var(--neon-green)');
+        } else {
+          updateAudioBadge('ESP8266 HTTP ' + res.status, 'var(--neon-red)');
+        }
+      } catch (err) {
+        updateAudioBadge('ESP8266 Fehler: ' + err.message, 'var(--neon-red)');
+      }
+    }
+
+    function playSelectedHwTrack() {
+      let sel = document.getElementById('debugArcadeSelect');
+      let loopCb = document.getElementById('debugArcadeLoop');
+      let track = sel ? sel.value : 'gpc_title';
+      let loop = loopCb ? loopCb.checked : false;
+      sendHwBuzzer('play', track, loop);
+    }
+
+    // 2. Smartphone Web Audio Synthesizer
+    let debugAudioCtx = null;
+    function getDebugAudioContext() {
+      if (!debugAudioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) debugAudioCtx = new AudioCtx();
+      }
+      if (debugAudioCtx && debugAudioCtx.state === 'suspended') {
+        debugAudioCtx.resume().catch(() => {});
+      }
+      return debugAudioCtx;
+    }
+
+    function unlockWebAudio() {
+      let ctx = getDebugAudioContext();
+      if (ctx) {
+        ctx.resume().then(() => {
+          updateAudioBadge('Web Audio: Aktiv (Unlocked)', 'var(--neon-green)');
+        }).catch(err => {
+          updateAudioBadge('Web Audio Unlock: ' + err.message, 'var(--neon-red)');
+        });
+      } else {
+        updateAudioBadge('Web Audio: Nicht unterstützt', 'var(--neon-red)');
+      }
+    }
+
+    function playWebGhostAhead() {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      let tones = [
+        [1760, 0.040, 0.025], // A6 (di)
+        [2349, 0.050, 0.010]  // D7 (düt)
+      ];
+      let t = ctx.currentTime;
+      tones.forEach(([freq, dur, pause]) => {
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.value = 0.20;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur);
+        t += (dur + pause);
+      });
+      updateAudioBadge('Web Audio: Sektor Grün (Vorsprung)');
+    }
+
+    function playWebGhostBehind() {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      let osc = ctx.createOscillator();
+      let gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 440; // A4 (Bass)
+      gain.gain.value = 0.25;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.060);
+      updateAudioBadge('Web Audio: Sektor Rot (Rückstand)');
+    }
+
+    function playWebGhostVictory() {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      const notes = [
+        [523, 0.065, 0.030],  // C5
+        [659, 0.065, 0.030],  // E5
+        [784, 0.065, 0.090],  // G5
+        [784, 0.075, 0.020],  // G5
+        [1046, 0.480, 0.050]  // C6
+      ];
+      let t = ctx.currentTime;
+      notes.forEach(([freq, dur, pause]) => {
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.value = 0.25;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur);
+        t += (dur + pause);
+      });
+      updateAudioBadge('Web Audio: Geist geschlagen (Fanfare)');
+    }
+
+    function playWebLapTick() {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      let osc = ctx.createOscillator();
+      let gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 1760;
+      gain.gain.value = 0.20;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.035);
+      updateAudioBadge('Web Audio: Runden-Tick');
+    }
+
+    function playWebStartLights() {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      let seq = [
+        { freq: 260, dur: 0.300, pause: 0.650 },
+        { freq: 260, dur: 0.300, pause: 0.650 },
+        { freq: 1050, dur: 0.450, pause: 0.050 }
+      ];
+      let t = ctx.currentTime;
+      seq.forEach(step => {
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = step.freq;
+        gain.gain.value = 0.25;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + step.dur);
+        t += (step.dur + step.pause);
+      });
+      updateAudioBadge('Web Audio: Startampel (2-1-GO!)');
+    }
+
+    // 3. Smartphone TTS Sprachausgabe
+    let debugTtsTimeouts = [];
+
+    function stopDebugTts() {
+      debugTtsTimeouts.forEach(t => clearTimeout(t));
+      debugTtsTimeouts = [];
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch(e){}
+      }
+      updateAudioBadge('TTS: Sprachausgabe gestoppt', 'var(--neon-orange)');
+    }
+
+    function speakDebugTest(text, cancel = true) {
+      if (!('speechSynthesis' in window)) {
+        alert('Web Speech Synthesis (TTS) wird in diesem Browser leider nicht unterstützt.');
+        return;
+      }
+      if (cancel) stopDebugTts();
+      let u = new SpeechSynthesisUtterance(text);
+      u.lang = 'de-DE';
+      u.rate = 1.0;
+      window.speechSynthesis.speak(u);
+      let shortText = text.length > 25 ? text.substring(0, 25) + '...' : text;
+      updateAudioBadge('TTS: "' + shortText + '"', 'var(--neon-green)');
+    }
+
+    function playTtsCountdownTest() {
+      stopDebugTts();
+      speakDebugTest("Achtung, das Rennen beginnt gleich!", true);
+      let t1 = setTimeout(() => {
+        speakDebugTest("3", false);
+        let t2 = setTimeout(() => {
+          speakDebugTest("2", false);
+          let t3 = setTimeout(() => {
+            speakDebugTest("1", false);
+            let t4 = setTimeout(() => {
+              speakDebugTest("Los!", false);
+            }, 1000);
+            debugTtsTimeouts.push(t4);
+          }, 1000);
+          debugTtsTimeouts.push(t3);
+        }, 1000);
+        debugTtsTimeouts.push(t2);
+      }, 3500);
+      debugTtsTimeouts.push(t1);
     }
 
     document.addEventListener('DOMContentLoaded', async () => {

@@ -605,6 +605,7 @@ function onLapLiveEvent(msg) {
         let deltaToGhost = msg.lapTime - currentGhostTarget.lap;
         if (typeof onGhostBeatenLiveEvent === 'function') {
           onGhostBeatenLiveEvent({
+            carId: carId,
             lapTime: msg.lapTime,
             delta: deltaToGhost,
             driver: driverName,
