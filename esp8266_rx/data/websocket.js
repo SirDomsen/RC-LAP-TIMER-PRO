@@ -318,6 +318,10 @@ function onSessionStartLiveEvent(msg) {
   if (typeof loadTracks === 'function') loadTracks();
 
   if (currentMode === 5) {
+    window.localGhostHuntActive = false;
+    if (typeof localGhostHuntActive !== 'undefined') localGhostHuntActive = false;
+    localStorage.removeItem('localGhostHuntActive');
+    localStorage.removeItem('localGhostTarget');
     if (typeof speak === 'function') speak("Ghost Battle gestartet!", true);
     if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
     if (typeof renderGhostHud === 'function') renderGhostHud();

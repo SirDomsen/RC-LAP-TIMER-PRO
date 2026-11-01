@@ -512,7 +512,7 @@ function saveDriverAudioConfig() {
 // --- GEISTERJAGD (GHOST HUD & LIVE EVENTS) ---
 function onGhostTargetLiveEvent(msg) {
   if (!msg) return;
-  currentGhostTarget = {
+  window.adminGhostTarget = {
     type: msg.targetType || 0,
     lap: msg.lap || 0,
     s1: msg.s1 || 0,
@@ -523,6 +523,10 @@ function onGhostTargetLiveEvent(msg) {
     driver: msg.driver || "Geist",
     car: msg.car || ""
   };
+  let isLocalGhostActive = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  if (isLocalGhostActive) return; // Fahrer hat eigenen Geist gewählt, nicht durch globalen Admin-Geist überschreiben!
+  currentGhostTarget = { ...window.adminGhostTarget };
+  window.currentGhostTarget = currentGhostTarget;
   renderGhostHud();
 }
 
@@ -538,6 +542,12 @@ function onGhostBeatenLiveEvent(msg) {
   currentGhostTarget.s4 = msg.s4 || 0;
   currentGhostTarget.szMask = msg.szMask || 0;
   currentGhostTarget.driver = msg.driver || "Neuer Geist";
+  window.currentGhostTarget = currentGhostTarget;
+
+  let isLocalGhostActive = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  if (isLocalGhostActive) {
+    localStorage.setItem('localGhostTarget', JSON.stringify(currentGhostTarget));
+  }
 
   let banner = document.getElementById('ghostBeatenBanner');
   let bannerText = document.getElementById('ghostBeatenBannerText');
@@ -616,10 +626,15 @@ function renderGhostHud() {
     return;
   }
 
-  if (!currentGhostTarget || (!currentGhostTarget.lap && currentGhostTarget.lap !== 0)) {
+  if (window.currentGhostTarget) {
+    currentGhostTarget = window.currentGhostTarget;
+  } else if (!currentGhostTarget || (!currentGhostTarget.lap && currentGhostTarget.lap !== 0)) {
     try {
       let saved = localStorage.getItem('localGhostTarget');
-      if (saved) currentGhostTarget = JSON.parse(saved);
+      if (saved) {
+        currentGhostTarget = JSON.parse(saved);
+        window.currentGhostTarget = currentGhostTarget;
+      }
     } catch (e) {}
   }
 
@@ -2804,10 +2819,11 @@ async function updateData(fullSync = false) {
       let modeElem = document.getElementById('modeDisplay');
       if (modeElem) modeElem.innerText = modeText;
 
-      let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+      let isLocalGhostActive = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+      let isGhostActive = (currentMode === 5) || isLocalGhostActive;
 
-      if (currentMode === 5 && info.ghostLap !== undefined) {
-        currentGhostTarget = {
+      if (info.ghostLap !== undefined) {
+        window.adminGhostTarget = {
           type: info.ghostType || 0,
           lap: info.ghostLap || 0,
           s1: info.ghostS1 || 0,
@@ -2818,6 +2834,11 @@ async function updateData(fullSync = false) {
           driver: info.ghostDriver || "Geist",
           car: info.ghostCar || ""
         };
+      }
+
+      if (currentMode === 5 && info.ghostLap !== undefined && !isLocalGhostActive) {
+        currentGhostTarget = { ...window.adminGhostTarget };
+        window.currentGhostTarget = currentGhostTarget;
         renderGhostHud();
       } else if (isGhostActive) {
         renderGhostHud();

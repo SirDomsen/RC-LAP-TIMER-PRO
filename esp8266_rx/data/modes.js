@@ -283,19 +283,20 @@ function updateGhostHuntModalDisplay() {
 
   let actionBox = document.getElementById('ghostModalActionButtons');
   if (actionBox) {
-    let isGhostOn = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    let isLocalOverride = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    let isGhostOn = (currentMode === 5) || isLocalOverride;
     let role = (typeof userRole !== 'undefined' && userRole) ? userRole : 'driver';
 
     if (role === 'admin') {
       actionBox.innerHTML = `
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isGhostOn ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">⏹️ Lokalen Geist Beenden</button>' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Mein Lokaler Geist</button>'}
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Lokalen Geist Beenden') + '</button>' : (isGhostOn ? '' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Mein Lokaler Geist</button>')}
         <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">🚀 Modus 5 für alle starten</button>
       `;
     } else {
       actionBox.innerHTML = `
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isGhostOn ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">⏹️ Geisterjagd Beenden</button>' : ''}
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Geisterjagd Beenden') + '</button>' : ''}
         <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? '🔄 Geist Aktualisieren' : '🚀 Geisterjagd Starten'}</button>
       `;
     }
@@ -545,13 +546,22 @@ function stopDriverLocalGhostHunt() {
   closeGhostHuntModal();
   if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
 
-  let hud = document.getElementById('ghostHudContainer');
-  if (hud && currentMode !== 5) hud.style.display = 'none';
+  if (currentMode === 5) {
+    if (window.adminGhostTarget && window.adminGhostTarget.lap > 0) {
+      currentGhostTarget = { ...window.adminGhostTarget };
+      window.currentGhostTarget = currentGhostTarget;
+    }
+    if (typeof renderGhostHud === 'function') renderGhostHud();
+    if (typeof speak === 'function') speak("Zurück zum Session-Geist.", true);
+  } else {
+    let hud = document.getElementById('ghostHudContainer');
+    if (hud) hud.style.display = 'none';
 
-  let banner = document.getElementById('ghostBeatenBanner');
-  if (banner && currentMode !== 5) banner.style.display = 'none';
+    let banner = document.getElementById('ghostBeatenBanner');
+    if (banner) banner.style.display = 'none';
 
-  if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
+    if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
+  }
 }
 
 window.openGhostHuntModal = openGhostHuntModal;
