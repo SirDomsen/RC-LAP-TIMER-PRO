@@ -304,7 +304,7 @@
         </div>
         <div class="audio-btn-row">
           <button class="audio-btn" style="color:var(--neon-green); border-color:var(--neon-green);" onclick="playWebSectorTick(1)">⏱️ SZ-Tick F1 (A7 einfach 25ms)</button>
-          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="playWebSectorTick(2)">⏱️ SZ-Tick F2 (A7 doppelt)</button>
+          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="playWebSectorTick(2)">⏱️ SZ-Tick F2 (A7 doppelt 25/50/25ms)</button>
           <button class="audio-btn btn-green" onclick="playWebGhostAhead()">🟢 Sektor-Vorsprung (Doppel-Beep)</button>
           <button class="audio-btn btn-danger" onclick="playWebGhostBehind()">🔴 Sektor-Rückstand (Bass-Beep)</button>
           <button class="audio-btn btn-gold" onclick="playWebGhostVictory()">👻 Geist geschlagen (Fanfare)</button>
@@ -716,7 +716,9 @@
           sizeBadge = `${kb} KB (${text.length} B)`;
 
           // Inhalt validieren
-          if (asset.type === 'js') {
+          if (res.status === 503) {
+            checkResult = `<span style="color:var(--neon-orange);">⚠️ 503 Busy Guard aktiv</span>`;
+          } else if (asset.type === 'js') {
             // Erste Zeichen inspizieren
             let snippet = text.substring(0, 60).replace(/</g, '&lt;').replace(/>/g, '&gt;');
             try {
@@ -726,9 +728,7 @@
               checkResult = `<span style="color:var(--neon-red); font-weight:bold;">❌ SYNTAX-FEHLER:</span> <span style="color:#ff6666;">${syntaxErr.message}</span><br><code style="color:var(--neon-orange); font-size:11px;">Start: ${snippet}</code>`;
             }
           } else if (asset.type === 'html') {
-            if (text.includes('Verbindungs-Warteschlange') || text.includes('503')) {
-              checkResult = `<span style="color:var(--neon-orange);">⚠️ 503 Busy Guard HTML empfangen!</span>`;
-            } else if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+            if (text.includes('<!DOCTYPE') || text.includes('<html')) {
               checkResult = `<span style="color:var(--neon-green);">✅ Valides HTML</span>`;
             } else {
               checkResult = `<span style="color:var(--neon-orange);">Unbekanntes Format</span>`;
@@ -852,7 +852,7 @@
       if (!ctx) return;
       // A7 = 3520 Hz
       let tones = (driverNum === 2)
-        ? [ [3520, 0.020, 0.015], [3520, 0.020, 0.005] ]
+        ? [ [3520, 0.025, 0.050], [3520, 0.025, 0.005] ]
         : [ [3520, 0.025, 0.005] ];
       let t = ctx.currentTime;
       tones.forEach(([freq, dur, pause]) => {

@@ -463,9 +463,9 @@ function playWebAudioSectorTick(driverNum = 1) {
   if (!ctx) return;
   // A7 = 3520 Hz
   // Fahrer 1: einfacher Tick: A7, 25ms
-  // Fahrer 2: doppelter Tick: A7 20ms, 15ms Pause, A7 20ms
+  // Fahrer 2: doppelter Tick: A7 25ms, 50ms Pause, A7 25ms
   let tones = (driverNum === 2)
-    ? [ [3520, 0.020, 0.015], [3520, 0.020, 0.005] ]
+    ? [ [3520, 0.025, 0.075], [3520, 0.025, 0.005] ]
     : [ [3520, 0.025, 0.005] ];
 
   let startTime = ctx.currentTime;
