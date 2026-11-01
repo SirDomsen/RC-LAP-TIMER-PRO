@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.5'; 
+window.UI_VERSION = '4.5.6'; 
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -354,7 +354,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.3.0');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.6');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1469,7 +1469,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.2');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.6');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -2464,6 +2464,7 @@ function startLocalTimerTicker() {
 let lastUpdateDataTime = 0;
 const MIN_UPDATE_INTERVAL_MS = 1000;
 let updateDataTimer = null;
+let isHeapBusy = false;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
   const controller = new AbortController();
@@ -2475,6 +2476,7 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
 function requestUpdateData(fullSync = false, priority = false) {
   if (fullSync) pendingUpdateFullSync = true;
   pendingUpdateRequested = true;
+  if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
 
   if (isUpdatingData) {
     return;
@@ -2508,6 +2510,7 @@ function requestUpdateData(fullSync = false, priority = false) {
     pendingUpdateFullSync = false;
     updateData(doFull);
   }, delay);
+  if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
 }
 
 async function updateData(fullSync = false) {
@@ -2519,6 +2522,7 @@ async function updateData(fullSync = false) {
     } else {
       pendingUpdateRequested = true;
       if (fullSync) pendingUpdateFullSync = true;
+      if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
       return;
     }
   }
@@ -2536,18 +2540,30 @@ async function updateData(fullSync = false) {
         pendingUpdateFullSync = false;
         updateData(doFull);
       }, delay);
+      if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
     }
     return;
   }
   isUpdatingData = true;
   lastUpdateDataTime = now;
+  if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
 
   try {
     let response = await fetchWithTimeout('/api/laps', {}, 4500);
     if (response.status === 503) {
+      isHeapBusy = true;
       isUpdatingData = false;
+      if (typeof setStartampelStatus === 'function') {
+        setStartampelStatus('yellow', null, 'WARTEN...');
+      }
+      setTimeout(() => {
+        if (isHeapBusy) {
+          requestUpdateData(false, true);
+        }
+      }, 2500);
       return;
     }
+    isHeapBusy = false;
     let data = await response.json();
     
     lastLapsData = data;
@@ -2793,6 +2809,9 @@ async function updateData(fullSync = false) {
         updateDataTimer = null;
         updateData(doFull);
       }, delay);
+      if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
+    } else {
+      if (typeof refreshStartampelStatus === 'function') refreshStartampelStatus();
     }
   }
 

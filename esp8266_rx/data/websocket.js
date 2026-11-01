@@ -11,7 +11,27 @@ if (!wsTabId) {
 // --- GRAND PRIX CIRCUIT STARTAMPEL (WEBSITE STATUS HEARTBEAT) ---
 let lastHeartbeatPacketTs = 0;
 let lastPingSentTs = 0;
+let lastMeasuredLatency = null;
 let heartbeatWatchdogTimer = null;
+
+function isUiDataSyncing() {
+  if (typeof isHeapBusy !== 'undefined' && isHeapBusy) return true;
+  if (typeof isUpdatingData !== 'undefined' && isUpdatingData) return true;
+  if (typeof pendingUpdateRequested !== 'undefined' && pendingUpdateRequested) return true;
+  if (typeof updateDataTimer !== 'undefined' && updateDataTimer !== null) return true;
+  return false;
+}
+
+function refreshStartampelStatus() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (lastHeartbeatPacketTs > 0 && (Date.now() - lastHeartbeatPacketTs > 4500)) return;
+  if (isUiDataSyncing()) {
+    let busyText = (typeof isHeapBusy !== 'undefined' && isHeapBusy) ? 'WARTEN...' : 'SYNC...';
+    setStartampelStatus('yellow', null, busyText);
+  } else {
+    setStartampelStatus('green', lastMeasuredLatency, lastMeasuredLatency ? `LIVE ${lastMeasuredLatency}ms` : 'LIVE');
+  }
+}
 
 function setStartampelStatus(state, latencyMs = null, customText = null) {
   const redLamps = document.querySelectorAll('.lamp-red');
@@ -77,7 +97,7 @@ function initWebSocket() {
     socket.onopen = function() {
       console.log("[WebSocket] Verbunden mit Basis");
       lastHeartbeatPacketTs = Date.now();
-      setStartampelStatus('green', null, 'LIVE');
+      setStartampelStatus('yellow', null, 'SYNC...');
       hideConnectionNotice();
       try {
         socket.send(JSON.stringify({ cmd: "hello", tab: wsTabId }));
@@ -97,14 +117,14 @@ function initWebSocket() {
       try {
         let msg = JSON.parse(event.data);
         if (msg.ping) {
-          let latency = Math.max(0, Date.now() - Number(msg.ping));
-          setStartampelStatus('green', latency);
+          lastMeasuredLatency = Math.max(0, Date.now() - Number(msg.ping));
+          refreshStartampelStatus();
         } else {
-          setStartampelStatus('green', null, 'LIVE');
+          refreshStartampelStatus();
         }
         handleLiveEvent(msg);
       } catch (e) {
-        setStartampelStatus('green', null, 'LIVE');
+        refreshStartampelStatus();
         console.error("[WebSocket] Parse-Fehler:", e);
       }
     };
