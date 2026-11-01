@@ -83,10 +83,12 @@
   * **Startampel:** Original Grand Prix Circuit (1988) Sequenz (2x Rot 260 Hz à 300 ms, 650 ms Pause ➔ Grün 1050 Hz à 450 ms), synchronisiert mit Renn-Countdown in `modes.js`.
   * **Zieldurchfahrt:** Kurzer, trockener Bestätigungs-Impuls (1760 Hz, 35 ms) direkt bei Zieldurchfahrt in `lap_logic.cpp`.
   * **Streckenrekord:** Aufsteigende 4-Ton Arcade-Fanfare bei neuem Streckenrekord / absoluter Bestzeit.
+  * **Sieg über Geist / Geisterjagd:** Schnelle 6-Ton Sieges-Fanfare (G4-C5-E5-G5-E5-G5) bei Unterbietung der Geisterzeit.
+  * **SZ-Durchfahrts-Ticks:** A7 Chiptune-Tick (3520 Hz) an Zwischenstationen SZ1–SZ3 als akustisches Lebenszeichen / Latenz-Rückmeldung (Fahrer 1 Einzeltick 25 ms, Fahrer 2 Doppeltick).
   * **Accolade Arcade Jukebox (8 Original MS-DOS Chiptunes):**
-    * *Grand Prix Circuit (1988):* Title Theme (180 Noten, 32s) & Menu Theme (448 Noten, 54s).
-    * *Test Drive 1 (1987):* Intro / Title Theme & Menu Beat (authentischer Synth-Groove).
-    * *Test Drive 3: The Passion (1990):* The Passion Theme, Radio 1 (Synth-Rock), Radio 2 (Synth-Bass), Radio 3 (Melodic Groove).
+    * *Grand Prix Circuit (1988):* 🏎️ Title Theme (180 Noten, 32s) & 🏁 Menu Theme (448 Noten, 54s).
+    * *Test Drive 1 (1987):* 🚗 Intro / Title Theme & ⚡ Menu Beat (authentischer Synth-Groove).
+    * *Test Drive 3: The Passion (1990):* 🔥 Title Theme, 📻 Radio 1 (Synth-Rock), 📻 Radio 2 (Synth-Bass), 📻 Radio 3 (Melodic Groove).
 * **Steuerung & UI-Integration:**
   * **Rennleiter Jukebox-Modal (`admin.html`):** Button `📼 Arcade Audio` öffnet dedizierten Player mit Soundtrack-Dropdown, Loop-Schalter, Play/Stop und Sound FX Tests.
   * **Countdown-Stummschaltung:** Einstellbar im Fahrer-Setup (`index.html`) und direkt im Arcade-Modal des Rennleiters (`admin.html`) für 100% synchronen Startampel-Buzzer ohne Sprach-Latenz.
