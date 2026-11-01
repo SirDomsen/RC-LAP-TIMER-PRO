@@ -1099,6 +1099,7 @@ tr.my-selected-car-row {
 .session-card.quali { border-left-color: var(--neon-purple); }
 .session-card.race { border-left-color: var(--neon-cyan); }
 .session-card.drag { border-left-color: var(--neon-orange); }
+.session-card.ghost { border-left-color: #d946ef; }
 .session-card > div:first-child {cursor: pointer; transition: background-color 0.2s; border-radius: 4px; padding: 4px;}
 .session-card > div:first-child:hover {background-color: rgba(255, 255, 255, 0.04);}
 .session-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #222; }

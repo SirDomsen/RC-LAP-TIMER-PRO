@@ -100,6 +100,7 @@ static const char* getModeFolderName(uint8_t mode) {
     case 2: return "race_laps";
     case 3: return "race_time";
     case 4: return "drag";
+    case 5: return "ghost";
     default: return "training";
   }
 }
@@ -111,6 +112,7 @@ static const char* getModeDisplayName(uint8_t mode) {
     case 2: return "Rennen (Runden)";
     case 3: return "Rennen (Zeit)";
     case 4: return "Dragrace";
+    case 5: return "Ghost Battle";
     default: return "Freies Training";
   }
 }
@@ -1368,8 +1370,8 @@ static String buildSessionEntryJson(const String& sId, const String& sFile, cons
     }
   }
 
-  // Sortieren nach Modus: Quali (1) & Drag (4) nach Bestzeit, sonst nach Runden & Bestzeit
-  bool sortByBest = (mode == 1 || mode == 4);
+  // Sortieren nach Modus: Quali (1), Drag (4) & Ghost Battle (5) nach Bestzeit, sonst nach Runden & Bestzeit
+  bool sortByBest = (mode == 1 || mode == 4 || mode == 5);
   for (uint8_t i = 0; i < count; i++) {
     for (uint8_t j = i + 1; j < count; j++) {
       uint8_t a = activeIds[i];

@@ -82,6 +82,7 @@ function modeToTabName(mode) {
   if (mode === 2) return 'race_laps';
   if (mode === 3) return 'race_time';
   if (mode === 4) return 'drag';
+  if (mode === 5) return 'ghost';
   return 'training';
 }
 
@@ -91,6 +92,7 @@ function tabNameToMode(tab) {
   if (tab === 'race_laps') return 2;
   if (tab === 'race_time') return 3;
   if (tab === 'drag') return 4;
+  if (tab === 'ghost') return 5;
   return 0;
 }
 
@@ -264,7 +266,8 @@ function switchStatsTab(tab) {
     { key: 'quali', btn: 'tabQualiBtn', div: 'statsTabQuali' },
     { key: 'race_laps', btn: 'tabRace_lapsBtn', div: 'statsTabRace_laps' },
     { key: 'race_time', btn: 'tabRace_timeBtn', div: 'statsTabRace_time' },
-    { key: 'drag', btn: 'tabDragBtn', div: 'statsTabDrag' }
+    { key: 'drag', btn: 'tabDragBtn', div: 'statsTabDrag' },
+    { key: 'ghost', btn: 'tabGhostBtn', div: 'statsTabGhost' }
   ];
 
   tabs.forEach(t => {
@@ -848,6 +851,7 @@ function renderSessionsByMode(mode, containerId) {
     if (s.mode === 1) { badgeClass += ' quali'; headerColor = 'var(--neon-purple)'; }
     else if (s.mode === 2 || s.mode === 3) { badgeClass += ' race'; headerColor = 'var(--neon-cyan)'; }
     else if (s.mode === 4) { badgeClass += ' drag'; headerColor = 'var(--neon-orange)'; }
+    else if (s.mode === 5) { badgeClass += ' ghost'; headerColor = '#e056fd'; }
 
     let dateStr = formatTimestamp(s.endTs || s.startTs);
     let trackName = getTrackNameById(s.trackId, s.trackName);
@@ -1759,6 +1763,7 @@ function renderDriverProfile(carId) {
     if (s.mode === 1) modeCol = 'var(--neon-purple)';
     else if (s.mode === 2 || s.mode === 3) modeCol = 'var(--neon-cyan)';
     else if (s.mode === 4) modeCol = 'var(--neon-orange)';
+    else if (s.mode === 5) modeCol = '#e056fd';
 
     html += `<tr style="cursor:pointer;" onclick="jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${carId})">
       <td style="font-size:12px; color:var(--text-muted);">${dateStr}</td>
@@ -2119,7 +2124,7 @@ async function rebuildSessionsIndexUI() {
 
         let activeCarIds = Object.keys(carLapsMap).map(Number);
         let mode = sData.mode !== undefined ? sData.mode : 0;
-        let sortByBest = (mode === 1 || mode === 4);
+        let sortByBest = (mode === 1 || mode === 4 || mode === 5);
 
         activeCarIds.sort((a, b) => {
           if (sortByBest) {
@@ -2157,7 +2162,7 @@ async function rebuildSessionsIndexUI() {
         let trackId = sData.trackId || trackFolderSlug;
         let trackName = sData.trackName || (trackFolderSlug !== "standard" ? trackFolderSlug : "Standard");
 
-        let modeNames = ["Freies Training", "Qualifying", "Rennen (Runden)", "Rennen (Zeit)", "Dragrace"];
+        let modeNames = ["Freies Training", "Qualifying", "Rennen (Runden)", "Rennen (Zeit)", "Dragrace", "Ghost Battle"];
         builtSessions.push({
           id: sId,
           file: rawName,

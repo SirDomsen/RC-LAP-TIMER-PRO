@@ -7,7 +7,7 @@
     "id": { "type": "string", "description": "Eindeutige Session-ID (z. B. 26-10-26_14-45-39)" },
     "trackId": { "type": "string", "description": "Strecken-ID (z. B. kirchhof)" },
     "trackName": { "type": "string", "description": "Streckenname (z. B. Kirchhof GP)" },
-    "mode": { "type": "integer", "description": "Rennmodus: 0=Freies Training, 1=Qualifying, 2=Rennen (Runden), 3=Rennen (Zeit), 4=Dragrace" },
+    "mode": { "type": "integer", "description": "Rennmodus: 0=Freies Training, 1=Qualifying, 2=Rennen (Runden), 3=Rennen (Zeit), 4=Dragrace, 5=Ghost Battle" },
     "modeName": { "type": "string", "description": "Lesbarer Modusname" },
     "startTs": { "type": "integer", "description": "Startzeitpunkt der Session in Unix-Sekunden" },
     "laps": { "type": "array", "description": "Array von Runden-Telemetrie-Objekten" }
