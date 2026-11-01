@@ -602,6 +602,11 @@ function onLapLiveEvent(msg) {
             s4: msg.s4 || 0
           });
         }
+      } else {
+        // Man war langsamer als der Geist -> tiefer Bass-Buzz bei Zieldurchfahrt (exakt wie Pin D1)
+        if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) {
+          if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+        }
       }
     }
   }
