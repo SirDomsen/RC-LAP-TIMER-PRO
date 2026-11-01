@@ -35,7 +35,8 @@ window.currentGhostTarget = currentGhostTarget;
 function updateGhostButtonStates() {
   let btn = document.getElementById('ghostHuntDriverBtn');
   if (btn) {
-    if (localGhostHuntActive || currentMode === 5) {
+    let isGhostOn = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    if (isGhostOn) {
       btn.innerHTML = "👻 Geisterjagd: <span style='color:var(--neon-green); font-weight:bold;'>AN</span>";
       btn.style.boxShadow = "0 0 15px rgba(0, 255, 157, 0.6)";
       btn.style.borderColor = "var(--neon-green)";
@@ -404,7 +405,8 @@ function closeStatsModal() {
 function syncGhostHudSlot() {
   let overlay = document.getElementById('oledDimOverlay');
   let isDimmerActive = overlay && (overlay.style.display === 'flex' || overlay.style.display === 'block');
-  let targetSlotId = (isDimmerActive && currentMode === 5) ? 'ghostHudSlotDimmer' : 'ghostHudSlotNormal';
+  let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let targetSlotId = (isDimmerActive && isGhostActive) ? 'ghostHudSlotDimmer' : 'ghostHudSlotNormal';
   let targetSlot = document.getElementById(targetSlotId);
   let banner = document.getElementById('ghostBeatenBanner');
   let hud = document.getElementById('ghostHudContainer');
@@ -418,16 +420,16 @@ function syncGhostHudSlot() {
     }
   }
 
-  // Im OLED-Dashboard bei Geisterjagd die Mehrfahrer-Container ausblenden, damit das Geister-HUD Platz hat:
+  if (hud && isGhostActive) {
+    hud.style.display = 'block';
+  }
+
+  // Im Admin-OLED-Dashboard bei Geisterjagd die Mehrfahrer-Tabelle ausblenden, damit das Geister-HUD Platz hat:
   let dimTable = document.getElementById('dimmerLeaderboardContainer');
-  let dimDrivers = document.getElementById('dimmerDriversContainer');
-  let isGhostInDimmer = isDimmerActive && currentMode === 5;
+  let isGhostInDimmer = isDimmerActive && isGhostActive;
 
   if (dimTable) {
     dimTable.style.display = isGhostInDimmer ? 'none' : '';
-  }
-  if (dimDrivers) {
-    dimDrivers.style.display = isGhostInDimmer ? 'none' : '';
   }
 }
 window.syncGhostHudSlot = syncGhostHudSlot;
@@ -526,6 +528,9 @@ function onGhostTargetLiveEvent(msg) {
 
 function onGhostBeatenLiveEvent(msg) {
   if (!msg) return;
+  let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let isMyHunter = (msg.carId === undefined || msg.carId === activeGhostHunterId);
+
   currentGhostTarget.lap = msg.lapTime;
   currentGhostTarget.s1 = msg.s1 || 0;
   currentGhostTarget.s2 = msg.s2 || 0;
@@ -551,11 +556,17 @@ function onGhostBeatenLiveEvent(msg) {
     pill.className = 'ghost-delta-pill ghost-delta-minus';
   }
 
-  if (typeof playWebAudioGhostVictory === 'function') {
-    playWebAudioGhostVictory();
-  }
-  if (typeof speak === 'function') {
-    speak("Geist geschlagen! Neue Bestzeit!", true);
+  if (isMyHunter) {
+    if (typeof playWebAudioGhostVictory === 'function') {
+      playWebAudioGhostVictory();
+    }
+    if (typeof speak === 'function') {
+      speak("Geist geschlagen! Neue Bestzeit!", true);
+    }
+  } else {
+    if (typeof speak === 'function') {
+      speak(`${msg.driver} hat den Geist geschlagen!`, true);
+    }
   }
 
   renderGhostHud();
@@ -576,7 +587,7 @@ function updateGhostHudSector(msg) {
     let dSec = (msg.ghostDelta / 1000).toFixed(2);
     let isAhead = (msg.ghostDelta <= 0);
     deltaEl.innerText = (isAhead ? '' : '+') + dSec + 's';
-    deltaEl.style.color = isAhead ? 'var(--neon-green)' : 'var(--neon-orange)';
+    deltaEl.style.color = isAhead ? 'var(--neon-green)' : 'var(--neon-red)';
     
     if (cell) {
       let flashClass = isAhead ? 'sector-flash-green' : 'sector-flash-yellow';
@@ -595,14 +606,21 @@ function updateGhostHudSector(msg) {
 }
 
 function renderGhostHud() {
+  let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
   syncGhostHudSlot();
   let hud = document.getElementById('ghostHudContainer');
   if (!hud) return;
 
-  let isGhostActive = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
   if (!isGhostActive) {
     hud.style.display = 'none';
     return;
+  }
+
+  if (!currentGhostTarget || (!currentGhostTarget.lap && currentGhostTarget.lap !== 0)) {
+    try {
+      let saved = localStorage.getItem('localGhostTarget');
+      if (saved) currentGhostTarget = JSON.parse(saved);
+    } catch (e) {}
   }
 
   hud.style.display = 'block';
@@ -775,12 +793,14 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     return;
   }
 
-  let isGhost = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+  let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let isHunterCol = isGhost && (colIdx === 1 || carId === activeGhostHunterId);
   let pos = rowData._defaultPos || "-";
-  if (dPos) dPos.innerText = isGhost ? "GHOST" : `P${pos}`;
+  if (dPos) dPos.innerText = isHunterCol ? "GHOST" : `P${pos}`;
 
   let pbLabel = dPb && dPb.parentElement ? dPb.parentElement.querySelector('.dimmer-label') : null;
-  if (pbLabel) pbLabel.innerText = isGhost ? "GEIST (ZIELZEIT)" : "Persönliche Bestzeit";
+  if (pbLabel) pbLabel.innerText = isHunterCol ? "GEIST (ZIEL)" : "Persönliche Bestzeit";
 
   let carState = rowData.state || statusCarsMap[carId] || null;
   if (awaitingBaseCrossMap[carId]) carState = 'outlap';
@@ -796,7 +816,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   }
 
   if (dPb) {
-    if (isGhost && currentGhostTarget && currentGhostTarget.lap > 0) {
+    if (isHunterCol && currentGhostTarget && currentGhostTarget.lap > 0) {
       dPb.innerText = formatLapTime(currentGhostTarget.lap, '--:--');
     } else {
       dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
@@ -820,7 +840,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   if (dDelta) {
     if (rowData.lastLapIsOutLap) {
       dDelta.innerText = '';
-    } else if (isGhost && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
+    } else if (isHunterCol && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
       let gDiff = rowData.lastLap - currentGhostTarget.lap;
       let gSec = (Math.abs(gDiff) / 1000).toFixed(2).replace('.', ',');
       if (gDiff <= 0) {
@@ -1178,8 +1198,18 @@ function populateDriverQuickSelect() {
       return html;
     };
 
-    sel1.innerHTML = getOptionsHtml(val1, '🎧 Fahrer 1 wählen...');
-    if (sel2) sel2.innerHTML = getOptionsHtml(val2, '➕ Fahrer 2 (optional)...');
+    let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    let sel1Placeholder = isGhost ? '👻 Jäger (Fahrer 1 wählen)...' : '🎧 Fahrer 1 wählen...';
+    let sel2Placeholder = isGhost ? '🎧 Fahrer 2 (nur Zuhörer)...' : '➕ Fahrer 2 (optional)...';
+    sel1.innerHTML = getOptionsHtml(val1, sel1Placeholder);
+    if (sel2) sel2.innerHTML = getOptionsHtml(val2, sel2Placeholder);
+
+    let hintElem = document.getElementById('driverQuickHint');
+    if (hintElem) {
+      hintElem.innerText = isGhost 
+        ? 'Fahrer 1 = Aktiver Jäger (Arcade-Sounds & Geist). Fahrer 2 = optionaler Zuhörer.' 
+        : 'Wähle bis zu 2 Fahrer für Sprachausgabe und Splitscreen-Dashboard.';
+    }
   }
 
   let selLegacy = document.getElementById('driverQuickSelect');
@@ -1222,7 +1252,12 @@ function onDriverQuickSelectChange(val) {
   if (selectedTTSCars.length === 2) {
     let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
     let n2 = carNamesMap[selectedTTSCars[1]]?.driver || ('Fahrer ' + selectedTTSCars[1]);
-    speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+    let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    if (isGhost) {
+      speak(`${n1} ist aktiver Jäger. ${n2} ist Zuhörer.`, true);
+    } else {
+      speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+    }
   } else if (selectedTTSCars.length === 1) {
     let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
     let c1 = carNamesMap[selectedTTSCars[0]]?.car || ('Auto ' + selectedTTSCars[0]);
@@ -2769,6 +2804,8 @@ async function updateData(fullSync = false) {
       let modeElem = document.getElementById('modeDisplay');
       if (modeElem) modeElem.innerText = modeText;
 
+      let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+
       if (currentMode === 5 && info.ghostLap !== undefined) {
         currentGhostTarget = {
           type: info.ghostType || 0,
@@ -2782,7 +2819,9 @@ async function updateData(fullSync = false) {
           car: info.ghostCar || ""
         };
         renderGhostHud();
-      } else if (currentMode !== 5) {
+      } else if (isGhostActive) {
+        renderGhostHud();
+      } else {
         let ghHud = document.getElementById('ghostHudContainer');
         if (ghHud) ghHud.style.display = 'none';
         let ghBanner = document.getElementById('ghostBeatenBanner');
@@ -2927,6 +2966,9 @@ function finishSessionNow() {
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     if (timerElem) timerElem.innerText = "ZIEL";
     if (typeof announceRaceResults === 'function') announceRaceResults();
+  } else if (currentMode === 5) {
+    if (timerElem) timerElem.innerText = "ZIEL";
+    speak("Ghost-Battle beendet.", true);
   } else {
     if (timerElem) timerElem.innerText = "ZIEL";
     speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);

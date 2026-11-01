@@ -203,12 +203,12 @@
         <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
         <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
           <div class="ghost-card-wrapper">
-            <!-- GEIST KARTE -->
-            <div class="ghost-card ghost-target-card">
+            <!-- GEIST KARTE (KLICKBAR) -->
+            <div class="ghost-card ghost-target-card" onclick="openGhostHuntModal()" style="cursor:pointer;" title="Klicken, um Geist-Ziel zu wählen / ändern">
               <div class="ghost-card-header">
                 <span class="ghost-icon">👻</span>
                 <div>
-                  <div class="ghost-card-subtitle">DER GEIST (ZIEL)</div>
+                  <div class="ghost-card-subtitle">DER GEIST (ZIEL) ⚙️</div>
                   <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
                 </div>
               </div>

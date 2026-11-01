@@ -101,6 +101,7 @@ function stopSession() {
   let ghostHud = document.getElementById('ghostHudContainer');
   if (ghostHud) ghostHud.style.display = 'none';
 
+  let prevMode = currentMode;
   currentMode = 0;
   if (typeof syncGhostHudSlot === 'function') syncGhostHudSlot();
   isSessionActive = false;
@@ -114,7 +115,9 @@ function stopSession() {
 
   fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' })
     .then(() => {
-      speak("Durchgang gestoppt. Freies Training.", true);
+      if (prevMode !== 5) {
+        speak("Durchgang gestoppt. Freies Training.", true);
+      }
       updateData(true);
     }).catch(err => console.error(err));
 }
@@ -229,7 +232,21 @@ function updateGhostHuntModalDisplay() {
     let recDriver = (typeof allTimeBestDriver !== 'undefined') ? allTimeBestDriver : '';
     let recCar = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : '';
     let recMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
-    let lapStr = recLap > 0 ? (recLap / 1000).toFixed(3) + 's' : 'Noch kein Streckenrekord';
+
+    if (recLap === 0) {
+      let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+      let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+      let pb = (row && row.bestLap > 0) ? row.bestLap : (row && row.lastLap > 0 ? row.lastLap : 0);
+      if (pb > 0) {
+        let lapStr = (pb / 1000).toFixed(3) + 's';
+        let driverStr = (row && row.driver) || ('Fahrer ' + activeCarId);
+        let carStr = (row && row.car) ? ` (${row.car})` : '';
+        previewEl.innerHTML = `🏆 <strong>Streckenrekord:</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${lapStr}</span> von ${driverStr}${carStr} <span style="color:var(--neon-cyan);">[Fallback: Eigene PB]</span>`;
+        return;
+      }
+    }
+
+    let lapStr = recLap > 0 ? (recLap / 1000).toFixed(3) + 's' : 'Noch kein Streckenrekord (erste Runde setzt Geist)';
     let driverStr = recDriver || 'Unbekannt';
     let carStr = recCar ? ` (${recCar})` : '';
     let szStr = (recMask > 0) ? ` <span style="color:var(--neon-green);">[mit Sektoren]</span>` : ` <span style="color:var(--neon-cyan);">[Start/Ziel]</span>`;
@@ -266,7 +283,7 @@ function updateGhostHuntModalDisplay() {
 
   let actionBox = document.getElementById('ghostModalActionButtons');
   if (actionBox) {
-    let isGhostOn = (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+    let isGhostOn = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
     let role = (typeof userRole !== 'undefined' && userRole) ? userRole : 'driver';
 
     if (role === 'admin') {
@@ -315,15 +332,35 @@ function startGhostHuntSession() {
     let recDriver = (typeof allTimeBestDriver !== 'undefined') ? allTimeBestDriver : '';
     let recCar = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : '';
     let recMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
+    let recS1 = (typeof allTimeBestS1 !== 'undefined') ? allTimeBestS1 : 0;
+    let recS2 = (typeof allTimeBestS2 !== 'undefined') ? allTimeBestS2 : 0;
+    let recS3 = (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0;
+    let recS4 = (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0;
+
+    if (recLap === 0) {
+      let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+      let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+      let pb = (row && row.bestLap > 0) ? row.bestLap : (row && row.lastLap > 0 ? row.lastLap : 0);
+      if (pb > 0) {
+        recLap = pb;
+        recDriver = (row && row.driver) || ("Fahrer " + activeCarId);
+        recCar = (row && row.car) || "";
+        recMask = (row.bestSz1 > 0 ? 1 : 0) | (row.bestSz2 > 0 ? 2 : 0) | (row.bestSz3 > 0 ? 4 : 0) | 8;
+        recS1 = row.bestSz1 || 0;
+        recS2 = row.bestSz2 || 0;
+        recS3 = row.bestSz3 || 0;
+        recS4 = row.bestSz4 || 0;
+      }
+    }
     params.append('ghostLap', recLap);
     params.append('ghostDriver', recDriver);
     params.append('ghostCar', recCar);
     params.append('ghostMask', recMask);
-    params.append('ghostS1', (typeof allTimeBestS1 !== 'undefined') ? allTimeBestS1 : 0);
-    params.append('ghostS2', (typeof allTimeBestS2 !== 'undefined') ? allTimeBestS2 : 0);
-    params.append('ghostS3', (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0);
-    params.append('ghostS4', (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0);
-    speakText = "Geisterjagd gegen den Streckenrekord!";
+    params.append('ghostS1', recS1);
+    params.append('ghostS2', recS2);
+    params.append('ghostS3', recS3);
+    params.append('ghostS4', recS4);
+    speakText = "Ghost Battle gestartet!";
   } else if (type === 1) {
     let dLap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
     let dDriver = (typeof dailyBestDriver !== 'undefined') ? dailyBestDriver : '';
@@ -377,7 +414,6 @@ function startGhostHuntSession() {
   fetch('/api/session?' + params.toString(), { method: 'POST' })
     .then(() => {
       resetLapsDataSilent();
-      if (speakText) speak(speakText, true);
       updateData(true);
     }).catch(err => console.error(err));
 }
@@ -417,15 +453,34 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
   let speakText = "Geisterjagd aktiviert! Schnapp dir den Geist!";
 
   if (type === 0) {
-    gTarget.lap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
-    gTarget.s1 = (typeof allTimeBestS1 !== 'undefined') ? allTimeBestS1 : 0;
-    gTarget.s2 = (typeof allTimeBestS2 !== 'undefined') ? allTimeBestS2 : 0;
-    gTarget.s3 = (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0;
-    gTarget.s4 = (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0;
-    gTarget.szMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
-    gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : "Streckenrekord";
-    gTarget.car = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : "";
-    speakText = "Geisterjagd gegen den Streckenrekord!";
+    let recLap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
+    if (recLap === 0) {
+      let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+      let pb = (row && row.bestLap > 0) ? row.bestLap : (row && row.lastLap > 0 ? row.lastLap : 0);
+      if (pb > 0) {
+        gTarget.lap = pb;
+        gTarget.s1 = row.bestSz1 || 0;
+        gTarget.s2 = row.bestSz2 || 0;
+        gTarget.s3 = row.bestSz3 || 0;
+        gTarget.s4 = row.bestSz4 || 0;
+        gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | 8;
+        gTarget.driver = (row && row.driver) || ("Fahrer " + activeCarId);
+        gTarget.car = (row && row.car) || "";
+      } else {
+        gTarget.lap = 0;
+        gTarget.driver = "Streckenrekord";
+      }
+    } else {
+      gTarget.lap = recLap;
+      gTarget.s1 = (typeof allTimeBestS1 !== 'undefined') ? allTimeBestS1 : 0;
+      gTarget.s2 = (typeof allTimeBestS2 !== 'undefined') ? allTimeBestS2 : 0;
+      gTarget.s3 = (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0;
+      gTarget.s4 = (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0;
+      gTarget.szMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
+      gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : "Streckenrekord";
+      gTarget.car = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : "";
+    }
+    speakText = "Ghost Battle gestartet!";
   } else if (type === 1) {
     gTarget.lap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
     gTarget.s1 = (typeof dailyBestS1 !== 'undefined') ? dailyBestS1 : 0;
@@ -468,7 +523,9 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
   }
 
   currentGhostTarget = gTarget;
+  window.currentGhostTarget = gTarget;
   localGhostHuntActive = true;
+  window.localGhostHuntActive = true;
   localStorage.setItem('localGhostHuntActive', 'true');
   localStorage.setItem('localGhostTarget', JSON.stringify(gTarget));
 
@@ -481,6 +538,7 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
 
 function stopDriverLocalGhostHunt() {
   localGhostHuntActive = false;
+  window.localGhostHuntActive = false;
   localStorage.removeItem('localGhostHuntActive');
   localStorage.removeItem('localGhostTarget');
 
@@ -493,7 +551,7 @@ function stopDriverLocalGhostHunt() {
   let banner = document.getElementById('ghostBeatenBanner');
   if (banner && currentMode !== 5) banner.style.display = 'none';
 
-  if (typeof speak === 'function') speak("Geisterjagd beendet.", true);
+  if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
 }
 
 window.openGhostHuntModal = openGhostHuntModal;

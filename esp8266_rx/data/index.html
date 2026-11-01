@@ -265,12 +265,12 @@
         <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
         <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
           <div class="ghost-card-wrapper">
-            <!-- GEIST KARTE -->
-            <div class="ghost-card ghost-target-card">
+            <!-- GEIST KARTE (KLICKBAR) -->
+            <div class="ghost-card ghost-target-card" onclick="openGhostHuntModal()" style="cursor:pointer;" title="Klicken, um Geist-Ziel zu wählen / ändern">
               <div class="ghost-card-header">
                 <span class="ghost-icon">👻</span>
                 <div>
-                  <div class="ghost-card-subtitle">DER GEIST (ZIEL)</div>
+                  <div class="ghost-card-subtitle">DER GEIST (ZIEL) ⚙️</div>
                   <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
                 </div>
               </div>
@@ -328,7 +328,7 @@
       <div class="driver-quick-panel">
         <div style="text-align:center;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 FAHRZEUGE FÜR SPRACHANSAGE & DASHBOARD:</strong>
-          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Wähle bis zu 2 Fahrer für parallele Sprachausgabe & Splitscreen-Dashboard</div>
+          <div id="driverQuickHint" style="font-size:12px; color:var(--text-muted); margin-top:2px;">Wähle bis zu 2 Fahrer für Sprachausgabe und Splitscreen-Dashboard.</div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
           <select id="driverQuickSelect1" class="driver-quick-select" onchange="onDriverQuickSelectChange()">
