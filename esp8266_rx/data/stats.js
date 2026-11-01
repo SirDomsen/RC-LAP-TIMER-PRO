@@ -1258,6 +1258,15 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
     }
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
+    if (typeof refillTrackRecordsFromSessions === 'function') {
+      let sObj = allSessionsCache.find(s => s.id === sessionId);
+      let tId = (sObj && sObj.trackId) ? sObj.trackId : (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+      try {
+        await refillTrackRecordsFromSessions(tId);
+        if (typeof loadTracks === 'function') await loadTracks();
+      } catch (refillErr) {}
+    }
+    if (typeof updateStatsModalDailyBest === 'function') updateStatsModalDailyBest();
     switchStatsTab(currentTab);
     if (openDriverDetailsMap[elemId]) {
       let sObj = allSessionsCache.find(s => s.id === sessionId);
@@ -1313,6 +1322,15 @@ async function deleteSession(sessionId) {
     delete openSessionsMap[safeId];
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
+    if (typeof refillTrackRecordsFromSessions === 'function') {
+      let sObj = allSessionsCache.find(s => s.id === sessionId);
+      let tId = (sObj && sObj.trackId) ? sObj.trackId : (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+      try {
+        await refillTrackRecordsFromSessions(tId);
+        if (typeof loadTracks === 'function') await loadTracks();
+      } catch (refillErr) {}
+    }
+    if (typeof updateStatsModalDailyBest === 'function') updateStatsModalDailyBest();
     switchStatsTab(currentTab);
   } catch (e) {
     console.error("Fehler beim Löschen der Session:", e);
@@ -2062,6 +2080,7 @@ async function rebuildSessionsIndexUI() {
         let normalizedLaps = laps.map(normalizeLap);
         let carLapsMap = {};
         let carBestMap = {};
+        let carBestLapObjMap = {};
         let carTimeSumMap = {};
         let carValidMap = {};
         let carDriverNameMap = {};
@@ -2085,7 +2104,10 @@ async function rebuildSessionsIndexUI() {
             else carLapsMap[c]++;
 
             if (!l.outlap && l.time > 0) {
-              if (carBestMap[c] === 0 || l.time < carBestMap[c]) carBestMap[c] = l.time;
+              if (carBestMap[c] === 0 || l.time < carBestMap[c]) {
+                carBestMap[c] = l.time;
+                carBestLapObjMap[c] = l;
+              }
               carValidMap[c]++;
               carTimeSumMap[c] += l.time;
             }
@@ -2114,6 +2136,7 @@ async function rebuildSessionsIndexUI() {
 
         let results = activeCarIds.map((c, idx) => {
           let avg = (carValidMap[c] > 0) ? Math.round(carTimeSumMap[c] / carValidMap[c]) : 0;
+          let bestLapObj = carBestLapObjMap[c] || {};
           return {
             pos: idx + 1,
             id: c,
@@ -2121,16 +2144,25 @@ async function rebuildSessionsIndexUI() {
             car: carCarNameMap[c] || getCarCarName(c),
             laps: carLapsMap[c] || 0,
             bestLap: carBestMap[c] || 0,
-            avgLap: avg
+            avgLap: avg,
+            sz1: bestLapObj.sz1 || 0,
+            sz2: bestLapObj.sz2 || 0,
+            sz3: bestLapObj.sz3 || 0,
+            sz4: bestLapObj.sz4 || 0
           };
         });
+
+        let pathParts = rawName.split('/');
+        let trackFolderSlug = (pathParts.length > 2 && pathParts[1]) ? decodeURIComponent(pathParts[1]) : "standard";
+        let trackId = sData.trackId || trackFolderSlug;
+        let trackName = sData.trackName || (trackFolderSlug !== "standard" ? trackFolderSlug : "Standard");
 
         let modeNames = ["Freies Training", "Qualifying", "Rennen (Runden)", "Rennen (Zeit)", "Dragrace"];
         builtSessions.push({
           id: sId,
           file: rawName,
-          trackId: sData.trackId || "standard",
-          trackName: sData.trackName || sData.trackId || "Standard",
+          trackId: trackId,
+          trackName: trackName,
           mode: mode,
           modeName: sData.modeName || modeNames[mode] || "Freies Training",
           startTs: sData.startTs || 0,
@@ -2190,6 +2222,8 @@ async function rebuildSessionsIndexUI() {
 
     // 5b. Rekorde heilen (Option A): Streckenrekorde & Tagesbestzeiten aus den validierten Sessions neu aufbauen
     if (btn) btn.innerText = "⏳ Synchronisiere Rekorde...";
+    let tracksDoc = { active: "standard", tracks: [] };
+    let newTracksCount = 0;
     try {
       let todayStr = '';
       if (typeof getCurrentLocalDateStr === 'function') {
@@ -2199,7 +2233,6 @@ async function rebuildSessionsIndexUI() {
       let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
 
       // Aktuelle Streckenliste laden
-      let tracksDoc = { active: "standard", tracks: [] };
       let tRes = await fetch('/tracks.json');
       if (tRes.ok) {
         tracksDoc = await tRes.json();
@@ -2212,8 +2245,9 @@ async function rebuildSessionsIndexUI() {
 
       builtSessions.forEach(s => {
         let tId = s.trackId || 'standard';
+        let tName = s.trackName || (tId !== 'standard' ? tId : 'Standard');
         if (!trackHealedRecords[tId]) {
-          trackHealedRecords[tId] = { allTimeMap: {}, dailyMap: {} };
+          trackHealedRecords[tId] = { name: tName, allTimeMap: {}, dailyMap: {} };
         }
 
         let sDateStr = '';
@@ -2237,7 +2271,12 @@ async function rebuildSessionsIndexUI() {
               carId: r.id || 0,
               driver: dName,
               car: cName,
-              date: sDateStr
+              date: sDateStr,
+              sz1: r.sz1 || 0,
+              sz2: r.sz2 || 0,
+              sz3: r.sz3 || 0,
+              sz4: r.sz4 || 0,
+              szMask: (r.sz1 > 0 ? 1 : 0) | (r.sz2 > 0 ? 2 : 0) | (r.sz3 > 0 ? 4 : 0) | (r.sz4 > 0 ? 8 : 0)
             };
 
             let atMap = trackHealedRecords[tId].allTimeMap;
@@ -2252,6 +2291,56 @@ async function rebuildSessionsIndexUI() {
               }
             }
           });
+        }
+      });
+
+      if (!Array.isArray(tracksDoc.tracks)) {
+        tracksDoc.tracks = [];
+      }
+
+      // Falls gar keine Strecken vorhanden, Standard anlegen
+      if (tracksDoc.tracks.length === 0) {
+        tracksDoc.tracks.push({
+          id: 'standard',
+          name: 'Standard',
+          bestLap: 0,
+          bestCarId: 0,
+          bestDriver: "",
+          bestCar: "",
+          bestDate: todayFormatted,
+          recordLap: 0,
+          recordCarId: 0,
+          recordDriver: "",
+          recordCar: "",
+          recordDate: "",
+          allTimeRecords: [],
+          dailyRecords: []
+        });
+      }
+
+      // Neue Strecken aus den Session-Dateien automatisch zur tracks.json hinzufügen
+      newTracksCount = 0;
+      Object.keys(trackHealedRecords).forEach(tId => {
+        let existing = tracksDoc.tracks.find(t => t.id === tId);
+        if (!existing) {
+          let trName = trackHealedRecords[tId].name || tId;
+          tracksDoc.tracks.push({
+            id: tId,
+            name: trName,
+            bestLap: 0,
+            bestCarId: 0,
+            bestDriver: "",
+            bestCar: "",
+            bestDate: todayFormatted,
+            recordLap: 0,
+            recordCarId: 0,
+            recordDriver: "",
+            recordCar: "",
+            recordDate: "",
+            allTimeRecords: [],
+            dailyRecords: []
+          });
+          newTracksCount++;
         }
       });
 
@@ -2275,6 +2364,11 @@ async function rebuildSessionsIndexUI() {
             t.recordDriver = healedAllTime[0].driver;
             t.recordCar = healedAllTime[0].car;
             t.recordDate = healedAllTime[0].date;
+            if (healedAllTime[0].sz1 > 0) t.recordS1 = healedAllTime[0].sz1;
+            if (healedAllTime[0].sz2 > 0) t.recordS2 = healedAllTime[0].sz2;
+            if (healedAllTime[0].sz3 > 0) t.recordS3 = healedAllTime[0].sz3;
+            if (healedAllTime[0].sz4 > 0) t.recordS4 = healedAllTime[0].sz4;
+            if (healedAllTime[0].szMask > 0) t.recordSzMask = healedAllTime[0].szMask;
           } else {
             t.recordLap = 0;
             t.recordCarId = 0;
@@ -2310,10 +2404,14 @@ async function rebuildSessionsIndexUI() {
       console.warn("Fehler beim Heilen der Streckenrekorde:", recHealErr);
     }
 
+    let trackMergeMsg = newTracksCount > 0 
+      ? `<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;">🏁 <strong>${newTracksCount} neue Strecke(n)</strong> automatisch erkannt und in die Streckenliste integriert!</span>` 
+      : '';
+
     await showAlert({
       title: "✅ SYSTEM VOLLSTÄNDIG GEHEILT",
       theme: "success",
-      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> erfolgreich indiziert.<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">🏆 <strong>Streckenrekorde &amp; Tagesbestzeiten</strong> wurden auf Basis aller echten Renn-Sessions vollständig bereinigt und synchronisiert!</span>${compressedCount > 0 ? `<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">✨ <strong>${compressedCount} alte Session-Dateien</strong> auf das kompakte Telemetrie-Format geschrumpft.</span>` : ''}`
+      message: `Es wurden <strong>${builtSessions.length} Durchgänge</strong> auf <strong>${tracksDoc.tracks.length} Strecke(n)</strong> erfolgreich indiziert.<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:8px;">🏆 <strong>Streckenrekorde &amp; Tagesbestzeiten</strong> wurden auf Basis aller echten Renn-Sessions vollständig bereinigt und synchronisiert!</span>${trackMergeMsg}${compressedCount > 0 ? `<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">✨ <strong>${compressedCount} alte Session-Dateien</strong> auf das kompakte Telemetrie-Format geschrumpft.</span>` : ''}`
     });
 
     sessionFileCache = {};

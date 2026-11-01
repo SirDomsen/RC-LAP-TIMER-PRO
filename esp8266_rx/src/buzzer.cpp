@@ -33,6 +33,34 @@ static const ToneStep recordSeq[] PROGMEM = {
   { 0,     50 }
 };
 
+// 4. Geisterjagd: Siegesfanfare bei geschlagenem Geist ("da - da - da --- dadaaaaa!")
+static const ToneStep ghostVictorySeq[] PROGMEM = {
+  { 523,   65 }, // C5 (kurz stakkato)
+  { 0,     30 },
+  { 659,   65 }, // E5 (kurz stakkato)
+  { 0,     30 },
+  { 784,   65 }, // G5 (kurz stakkato)
+  { 0,     90 }, // dramatische Pause ("da - da - da ---")
+  { 784,   75 }, // G5 (Auftakt "da-")
+  { 0,     20 },
+  { 1046, 480 }, // C6 (langer Schlusston "daaaaa!")
+  { 0,     50 }
+};
+
+// 5. Geisterjagd: Sektor Grün (Vorsprung - schneller Doppel-Beep hoch)
+static const ToneStep ghostAheadSeq[] PROGMEM = {
+  { 1760,  40 }, // A6
+  { 0,     25 },
+  { 2349,  50 }, // D7
+  { 0,     10 }
+};
+
+// 6. Geisterjagd: Sektor Rot (Rückstand - trockener Einzel-Beep tief)
+static const ToneStep ghostBehindSeq[] PROGMEM = {
+  { 440,   60 }, // A4
+  { 0,     10 }
+};
+
 // Status-Variablen für Ton-Sequenzen
 static const ToneStep* currentSeq = nullptr;
 static uint16_t currentSeqLen = 0;
@@ -117,6 +145,20 @@ void playBuzzerLap() {
 
 void playBuzzerRecord() {
   startSequence(recordSeq, sizeof(recordSeq) / sizeof(ToneStep), false, false, "record");
+}
+
+void playBuzzerGhostVictory() {
+  startSequence(ghostVictorySeq, sizeof(ghostVictorySeq) / sizeof(ToneStep), false, false, "ghost_win");
+}
+
+void playBuzzerGhostAhead() {
+  if (isBuzzerPlaying && (currentSeq == startLightsSeq || currentSeq == ghostVictorySeq)) return;
+  startSequence(ghostAheadSeq, sizeof(ghostAheadSeq) / sizeof(ToneStep), false, false, "ghost_ahead");
+}
+
+void playBuzzerGhostBehind() {
+  if (isBuzzerPlaying && (currentSeq == startLightsSeq || currentSeq == ghostVictorySeq)) return;
+  startSequence(ghostBehindSeq, sizeof(ghostBehindSeq) / sizeof(ToneStep), false, false, "ghost_behind");
 }
 
 bool playBuzzerTrack(const String& trackId, bool loop) {

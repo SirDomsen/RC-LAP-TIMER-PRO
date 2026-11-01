@@ -268,6 +268,7 @@ void handleTimeSyncBroadcast() {
     syncPkt.stratum = 0;
 
     int sendRes = esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
+    (void)sendRes;
 
 #if defined(ESP32)
     static uint32_t lastBeaconLog = 0;

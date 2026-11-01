@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.4.13">
+  <link rel="stylesheet" href="style.css?v=4.5.2">
 </head>
 <body class="role-admin">
 
@@ -30,7 +30,7 @@
         </div>
       </div>
       <div>
-        <div id="dimmerModeText" class="dimmer-mode-badge">FREIES TRAINING</div>
+        <div id="dimmerModeText" class="dimmer-mode-badge" onclick="if(typeof currentMode !== 'undefined' && currentMode === 5 && typeof openGhostHuntModal === 'function') openGhostHuntModal();" title="Klicken für Geisterjagd-Einstellungen" style="cursor:pointer;">FREIES TRAINING</div>
       </div>
       
       <div class="dimmer-top-stats">
@@ -68,6 +68,9 @@
         </div>
       </div>
     </div>
+
+    <!-- GEISTERJAGD HUD SLOT (OLED DASHBOARD) -->
+    <div id="ghostHudSlotDimmer"></div>
 
     <div id="dimmerLeaderboardContainer" class="dimmer-leaderboard-container">
       <div class="dimmer-table-responsive">
@@ -189,6 +192,77 @@
         <div id="poleBannerText" class="pole-banner-val">---</div>
       </div>
 
+      <!-- GEISTERJAGD HUD SLOT (NORMAL) -->
+      <div id="ghostHudSlotNormal">
+        <!-- GEISTERJAGD BANNER (BEATEN) -->
+        <div id="ghostBeatenBanner" class="ghost-beaten-banner" style="display:none;">
+          <div class="ghost-beaten-title">👑 GEIST GESCHLAGEN – NEUE BESTZEIT! 👑</div>
+          <div id="ghostBeatenBannerText" class="ghost-beaten-val">---</div>
+        </div>
+
+        <!-- GEISTERJAGD HUD (GROSSANZEIGE FÜR SOLO-FAHRER) -->
+        <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
+          <div class="ghost-card-wrapper">
+            <!-- GEIST KARTE (KLICKBAR) -->
+            <div class="ghost-card ghost-target-card" onclick="openGhostHuntModal()" style="cursor:pointer;" title="Klicken, um Geist-Ziel zu wählen / ändern">
+              <div class="ghost-card-header">
+                <span class="ghost-icon">👻</span>
+                <div>
+                  <div class="ghost-card-subtitle">DER GEIST (ZIEL) ⚙️</div>
+                  <div id="ghostTargetName" class="ghost-card-title">Streckenrekord</div>
+                </div>
+              </div>
+              <div class="ghost-time-box">
+                <span id="ghostTargetTime" class="ghost-time-val">--:--</span>
+              </div>
+              <div class="ghost-sectors-mini" id="ghostTargetSectors">
+                <span id="ghostTargetSz1">SZ1: ---</span>
+                <span id="ghostTargetSz2">SZ2: ---</span>
+                <span id="ghostTargetSz3">SZ3: ---</span>
+                <span id="ghostTargetSz4">Ziel: ---</span>
+              </div>
+            </div>
+
+            <!-- JÄGER KARTE -->
+            <div class="ghost-card ghost-hunter-card">
+              <div class="ghost-card-header">
+                <span class="ghost-icon">🏎️</span>
+                <div>
+                  <div class="ghost-card-subtitle">DEINE RUNDE (<span id="ghostHunterLapNum">Runde 0</span>)</div>
+                  <div id="ghostHunterName" class="ghost-card-title">Fahrer 1</div>
+                </div>
+              </div>
+              <div class="ghost-time-box">
+                <span id="ghostHunterLastTime" class="ghost-time-val">--:--</span>
+                <span id="ghostLiveDeltaPill" class="ghost-delta-pill" style="display:none;">±0.00</span>
+              </div>
+              <div class="ghost-sectors-grid" id="ghostHunterSectors">
+                <div class="ghost-sector-cell" id="ghostHunterCell1">
+                  <span class="ghost-sec-lbl">SZ 1</span>
+                  <span id="ghostHunterSz1" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz1" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell2">
+                  <span class="ghost-sec-lbl">SZ 2</span>
+                  <span id="ghostHunterSz2" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz2" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell3">
+                  <span class="ghost-sec-lbl">SZ 3</span>
+                  <span id="ghostHunterSz3" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz3" class="ghost-sec-delta"></span>
+                </div>
+                <div class="ghost-sector-cell" id="ghostHunterCell4">
+                  <span class="ghost-sec-lbl">Ziel</span>
+                  <span id="ghostHunterSz4" class="ghost-sec-val">---</span>
+                  <span id="ghostDeltaSz4" class="ghost-sec-delta"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="driver-quick-panel driver-only">
         <div style="text-align:center;">
           <strong style="color:var(--neon-green); font-family:var(--font-display); font-size:13px;">🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:</strong>
@@ -232,6 +306,11 @@
         <div class="control-group">
           <div class="control-group-title">DRAGRACE</div>
           <button class="btn btn-warning" onclick="startDragrace()">Start Dragrace</button>
+        </div>
+
+        <div class="control-group" style="border-color: rgba(181, 50, 255, 0.4);">
+          <div class="control-group-title" style="color: var(--neon-purple);">GEISTERJAGD</div>
+          <button class="btn btn-purple" style="box-shadow: 0 0 10px rgba(181, 50, 255, 0.4);" onclick="openGhostHuntModal()">👻 Geisterjagd</button>
         </div>
       </div>
 
@@ -307,6 +386,43 @@
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; flex-wrap:wrap; gap:8px;">
         <button class="btn btn-purple" style="margin:0; font-size:11px;" onclick="closeTrackRecordsModal(); openStatsOverviewModal('records');">📊 Zur Rekord-Statistik</button>
         <button class="btn btn-warning" style="margin:0;" onclick="closeTrackRecordsModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GEISTERJAGD MODAL (MODUS 5) -->
+  <div id="ghostHuntModal" class="modal" style="z-index: 10006;">
+    <div class="modal-content" style="max-width: 500px; border: 1px solid var(--neon-purple); box-shadow: 0 0 25px rgba(181, 50, 255, 0.35);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <h3 style="color:var(--neon-purple); margin:0; font-family:var(--font-display);">👻 GEISTERJAGD (SOLO EVENT)</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeGhostHuntModal()">✕</button>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="font-weight:bold; color:var(--text-main); display:block; margin-bottom:6px;">Wähle deinen Gegner (Der Geist):</label>
+        <select id="ghostTargetTypeSelect" class="form-input" style="width:100%; padding:10px; font-size:14px; background:#0d1117; color:var(--neon-cyan); border:1px solid #333; border-radius:6px;" onchange="updateGhostHuntModalDisplay()">
+          <option value="0">🏆 Streckenrekord-Geist (All-Time P1)</option>
+          <option value="1">⏱️ Tagesbestzeit-Geist (Heutiges P1)</option>
+          <option value="2">👤 Eigener Geist / Session-PB</option>
+          <option value="4">🏎️ Live-Führender der Session</option>
+          <option value="3">🎯 Freie Wunsch-Zielzeit</option>
+        </select>
+      </div>
+
+      <!-- Vorschau-Info-Box -->
+      <div id="ghostPreviewInfo" style="background:rgba(181,50,255,0.08); border:1px solid rgba(181,50,255,0.3); border-radius:8px; padding:12px; margin-bottom:15px; font-size:13px; line-height:1.5;">
+        Lade Streckenrekord...
+      </div>
+
+      <!-- Freie Zielzeit-Eingabe (nur bei Type 3) -->
+      <div id="ghostCustomTimeBox" style="display:none; margin-bottom:16px;">
+        <label style="font-weight:bold; color:var(--text-main); display:block; margin-bottom:6px;">Zielzeit in Sekunden (z. B. 12.500):</label>
+        <input type="text" id="ghostCustomTimeInput" class="form-input" placeholder="12.500" style="width:100%; padding:10px; font-size:15px; font-family:monospace; background:#0d1117; color:var(--neon-green); border:1px solid #333; border-radius:6px;">
+      </div>
+
+      <div id="ghostModalActionButtons" style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #222; padding-top:12px; flex-wrap:wrap;">
+        <button class="btn btn-warning" onclick="closeGhostHuntModal()">Abbrechen</button>
+        <button class="btn btn-purple" style="font-weight:bold; padding:10px 18px; box-shadow: 0 0 12px rgba(181,50,255,0.5);" onclick="startGhostHuntSession()">🚀 Geisterjagd Starten</button>
       </div>
     </div>
   </div>
@@ -406,6 +522,12 @@
           </label>
           <label style="cursor:pointer; display: block; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15);">
             <input type="checkbox" id="cfg_sector_audio" style="transform: scale(1.2); margin-right: 8px;"> 📢 Sektor-Bestzeiten Sprachansage
+          </label>
+          <label style="cursor:pointer; display: block; margin-top: 6px;">
+            <input type="checkbox" id="cfg_ghost_audio" style="transform: scale(1.2); margin-right: 8px;"> 👻 Geisterjagd Sektor-Pieptöne (Buzzer & Beeps)
+          </label>
+          <label style="cursor:pointer; display: block; margin-top: 6px;">
+            <input type="checkbox" id="cfg_ghost_tts" style="transform: scale(1.2); margin-right: 8px;"> 🗣️ Geisterjagd Sektor-Sprachausgabe (Delta)
           </label>
           <label style="cursor:pointer; display: block; margin-bottom: 6px;">
             <input type="checkbox" id="cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 8px;" checked>
@@ -672,17 +794,17 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.4.13</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.4</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.4.13"></script>
-  <script src="websocket.js?v=4.4.13"></script>
-  <script src="modes.js?v=4.4.13"></script>
-  <script src="stats.js?v=4.4.13"></script>
-  <script src="config.js?v=4.4.13"></script>
-  <script src="main.js?v=4.4.13"></script>
+  <script src="tts.js?v=4.5.4"></script>
+  <script src="websocket.js?v=4.5.4"></script>
+  <script src="modes.js?v=4.5.4"></script>
+  <script src="stats.js?v=4.5.4"></script>
+  <script src="config.js?v=4.5.4"></script>
+  <script src="main.js?v=4.5.4"></script>
 </body>
 </html>

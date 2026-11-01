@@ -14,6 +14,11 @@ struct RecordEntry {
   String date;
   uint32_t prevLapMs;
   String prevDate;
+  uint32_t s1;
+  uint32_t s2;
+  uint32_t s3;
+  uint32_t s4;
+  uint8_t szMask;
 };
 
 extern String driverNames[MAX_CARS + 1];
@@ -85,7 +90,7 @@ void saveActiveTrackBestToFS();
 String getCurrentLocalDateStr();
 void checkDailyBestDateRollover();
 void syncTopRecordVars();
-void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest);
+void checkAndUpdateTrackRecords(uint8_t carId, uint32_t lapTimeMs, bool& isNewAllTimeBest, bool& isNewDailyBest, uint32_t s1 = 0, uint32_t s2 = 0, uint32_t s3 = 0, uint32_t s4 = 0, uint8_t szMask = 0);
 bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index);
 
 // Session-basierte Statistik-Speicherung (/<track>/<mode>/<YY-MM-DD_HH-MM-SS>.json)

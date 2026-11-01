@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.4.13'; 
+window.UI_VERSION = '4.5.4'; 
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -21,6 +21,33 @@ function formatLapTime(ms, fallback = '---') {
 }
 window.formatLapTime = formatLapTime; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
+let ghostTtsDeltaEnabled = JSON.parse(localStorage.getItem('ghostTtsDeltaEnabled') ?? 'true');
+let ghostAudioBeepsEnabled = JSON.parse(localStorage.getItem('ghostAudioBeepsEnabled') ?? 'true');
+let localGhostHuntActive = JSON.parse(localStorage.getItem('localGhostHuntActive') ?? 'false');
+let currentGhostTarget = { type: 0, lap: 0, s1: 0, s2: 0, s3: 0, s4: 0, szMask: 0, driver: "", car: "" };
+try {
+  let savedGTarget = localStorage.getItem('localGhostTarget');
+  if (savedGTarget) currentGhostTarget = JSON.parse(savedGTarget);
+} catch (e) {}
+window.localGhostHuntActive = localGhostHuntActive;
+window.currentGhostTarget = currentGhostTarget;
+
+function updateGhostButtonStates() {
+  let btn = document.getElementById('ghostHuntDriverBtn');
+  if (btn) {
+    let isGhostOn = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    if (isGhostOn) {
+      btn.innerHTML = "👻 Geisterjagd: <span style='color:var(--neon-green); font-weight:bold;'>AN</span>";
+      btn.style.boxShadow = "0 0 15px rgba(0, 255, 157, 0.6)";
+      btn.style.borderColor = "var(--neon-green)";
+    } else {
+      btn.innerHTML = "👻 Geisterjagd";
+      btn.style.boxShadow = "none";
+      btn.style.borderColor = "var(--neon-purple)";
+    }
+  }
+}
+window.updateGhostButtonStates = updateGhostButtonStates;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 
@@ -261,7 +288,7 @@ function updateSortIcons() {
 
 function sortLapData(data) {
   let defaultSorted = [...data];
-  if (currentMode === 1 || currentMode === 4) {
+  if (currentMode === 1 || currentMode === 4 || currentMode === 5) {
     defaultSorted.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
   } else {
     defaultSorted.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -375,16 +402,50 @@ function closeStatsModal() {
 }
 
 // --- DASHBOARD / OLED-DIMMER ---
+function syncGhostHudSlot() {
+  let overlay = document.getElementById('oledDimOverlay');
+  let isDimmerActive = overlay && (overlay.style.display === 'flex' || overlay.style.display === 'block');
+  let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let targetSlotId = (isDimmerActive && isGhostActive) ? 'ghostHudSlotDimmer' : 'ghostHudSlotNormal';
+  let targetSlot = document.getElementById(targetSlotId);
+  let banner = document.getElementById('ghostBeatenBanner');
+  let hud = document.getElementById('ghostHudContainer');
+
+  if (targetSlot) {
+    if (banner && banner.parentElement !== targetSlot) {
+      targetSlot.appendChild(banner);
+    }
+    if (hud && hud.parentElement !== targetSlot) {
+      targetSlot.appendChild(hud);
+    }
+  }
+
+  if (hud && isGhostActive) {
+    hud.style.display = 'block';
+  }
+
+  // Im Admin-OLED-Dashboard bei Geisterjagd die Mehrfahrer-Tabelle ausblenden, damit das Geister-HUD Platz hat:
+  let dimTable = document.getElementById('dimmerLeaderboardContainer');
+  let isGhostInDimmer = isDimmerActive && isGhostActive;
+
+  if (dimTable) {
+    dimTable.style.display = isGhostInDimmer ? 'none' : '';
+  }
+}
+window.syncGhostHudSlot = syncGhostHudSlot;
+
 function activateOledDimmer() {
   if (!audioUnmuted) unmuteIOSAudio();
   let overlay = document.getElementById('oledDimOverlay');
   if (overlay) overlay.style.display = 'flex';
+  syncGhostHudSlot();
   updateData(true);
 }
 
 function deactivateOledDimmer() {
   let overlay = document.getElementById('oledDimOverlay');
   if (overlay) overlay.style.display = 'none';
+  syncGhostHudSlot();
 }
 
 // --- FAHRER-EINSTELLUNGEN MODAL ---
@@ -400,6 +461,12 @@ function openDriverConfigModal() {
 
   let muteCdownCb = document.getElementById('driver_cfg_mute_countdown_tts');
   if (muteCdownCb) muteCdownCb.checked = muteCountdownTts;
+
+  let gAudioCb = document.getElementById('driver_cfg_ghost_audio');
+  if (gAudioCb) gAudioCb.checked = ghostAudioBeepsEnabled;
+
+  let gTtsCb = document.getElementById('driver_cfg_ghost_tts');
+  if (gTtsCb) gTtsCb.checked = ghostTtsDeltaEnabled;
 }
 
 function closeDriverConfigModal() {
@@ -426,7 +493,187 @@ function saveDriverAudioConfig() {
     localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
   }
 
-  fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0"), { method: 'POST' }).catch(() => {});
+  let gAudioCb = document.getElementById('driver_cfg_ghost_audio');
+  if (gAudioCb) {
+    ghostAudioBeepsEnabled = gAudioCb.checked;
+    localStorage.setItem('ghostAudioBeepsEnabled', JSON.stringify(ghostAudioBeepsEnabled));
+  }
+
+  let gTtsCb = document.getElementById('driver_cfg_ghost_tts');
+  if (gTtsCb) {
+    ghostTtsDeltaEnabled = gTtsCb.checked;
+    localStorage.setItem('ghostTtsDeltaEnabled', JSON.stringify(ghostTtsDeltaEnabled));
+  }
+
+  let gAudioVal = (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) ? "1" : "0";
+  fetch('/api/setsectorconfig?audio=' + (sectorAudioEnabled ? "1" : "0") + '&ghostAudio=' + gAudioVal, { method: 'POST' }).catch(() => {});
+}
+
+// --- GEISTERJAGD (GHOST HUD & LIVE EVENTS) ---
+function onGhostTargetLiveEvent(msg) {
+  if (!msg) return;
+  currentGhostTarget = {
+    type: msg.targetType || 0,
+    lap: msg.lap || 0,
+    s1: msg.s1 || 0,
+    s2: msg.s2 || 0,
+    s3: msg.s3 || 0,
+    s4: msg.s4 || 0,
+    szMask: msg.szMask || 0,
+    driver: msg.driver || "Geist",
+    car: msg.car || ""
+  };
+  renderGhostHud();
+}
+
+function onGhostBeatenLiveEvent(msg) {
+  if (!msg) return;
+  let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let isMyHunter = (msg.carId === undefined || msg.carId === activeGhostHunterId);
+
+  currentGhostTarget.lap = msg.lapTime;
+  currentGhostTarget.s1 = msg.s1 || 0;
+  currentGhostTarget.s2 = msg.s2 || 0;
+  currentGhostTarget.s3 = msg.s3 || 0;
+  currentGhostTarget.s4 = msg.s4 || 0;
+  currentGhostTarget.szMask = msg.szMask || 0;
+  currentGhostTarget.driver = msg.driver || "Neuer Geist";
+
+  let banner = document.getElementById('ghostBeatenBanner');
+  let bannerText = document.getElementById('ghostBeatenBannerText');
+  if (banner && bannerText) {
+    bannerText.innerText = `${formatLapTime(msg.lapTime)} von ${msg.driver}`;
+    banner.style.display = 'block';
+    setTimeout(() => {
+      if (banner) banner.style.display = 'none';
+    }, 8000);
+  }
+
+  let pill = document.getElementById('ghostLiveDeltaPill');
+  if (pill) {
+    pill.style.display = 'inline-block';
+    pill.innerText = (msg.delta <= 0 ? '' : '+') + (msg.delta / 1000).toFixed(2) + 's';
+    pill.className = 'ghost-delta-pill ghost-delta-minus';
+  }
+
+  if (isMyHunter) {
+    if (typeof playWebAudioGhostVictory === 'function') {
+      playWebAudioGhostVictory();
+    }
+    if (typeof speak === 'function') {
+      speak("Geist geschlagen! Neue Bestzeit!", true);
+    }
+  } else {
+    if (typeof speak === 'function') {
+      speak(`${msg.driver} hat den Geist geschlagen!`, true);
+    }
+  }
+
+  renderGhostHud();
+}
+
+function updateGhostHudSector(msg) {
+  if (!msg) return;
+  let sec = msg.sector;
+  let cell = document.getElementById(`ghostHunterCell${sec}`);
+  let valEl = document.getElementById(`ghostHunterSz${sec}`);
+  let deltaEl = document.getElementById(`ghostDeltaSz${sec}`);
+
+  if (valEl && msg.time > 0) {
+    valEl.innerText = formatLapTime(msg.time);
+  }
+
+  if (deltaEl && msg.ghostDelta !== undefined) {
+    let dSec = (msg.ghostDelta / 1000).toFixed(2);
+    let isAhead = (msg.ghostDelta <= 0);
+    deltaEl.innerText = (isAhead ? '' : '+') + dSec + 's';
+    deltaEl.style.color = isAhead ? 'var(--neon-green)' : 'var(--neon-red)';
+    
+    if (cell) {
+      let flashClass = isAhead ? 'sector-flash-green' : 'sector-flash-yellow';
+      cell.className = 'ghost-sector-cell';
+      void cell.offsetWidth;
+      cell.className = `ghost-sector-cell ${flashClass}`;
+    }
+
+    let pill = document.getElementById('ghostLiveDeltaPill');
+    if (pill) {
+      pill.style.display = 'inline-block';
+      pill.innerText = (isAhead ? '' : '+') + dSec + 's';
+      pill.className = 'ghost-delta-pill ' + (isAhead ? 'ghost-delta-minus' : 'ghost-delta-plus');
+    }
+  }
+}
+
+function renderGhostHud() {
+  let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  syncGhostHudSlot();
+  let hud = document.getElementById('ghostHudContainer');
+  if (!hud) return;
+
+  if (!isGhostActive) {
+    hud.style.display = 'none';
+    return;
+  }
+
+  if (!currentGhostTarget || (!currentGhostTarget.lap && currentGhostTarget.lap !== 0)) {
+    try {
+      let saved = localStorage.getItem('localGhostTarget');
+      if (saved) currentGhostTarget = JSON.parse(saved);
+    } catch (e) {}
+  }
+
+  hud.style.display = 'block';
+
+  // 1. Geist-Karte
+  let gName = document.getElementById('ghostTargetName');
+  let gTime = document.getElementById('ghostTargetTime');
+  if (gName) {
+    let typeLabels = ["Streckenrekord", "Tagesbestzeit", "Persönliche Bestzeit", "Zielzeit", "Session-Führender"];
+    let prefix = typeLabels[currentGhostTarget.type] || "Geist";
+    gName.innerText = currentGhostTarget.driver ? `${prefix} (${currentGhostTarget.driver})` : prefix;
+  }
+  if (gTime) {
+    gTime.innerText = currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : "--:--";
+  }
+
+  let s1El = document.getElementById('ghostTargetSz1');
+  let s2El = document.getElementById('ghostTargetSz2');
+  let s3El = document.getElementById('ghostTargetSz3');
+  let s4El = document.getElementById('ghostTargetSz4');
+  if (s1El) s1El.innerText = `SZ1: ${currentGhostTarget.s1 > 0 ? formatLapTime(currentGhostTarget.s1) : '---'}`;
+  if (s2El) s2El.innerText = `SZ2: ${currentGhostTarget.s2 > 0 ? formatLapTime(currentGhostTarget.s2) : '---'}`;
+  if (s3El) s3El.innerText = `SZ3: ${currentGhostTarget.s3 > 0 ? formatLapTime(currentGhostTarget.s3) : '---'}`;
+  if (s4El) s4El.innerText = `Ziel: ${currentGhostTarget.s4 > 0 ? formatLapTime(currentGhostTarget.s4) : (currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : '---')}`;
+
+  // 2. Jäger-Karte
+  let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+  let hName = document.getElementById('ghostHunterName');
+  let hLapNum = document.getElementById('ghostHunterLapNum');
+  let hLastTime = document.getElementById('ghostHunterLastTime');
+
+  if (hName) {
+    let dName = (row && row.driver) || (typeof carNamesMap !== 'undefined' && carNamesMap[activeCarId]?.driver) || (`Fahrer ${activeCarId}`);
+    let cName = (row && row.car) || (typeof carNamesMap !== 'undefined' && carNamesMap[activeCarId]?.car) || "";
+    hName.innerText = cName ? `${dName} (${cName})` : dName;
+  }
+  if (hLapNum) {
+    hLapNum.innerText = `Runde ${row ? row.completedLaps : 0}`;
+  }
+  if (hLastTime) {
+    if (row && row.lastLap > 0) {
+      hLastTime.innerText = formatLapTime(row.lastLap);
+      if (row.bestLap > 0 && row.lastLap <= row.bestLap) {
+        hLastTime.style.color = 'var(--neon-green)';
+      } else {
+        hLastTime.style.color = 'var(--neon-cyan)';
+      }
+    } else {
+      hLastTime.innerText = "--:--";
+      hLastTime.style.color = 'var(--neon-cyan)';
+    }
+  }
 }
 
 // Accolade Arcade Audio Jukebox: Steuerung des Hardware-Speakers
@@ -546,8 +793,14 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     return;
   }
 
+  let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let isHunterCol = isGhost && (colIdx === 1 || carId === activeGhostHunterId);
   let pos = rowData._defaultPos || "-";
-  if (dPos) dPos.innerText = `P${pos}`;
+  if (dPos) dPos.innerText = isHunterCol ? "GHOST" : `P${pos}`;
+
+  let pbLabel = dPb && dPb.parentElement ? dPb.parentElement.querySelector('.dimmer-label') : null;
+  if (pbLabel) pbLabel.innerText = isHunterCol ? "GEIST (ZIEL)" : "Persönliche Bestzeit";
 
   let carState = rowData.state || statusCarsMap[carId] || null;
   if (awaitingBaseCrossMap[carId]) carState = 'outlap';
@@ -562,7 +815,13 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     }
   }
 
-  if (dPb) dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
+  if (dPb) {
+    if (isHunterCol && currentGhostTarget && currentGhostTarget.lap > 0) {
+      dPb.innerText = formatLapTime(currentGhostTarget.lap, '--:--');
+    } else {
+      dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
+    }
+  }
 
   if (dLast) {
     if (rowData.lastLapIsOutLap) {
@@ -581,6 +840,16 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   if (dDelta) {
     if (rowData.lastLapIsOutLap) {
       dDelta.innerText = '';
+    } else if (isHunterCol && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
+      let gDiff = rowData.lastLap - currentGhostTarget.lap;
+      let gSec = (Math.abs(gDiff) / 1000).toFixed(2).replace('.', ',');
+      if (gDiff <= 0) {
+        dDelta.innerText = `-${gSec}s (GEIST GESCHLAGEN!)`;
+        dDelta.style.color = 'var(--neon-green)';
+      } else {
+        dDelta.innerText = `+${gSec}s (HINTER GEIST)`;
+        dDelta.style.color = 'var(--neon-red)';
+      }
     } else {
       let deltaInfo = lastLapDeltaMap[carId];
     if (deltaInfo && deltaInfo.diffMs !== null && rowData.lastLap > 0) {
@@ -929,8 +1198,18 @@ function populateDriverQuickSelect() {
       return html;
     };
 
-    sel1.innerHTML = getOptionsHtml(val1, '🎧 Fahrer 1 wählen...');
-    if (sel2) sel2.innerHTML = getOptionsHtml(val2, '➕ Fahrer 2 (optional)...');
+    let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    let sel1Placeholder = isGhost ? '👻 Jäger (Fahrer 1 wählen)...' : '🎧 Fahrer 1 wählen...';
+    let sel2Placeholder = isGhost ? '🎧 Fahrer 2 (nur Zuhörer)...' : '➕ Fahrer 2 (optional)...';
+    sel1.innerHTML = getOptionsHtml(val1, sel1Placeholder);
+    if (sel2) sel2.innerHTML = getOptionsHtml(val2, sel2Placeholder);
+
+    let hintElem = document.getElementById('driverQuickHint');
+    if (hintElem) {
+      hintElem.innerText = isGhost 
+        ? 'Fahrer 1 = Aktiver Jäger (Arcade-Sounds & Geist). Fahrer 2 = optionaler Zuhörer.' 
+        : 'Wähle bis zu 2 Fahrer für Sprachausgabe und Splitscreen-Dashboard.';
+    }
   }
 
   let selLegacy = document.getElementById('driverQuickSelect');
@@ -973,7 +1252,12 @@ function onDriverQuickSelectChange(val) {
   if (selectedTTSCars.length === 2) {
     let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
     let n2 = carNamesMap[selectedTTSCars[1]]?.driver || ('Fahrer ' + selectedTTSCars[1]);
-    speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+    let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    if (isGhost) {
+      speak(`${n1} ist aktiver Jäger. ${n2} ist Zuhörer.`, true);
+    } else {
+      speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+    }
   } else if (selectedTTSCars.length === 1) {
     let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
     let c1 = carNamesMap[selectedTTSCars[0]]?.car || ('Auto ' + selectedTTSCars[0]);
@@ -1014,6 +1298,46 @@ async function loadTracks() {
         activeTrackId = data.active || data.tracks[0].id;
         let found = allTracksList.find(t => t.id === activeTrackId) || allTracksList[0];
         activeTrackName = found.name;
+        if (found.allTimeRecords && found.allTimeRecords.length > 0) {
+          let topRec = found.allTimeRecords[0];
+          window.allTimeBestLap = topRec.lap;
+          window.allTimeBestDriver = topRec.driver;
+          window.allTimeBestCar = topRec.car;
+          window.allTimeBestSzMask = topRec.szMask || 0;
+          window.allTimeBestS1 = topRec.s1 || 0;
+          window.allTimeBestS2 = topRec.s2 || 0;
+          window.allTimeBestS3 = topRec.s3 || 0;
+          window.allTimeBestS4 = topRec.s4 || 0;
+        } else {
+          window.allTimeBestLap = found.recordLap || 0;
+          window.allTimeBestDriver = found.recordDriver || "";
+          window.allTimeBestCar = found.recordCar || "";
+          window.allTimeBestSzMask = 0;
+          window.allTimeBestS1 = 0;
+          window.allTimeBestS2 = 0;
+          window.allTimeBestS3 = 0;
+          window.allTimeBestS4 = 0;
+        }
+        if (found.dailyRecords && found.dailyRecords.length > 0) {
+          let topDaily = found.dailyRecords[0];
+          window.dailyBestLap = topDaily.lap;
+          window.dailyBestDriver = topDaily.driver;
+          window.dailyBestCar = topDaily.car;
+          window.dailyBestSzMask = topDaily.szMask || 0;
+          window.dailyBestS1 = topDaily.s1 || 0;
+          window.dailyBestS2 = topDaily.s2 || 0;
+          window.dailyBestS3 = topDaily.s3 || 0;
+          window.dailyBestS4 = topDaily.s4 || 0;
+        } else {
+          window.dailyBestLap = found.bestLap || 0;
+          window.dailyBestDriver = found.bestDriver || "";
+          window.dailyBestCar = found.bestCar || "";
+          window.dailyBestSzMask = 0;
+          window.dailyBestS1 = 0;
+          window.dailyBestS2 = 0;
+          window.dailyBestS3 = 0;
+          window.dailyBestS4 = 0;
+        }
       }
       populateTrackSelectDropdowns();
       updateTrackRecordBar();
@@ -1121,14 +1445,30 @@ window.openSessionFromRecordJump = async function(sessionId, mode) {
   }
 };
 
-async function refillTrackRecordsFromSessions(targetTrackId) {
-  let tId = targetTrackId || (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
-  if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) {
-    if (typeof fetchSessionsAndStorageInfo === 'function') {
+async function ensureStatsLoaded() {
+  if (typeof fetchSessionsAndStorageInfo === 'function') {
+    if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) {
       try { await fetchSessionsAndStorageInfo(); } catch (e) {}
     }
+    return;
   }
-  if (!Array.isArray(allSessionsCache) || allSessionsCache.length === 0) return;
+  await new Promise((resolve) => {
+    let s = document.createElement('script');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.2');
+    s.onload = () => resolve();
+    s.onerror = () => resolve();
+    document.body.appendChild(s);
+  });
+  if (typeof fetchSessionsAndStorageInfo === 'function') {
+    try { await fetchSessionsAndStorageInfo(); } catch (e) {}
+  }
+}
+window.ensureStatsLoaded = ensureStatsLoaded;
+
+async function refillTrackRecordsFromSessions(targetTrackId) {
+  let tId = targetTrackId || (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard');
+  await ensureStatsLoaded();
+  if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) return;
 
   // Streckenliste aus /tracks.json laden (oder allTracksList)
   let tracksDoc = { active: (typeof activeTrackId !== 'undefined' ? activeTrackId : 'standard'), tracks: [] };
@@ -1270,9 +1610,7 @@ async function openTrackRecordsModal(trackId) {
   if (!modal) return;
   modal.style.display = 'block';
 
-  if (typeof fetchSessionsAndStorageInfo === 'function' && (typeof allSessionsCache === 'undefined' || !allSessionsCache || allSessionsCache.length === 0)) {
-    try { await fetchSessionsAndStorageInfo(); } catch (e) {}
-  }
+  await ensureStatsLoaded();
 
   await loadTracks();
   let targetId = trackId || activeTrackId;
@@ -1419,6 +1757,8 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
   let boxInfo = '';
   let cascadeInfo = '';
 
+  await ensureStatsLoaded();
+
   let allTimeArr = Array.isArray(trackObj?.allTimeRecords) ? trackObj.allTimeRecords : [];
   if (allTimeArr.length === 0 && trackObj?.recordLap > 0) {
     allTimeArr = [{ lap: trackObj.recordLap, carId: trackObj.recordCarId || 0, driver: trackObj.recordDriver || '', car: trackObj.recordCar || '', date: trackObj.recordDate || '' }];
@@ -1431,36 +1771,15 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
 
   let matchedSession = null;
   let matchedLap = null;
-  let matchedSessionData = null;
 
   if (index >= 0) {
     let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
     if (targetEntry) {
-      if (typeof fetchSessionsAndStorageInfo === 'function' && (typeof allSessionsCache === 'undefined' || !allSessionsCache || allSessionsCache.length === 0)) {
-        try { await fetchSessionsAndStorageInfo(); } catch (e) {}
-      }
-
-      // Notanker falls allSessionsCache leer: Dateiliste über /api/files abrufen
-      if (typeof allSessionsCache === 'undefined' || !Array.isArray(allSessionsCache) || allSessionsCache.length === 0) {
-        try {
-          let fRes = await fetch('/api/files');
-          if (fRes.ok) {
-            let fData = await fRes.json();
-            let rawList = (fData.files || []).filter(f => {
-              let fn = f.name.startsWith('/') ? f.name.substring(1) : f.name;
-              return fn.endsWith('.json') && fn.includes('/') && !fn.includes('tracks') && !fn.includes('sessions') && !fn.includes('wifi') && !fn.includes('daily_best');
-            });
-            allSessionsCache = rawList.map(f => ({ file: f.name, id: f.name.replace(/^.*\//, '').replace('.json', ''), trackId: targetId }));
-          }
-        } catch (fErr) {}
-      }
-
       if (typeof allSessionsCache !== 'undefined' && Array.isArray(allSessionsCache) && allSessionsCache.length > 0) {
         // 1. Alle Sessions dieser Strecke sammeln
         let candidateSessions = allSessionsCache.filter(s => {
           let sTrack = s.trackId || 'standard';
-          if (sTrack !== targetId) return false;
-          return true;
+          return sTrack === targetId;
         });
 
         // 2. Bevorzuge Sessions, an denen dieses Auto oder dieser Fahrer teilgenommen hat
@@ -1509,7 +1828,6 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
                   time: found.t !== undefined ? found.t : (found.time || targetEntry.lap)
                 };
                 matchedSession = s;
-                matchedSessionData = sData;
                 break;
               }
             }
@@ -1532,7 +1850,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     if (matchedSession && matchedLap) {
       title = isDaily ? '⏱️ TAGESBESTZEIT & RUNDE LÖSCHEN' : '🏆 REKORD & RUNDE LÖSCHEN';
       boxInfo = `Runde ${matchedLap.lap}: ${driverName} (${timeStr}) in Session ${matchedSession.id}`;
-      desc = `Möchtest du diesen Rekord und die zugehörige <strong>Runde ${matchedLap.lap}</strong> dauerhaft aus der Session löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Die Runde wird vollständig aus dem Protokoll entfernt (Rundenanzahl -1) und die vorherige Bestzeit rückt nach.</span>`;
+      desc = `Möchtest du diesen Rekord und die zugehörige <strong>Runde ${matchedLap.lap}</strong> dauerhaft aus der Session löschen?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:6px;">ℹ️ Die Runde wird vollständig aus dem Protokoll entfernt (Rundenanzahl -1) und die nächste Bestzeit rückt nach.</span>`;
     } else {
       boxInfo = `Platz ${index + 1}: ${driverName} (${timeStr})`;
       desc = `Platz ${index + 1} löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">ℹ️ Bestzeit wird aus der Rekordliste entfernt (vorherige Bestzeit rückt nach).</span>`;
@@ -1576,60 +1894,12 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
 
   try {
     let success = false;
-    if (matchedSession && matchedLap && matchedSessionData) {
+    if (index >= 0 && matchedSession && matchedLap) {
+      // Exakt dieselbe Routine wie im Statistiken-Modal: /api/deletelap
       try {
-        // 1. Physisch aus matchedSessionData.laps im Browser entfernen
-        if (Array.isArray(matchedSessionData.laps)) {
-          let lapIdx = matchedSessionData.laps.findIndex(l => {
-            let lCar = l.c !== undefined ? l.c : (l.carId || 0);
-            let lTime = l.t !== undefined ? l.t : (l.time || 0);
-            let lLap = l.l !== undefined ? l.l : (l.lap || 0);
-            let carMatch = (lCar === matchedLap.carId);
-            let timeMatch = (lTime === matchedLap.time) || (Math.abs(lTime - matchedLap.time) <= 5);
-            let lapMatch = (matchedLap.lap > 0 && lLap === matchedLap.lap);
-            return carMatch && (timeMatch || lapMatch);
-          });
-
-          if (lapIdx >= 0) {
-            matchedSessionData.laps.splice(lapIdx, 1);
-
-            // Runden für dieses Auto neu durchnummerieren
-            let carLapCounter = 0;
-            matchedSessionData.laps.forEach(l => {
-              let c = l.c !== undefined ? l.c : (l.carId || 0);
-              if (c === matchedLap.carId) {
-                carLapCounter++;
-                if (l.l !== undefined) l.l = carLapCounter;
-                if (l.lap !== undefined) l.lap = carLapCounter;
-              }
-            });
-          }
-        }
-
-        let rawPath = matchedSession.file.startsWith('/') ? matchedSession.file : ('/' + matchedSession.file);
-
-        if (matchedSessionData.laps.length === 0) {
-          // Keine Runden mehr in der Session: Datei komplett löschen
-          let delRes = await fetch('/api/deletefile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'file=' + encodeURIComponent(rawPath)
-          });
-          if (delRes.ok) success = true;
-        } else {
-          // 2. Modifizierte Datei via /api/upload direkt auf Flash (LittleFS) schreiben (100% crashsicher, 0 RAM-Last auf ESP)
-          let compBlob = new Blob([JSON.stringify(matchedSessionData)], { type: 'application/json' });
-          let compFd = new FormData();
-          compFd.append('data', compBlob, rawPath);
-          let upRes = await fetch('/api/upload', { method: 'POST', body: compFd });
-          if (upRes.ok) success = true;
-        }
-
-        // Backend zusätzlich über deletelap informieren (aktualisiert /sessions.json Index & RAM)
-        try {
-          let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}&file=${encodeURIComponent(matchedSession.file)}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
-          await fetch(lapUrl, { method: 'POST' });
-        } catch (e) {}
+        let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}${matchedSession.file ? `&file=${encodeURIComponent(matchedSession.file)}` : ''}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
+        let lapRes = await fetch(lapUrl, { method: 'POST' });
+        if (lapRes.ok) success = true;
 
         if (typeof sessionFileCache !== 'undefined' && matchedSession.file) {
           delete sessionFileCache[matchedSession.file];
@@ -1640,20 +1910,33 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
           delete embeddedLapsState[elemId].laps;
         }
       } catch (lapErr) {
-        console.warn("Fehler beim physischen Löschen der Runde aus Session:", lapErr);
+        console.warn("Fehler beim Löschen via /api/deletelap:", lapErr);
+      }
+    } else {
+      // Kein Session-Match (z.B. manueller Rekord) oder 'Alle löschen' (index < 0)
+      try {
+        let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`;
+        let res = await fetch(url, { method: 'POST' });
+        if (res.ok) success = true;
+      } catch (recErr) {
+        console.warn("Fehler beim Löschen des Rekordeintrags:", recErr);
       }
     }
 
-    // IMMER auch den Top-5 Rekordeintrag in tracks.json / daily_best.json entfernen
-    try {
-      let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`;
-      let res = await fetch(url, { method: 'POST' });
-      if (res.ok) success = true;
-    } catch (recErr) {
-      console.warn("Fehler beim Löschen des Rekordeintrags:", recErr);
-    }
-
     if (success) {
+      await loadTracks();
+
+      // Falls der Eintrag ausnahmsweise noch in tracks.json vorhanden war:
+      let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];
+      let updatedTrackObj = allTracksList.find(t => t.id === targetId);
+      let updatedList = isDaily ? updatedTrackObj?.dailyRecords : updatedTrackObj?.allTimeRecords;
+      if (index >= 0 && Array.isArray(updatedList) && targetEntry && updatedList.some(r => r.lap === targetEntry.lap && r.carId === targetEntry.carId)) {
+        try {
+          await fetch(`/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`, { method: 'POST' });
+          await loadTracks();
+        } catch (e) {}
+      }
+
       // Top-5 Rekorde sofort wieder aus den verbleibenden Sessions auf bis zu 5 Plätze auffüllen
       try {
         await refillTrackRecordsFromSessions(targetId);
@@ -2019,6 +2302,33 @@ function updateTrackRecordBar(info) {
   let hasAllTime = (recLap && recLap > 0);
   let hasDailyBest = (dailyLap && dailyLap > 0);
 
+  if (info) {
+    if (info.recordLap !== undefined) window.allTimeBestLap = info.recordLap;
+    if (info.recordDriver !== undefined) window.allTimeBestDriver = info.recordDriver;
+    if (info.recordCar !== undefined) window.allTimeBestCar = info.recordCar;
+    if (info.recordSzMask !== undefined) window.allTimeBestSzMask = info.recordSzMask;
+    if (info.recordS1 !== undefined) window.allTimeBestS1 = info.recordS1;
+    if (info.recordS2 !== undefined) window.allTimeBestS2 = info.recordS2;
+    if (info.recordS3 !== undefined) window.allTimeBestS3 = info.recordS3;
+    if (info.recordS4 !== undefined) window.allTimeBestS4 = info.recordS4;
+
+    if (info.dailyBestLap !== undefined) window.dailyBestLap = info.dailyBestLap;
+    if (info.dailyBestDriver !== undefined) window.dailyBestDriver = info.dailyBestDriver;
+    if (info.dailyBestCar !== undefined) window.dailyBestCar = info.dailyBestCar;
+    if (info.dailySzMask !== undefined) window.dailyBestSzMask = info.dailySzMask;
+    if (info.dailyS1 !== undefined) window.dailyBestS1 = info.dailyS1;
+    if (info.dailyS2 !== undefined) window.dailyBestS2 = info.dailyS2;
+    if (info.dailyS3 !== undefined) window.dailyBestS3 = info.dailyS3;
+    if (info.dailyS4 !== undefined) window.dailyBestS4 = info.dailyS4;
+  }
+
+  if (typeof updateGhostHuntModalDisplay === 'function') {
+    let ghModal = document.getElementById('ghostHuntModal');
+    if (ghModal && ghModal.style.display === 'block') {
+      updateGhostHuntModalDisplay();
+    }
+  }
+
   let bar = document.getElementById('trackRecordBar');
   let allTimeDisp = document.getElementById('allTimeRecordDisplay');
   let dailyDisp = document.getElementById('trackRecordDisplay');
@@ -2262,7 +2572,7 @@ async function updateData(fullSync = false) {
       currentLeaderId = null;
     } else {
       let leaderSearch = [...data];
-      if (currentMode === 1 || currentMode === 4) {
+      if (currentMode === 1 || currentMode === 4 || currentMode === 5) {
         leaderSearch.sort((a, b) => (a.bestLap || 999999) - (b.bestLap || 999999));
       } else {
         leaderSearch.sort((a, b) => b.completedLaps - a.completedLaps || a.lastLap - b.lastLap);
@@ -2407,7 +2717,12 @@ async function updateData(fullSync = false) {
     // --- RENN-DASHBOARD UPDATE (1 ODER 2 FAHRER SPLITSCREEN) ---
     let dMode = document.getElementById('dimmerModeText');
     if (dMode) {
-      if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
+      if (currentMode === 5) dMode.innerText = "GEISTERJAGD 👻";
+      else if (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive) {
+        let baseM = (currentMode === 1) ? "QUALIFYING" : (currentMode === 4 ? "DRAGRACE" : "TRAINING");
+        dMode.innerText = `${baseM} (GEISTERJAGD 👻)`;
+      }
+      else if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
       else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? "QUALIFYING (BEENDET)" : "QUALIFYING";
       else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? `RENNEN (${leaderLaps}/${targetLaps} RND)` : "RENNEN (RUNDEN)";
       else if (currentMode === 3) dMode.innerText = "RENNEN (ZEIT)";
@@ -2485,8 +2800,33 @@ async function updateData(fullSync = false) {
       if (currentMode === 2) modeText = "Rennen (Runden)";
       if (currentMode === 3) modeText = "Rennen (Zeit)";
       if (currentMode === 4) modeText = "Dragrace";
+      if (currentMode === 5) modeText = "Geisterjagd 👻";
       let modeElem = document.getElementById('modeDisplay');
       if (modeElem) modeElem.innerText = modeText;
+
+      let isGhostActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+
+      if (currentMode === 5 && info.ghostLap !== undefined) {
+        currentGhostTarget = {
+          type: info.ghostType || 0,
+          lap: info.ghostLap || 0,
+          s1: info.ghostS1 || 0,
+          s2: info.ghostS2 || 0,
+          s3: info.ghostS3 || 0,
+          s4: info.ghostS4 || 0,
+          szMask: info.ghostSzMask || 0,
+          driver: info.ghostDriver || "Geist",
+          car: info.ghostCar || ""
+        };
+        renderGhostHud();
+      } else if (isGhostActive) {
+        renderGhostHud();
+      } else {
+        let ghHud = document.getElementById('ghostHudContainer');
+        if (ghHud) ghHud.style.display = 'none';
+        let ghBanner = document.getElementById('ghostBeatenBanner');
+        if (ghBanner) ghBanner.style.display = 'none';
+      }
 
       let serverSecondsLeft = info.secondsLeft;
       if (qualiFinishedHold) {
@@ -2626,6 +2966,9 @@ function finishSessionNow() {
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
     if (timerElem) timerElem.innerText = "ZIEL";
     if (typeof announceRaceResults === 'function') announceRaceResults();
+  } else if (currentMode === 5) {
+    if (timerElem) timerElem.innerText = "ZIEL";
+    speak("Ghost-Battle beendet.", true);
   } else {
     if (timerElem) timerElem.innerText = "ZIEL";
     speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);
@@ -2898,6 +3241,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadCarNames();
     updateTTSFilterDisplay();
     populateDriverQuickSelect();
+    updateGhostButtonStates();
+    if (localGhostHuntActive) {
+      renderGhostHud();
+    }
     await new Promise(r => setTimeout(r, 50));
     await loadWifiStatus();
   } catch (e) {
@@ -2925,6 +3272,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
   if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
   if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
+  if (event.target === document.getElementById('ghostHuntModal')) closeGhostHuntModal();
   if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
   if (event.target === document.getElementById('arcadeModal')) closeArcadeModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {

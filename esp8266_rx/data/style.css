@@ -469,6 +469,9 @@ body.role-admin .driver-only {
 .dimmer-sz-delta.delta-orange {
   color: var(--neon-orange);
 }
+.dimmer-sz-delta.delta-red {
+  color: var(--neon-red);
+}
 
 @media (max-width: 650px) {
   .dimmer-drivers-container.split-drivers {
@@ -1466,5 +1469,190 @@ footer {
     padding: 8px 10px;
     margin-bottom: 6px;
   }
+}
+
+/* --- GEISTERJAGD (GHOST HUNT) STYLES --- */
+.ghost-beaten-banner {
+  background: linear-gradient(135deg, rgba(181, 50, 255, 0.35), rgba(255, 215, 0, 0.25));
+  border: 1px solid var(--neon-purple);
+  box-shadow: 0 0 25px rgba(181, 50, 255, 0.6);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 15px;
+  text-align: center;
+  animation: ghostBeatenPulse 1.2s infinite alternate;
+}
+@keyframes ghostBeatenPulse {
+  from { box-shadow: 0 0 15px rgba(181, 50, 255, 0.4); transform: scale(1); }
+  to { box-shadow: 0 0 30px rgba(255, 215, 0, 0.7); transform: scale(1.01); }
+}
+.ghost-beaten-title {
+  font-size: 13px;
+  color: #ffd700;
+  letter-spacing: 2px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.ghost-beaten-val {
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 12px var(--neon-purple);
+}
+
+.ghost-hud {
+  margin-bottom: 16px;
+}
+#ghostHudSlotDimmer {
+  width: 100%;
+  max-width: 960px;
+  margin: 10px auto 15px auto;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+#ghostHudSlotDimmer .ghost-card {
+  background: #000000;
+  border-width: 2px;
+}
+#ghostHudSlotDimmer .ghost-time-val {
+  font-size: 38px;
+}
+.ghost-card-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 680px) {
+  .ghost-card-wrapper {
+    grid-template-columns: 1fr;
+  }
+}
+.ghost-card {
+  background: rgba(13, 17, 23, 0.85);
+  border-radius: 10px;
+  padding: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.ghost-target-card {
+  border: 1px solid rgba(181, 50, 255, 0.4);
+  box-shadow: inset 0 0 15px rgba(181, 50, 255, 0.1);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ghost-target-card:hover {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 16px rgba(181, 50, 255, 0.45), inset 0 0 15px rgba(181, 50, 255, 0.2);
+  transform: translateY(-2px);
+}
+.ghost-hunter-card {
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  box-shadow: inset 0 0 15px rgba(0, 229, 255, 0.1);
+}
+.ghost-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ghost-icon {
+  font-size: 26px;
+}
+.ghost-card-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+}
+.ghost-card-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-main);
+}
+.ghost-time-box {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.ghost-time-val {
+  font-family: monospace;
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--neon-cyan);
+}
+.ghost-target-card .ghost-time-val {
+  color: var(--neon-purple);
+  text-shadow: 0 0 10px rgba(181, 50, 255, 0.5);
+}
+.ghost-delta-pill {
+  font-family: monospace;
+  font-size: 20px;
+  font-weight: 900;
+  padding: 3px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+}
+.ghost-delta-minus {
+  background: rgba(0, 255, 102, 0.18);
+  color: var(--neon-green);
+  border: 1px solid var(--neon-green);
+  text-shadow: 0 0 8px rgba(0, 255, 102, 0.6);
+  animation: deltaPop 0.3s ease-out;
+}
+.ghost-delta-plus {
+  background: rgba(255, 51, 85, 0.18);
+  color: var(--neon-red);
+  border: 1px solid var(--neon-red);
+  text-shadow: 0 0 8px rgba(255, 51, 85, 0.6);
+  animation: deltaPop 0.3s ease-out;
+}
+@keyframes deltaPop {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ghost-sectors-mini {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+  flex-wrap: wrap;
+}
+.ghost-sectors-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ghost-sector-cell {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 4px;
+  text-align: center;
+  transition: all 0.2s ease-out;
+}
+.ghost-sec-lbl {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+}
+.ghost-sec-val {
+  display: block;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: monospace;
+  color: var(--text-main);
+}
+.ghost-sec-delta {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: monospace;
+  min-height: 14px;
 }
 

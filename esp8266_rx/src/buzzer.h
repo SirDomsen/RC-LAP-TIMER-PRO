@@ -20,6 +20,11 @@ void playBuzzerLap();
 // Retro-Arcade Fanfare bei neuem Streckenrekord / Bestzeit
 void playBuzzerRecord();
 
+// Geisterjagd Audio-Feedback (Modus 5)
+void playBuzzerGhostVictory(); // Fanfare bei geschlagenem Geist ("da - da - da --- dadaaaaa!")
+void playBuzzerGhostAhead();   // Grüner Sektor (Vorsprung) - Schneller Doppel-Beep hoch
+void playBuzzerGhostBehind();  // Roter Sektor (Rückstand) - Trockener Bass-Beep tief
+
 // Accolade Arcade Audio Jukebox: Spielt einen Track per ID ab
 bool playBuzzerTrack(const String& trackId, bool loop = false);
 

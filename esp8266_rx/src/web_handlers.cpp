@@ -110,6 +110,44 @@ void handlePostSession(AsyncWebServerRequest *request) {
     dragTrackOccupied = false;
     activeDragCarId = 0;
 
+    if (newMode == MODE_GHOST_HUNT) {
+      uint8_t gType = request->hasParam("ghostType") ? request->getParam("ghostType")->value().toInt() : 0;
+      uint32_t gLap = request->hasParam("ghostLap") ? request->getParam("ghostLap")->value().toInt() : 0;
+      uint32_t gS1 = request->hasParam("ghostS1") ? request->getParam("ghostS1")->value().toInt() : 0;
+      uint32_t gS2 = request->hasParam("ghostS2") ? request->getParam("ghostS2")->value().toInt() : 0;
+      uint32_t gS3 = request->hasParam("ghostS3") ? request->getParam("ghostS3")->value().toInt() : 0;
+      uint32_t gS4 = request->hasParam("ghostS4") ? request->getParam("ghostS4")->value().toInt() : 0;
+      uint8_t gMask = request->hasParam("ghostMask") ? request->getParam("ghostMask")->value().toInt() : 0;
+      uint8_t gCarId = request->hasParam("ghostCarId") ? request->getParam("ghostCarId")->value().toInt() : 0;
+      String gDriver = request->hasParam("ghostDriver") ? request->getParam("ghostDriver")->value() : "";
+      String gCar = request->hasParam("ghostCar") ? request->getParam("ghostCar")->value() : "";
+
+      if (gLap == 0) {
+        if (gType == 0 && allTimeBestLapMs > 0) {
+          gLap = allTimeBestLapMs;
+          gS1 = allTimeBestS1Ms;
+          gS2 = allTimeBestS2Ms;
+          gS3 = allTimeBestS3Ms;
+          gS4 = allTimeBestS4Ms;
+          gMask = allTimeBestSzMask;
+          gDriver = allTimeBestDriver;
+          gCar = allTimeBestCar;
+          gCarId = allTimeBestCarId;
+        } else if (gType == 1 && dailyBestLapMs > 0) {
+          gLap = dailyBestLapMs;
+          gS1 = dailyBestS1Ms;
+          gS2 = dailyBestS2Ms;
+          gS3 = dailyBestS3Ms;
+          gS4 = dailyBestS4Ms;
+          gMask = dailyBestSzMask;
+          gDriver = dailyBestDriver;
+          gCar = dailyBestCar;
+          gCarId = dailyBestCarId;
+        }
+      }
+      setGhostTarget(gType, gLap, gS1, gS2, gS3, gS4, gMask, gDriver, gCar, gCarId);
+    }
+
     char startJson[128];
     snprintf(startJson, sizeof(startJson),
              "{\"type\":\"session_start\",\"mode\":%d,\"duration\":%d,\"laps\":%d}",
@@ -130,7 +168,7 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   }
   checkDailyBestDateRollover();
   String json;
-  json.reserve(560);
+  json.reserve(850);
   json = "{\"mode\":";
   json += (int)currentMode;
   json += ",\"secondsLeft\":";
@@ -169,7 +207,45 @@ void handleGetTimeLeft(AsyncWebServerRequest *request) {
   json += activeTrackId;
   json += "\",\"activeTrackName\":\"";
   json += activeTrackName;
-  json += "\",\"fsPct\":";
+  json += "\",\"ghostLap\":";
+  json += ghostLapMs;
+  json += ",\"ghostType\":";
+  json += ghostTargetType;
+  json += ",\"ghostDriver\":\"";
+  json += ghostDriverName;
+  json += "\",\"ghostCar\":\"";
+  json += ghostCarName;
+  json += "\",\"ghostSzMask\":";
+  json += ghostSzMask;
+  json += ",\"ghostS1\":";
+  json += ghostS1Ms;
+  json += ",\"ghostS2\":";
+  json += ghostS2Ms;
+  json += ",\"ghostS3\":";
+  json += ghostS3Ms;
+  json += ",\"ghostS4\":";
+  json += ghostS4Ms;
+  json += ",\"recordSzMask\":";
+  json += allTimeBestSzMask;
+  json += ",\"recordS1\":";
+  json += allTimeBestS1Ms;
+  json += ",\"recordS2\":";
+  json += allTimeBestS2Ms;
+  json += ",\"recordS3\":";
+  json += allTimeBestS3Ms;
+  json += ",\"recordS4\":";
+  json += allTimeBestS4Ms;
+  json += ",\"dailySzMask\":";
+  json += dailyBestSzMask;
+  json += ",\"dailyS1\":";
+  json += dailyBestS1Ms;
+  json += ",\"dailyS2\":";
+  json += dailyBestS2Ms;
+  json += ",\"dailyS3\":";
+  json += dailyBestS3Ms;
+  json += ",\"dailyS4\":";
+  json += dailyBestS4Ms;
+  json += ",\"fsPct\":";
   json += cachedFsUsedPct;
   json += ",\"fsFull\":";
   json += (storageFullLocked || cachedFsUsedPct >= 95 ? "true" : "false");
@@ -456,7 +532,8 @@ void handleGetSectorConfig(AsyncWebServerRequest *request) {
   json += "\"useSz3\":" + String(useSz3 ? "true" : "false") + ",";
   json += "\"checkpointMode\":" + String(checkpointMode ? "true" : "false") + ",";
   json += "\"dragraceMode\":" + String(dragraceMode ? "true" : "false") + ",";
-  json += "\"sectorAudio\":" + String(sectorAudioFeedback ? "true" : "false");
+  json += "\"sectorAudio\":" + String(sectorAudioFeedback ? "true" : "false") + ",";
+  json += "\"ghostAudio\":" + String(ghostAudioEnabled ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
@@ -468,6 +545,7 @@ void handlePostSetSectorConfig(AsyncWebServerRequest *request) {
   if (request->hasParam("cp"))    checkpointMode = (request->getParam("cp")->value() == "1");
   if (request->hasParam("dr"))    dragraceMode = (request->getParam("dr")->value() == "1");
   if (request->hasParam("audio")) sectorAudioFeedback = (request->getParam("audio")->value() == "1");
+  if (request->hasParam("ghostAudio")) ghostAudioEnabled = (request->getParam("ghostAudio")->value() == "1");
 
   saveSectorConfigToEEPROM(useSz1, useSz2, useSz3, checkpointMode, dragraceMode, sectorAudioFeedback);
   request->send(200, "text/plain", "OK");
@@ -704,6 +782,12 @@ void handlePostBuzzer(AsyncWebServerRequest *request) {
       playBuzzerLap();
     } else if (cmd == "record") {
       playBuzzerRecord();
+    } else if (cmd == "ghost_win" || cmd == "ghost_victory") {
+      playBuzzerGhostVictory();
+    } else if (cmd == "ghost_ahead") {
+      playBuzzerGhostAhead();
+    } else if (cmd == "ghost_behind") {
+      playBuzzerGhostBehind();
     } else if (cmd == "play" || cmd == "track") {
       String track = request->hasParam("track") ? request->getParam("track")->value() : "";
       bool loop = request->hasParam("loop") ? (request->getParam("loop")->value() == "1" || request->getParam("loop")->value() == "true") : false;

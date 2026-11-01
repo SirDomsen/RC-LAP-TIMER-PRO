@@ -100,11 +100,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
 
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
-#if defined(ESP8266)
-      AsyncWebServerResponse *res = request->beginResponse_P(503, "text/html", BUSY_HTML_PROGMEM);
-#elif defined(ESP32)
       AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
-#endif
       res->addHeader("Retry-After", "4");
       res->addHeader("Connection", "close");
       request->send(res);

@@ -125,6 +125,30 @@ function formatTimeForTTS(ms) {
   }
 }
 
+function formatGhostDeltaForTTS(deltaMs) {
+  if (deltaMs === undefined || deltaMs === null || isNaN(deltaMs)) return "";
+  let isMinus = deltaMs <= 0;
+  let absMs = Math.abs(deltaMs);
+  let totalHundredths = Math.round(absMs / 10);
+  let hundredths = totalHundredths % 100;
+  let seconds = Math.floor(totalHundredths / 100);
+
+  let prefix = isMinus ? "Minus " : "Plus ";
+  let hStr = "";
+  if (hundredths < 10) {
+    hStr = (hundredths === 0) ? "null" : ("null " + hundredths);
+  } else {
+    hStr = String(hundredths);
+  }
+
+  if (seconds > 0) {
+    let secWord = (seconds === 1) ? "eins" : String(seconds);
+    return `${prefix}${secWord}-${hStr}`;
+  } else {
+    return `${prefix}${hStr}`;
+  }
+}
+
 // Beim Laden/Aktualisieren der Seite eventuelle Reste aus dem Browser-Sprachpuffer verwerfen
 if ('speechSynthesis' in window) {
   try {
@@ -351,3 +375,83 @@ function announceRaceResults() {
     speak(restText, false);
   }
 }
+
+// --- WEB AUDIO ARCADE CHIPTUNE SYNTHESIZER (GEISTERJAGD) ---
+let webAudioCtx = null;
+function getWebAudioContext() {
+  if (!webAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) webAudioCtx = new AudioCtx();
+  }
+  if (webAudioCtx && webAudioCtx.state === 'suspended') {
+    webAudioCtx.resume().catch(() => {});
+  }
+  return webAudioCtx;
+}
+
+function playWebAudioGhostAhead() {
+  let ctx = getWebAudioContext();
+  if (!ctx) return;
+  let tones = [
+    [1760, 0.040, 0.025], // A6 (di)
+    [2349, 0.050, 0.010]  // D7 (düt aufsteigend)
+  ];
+  let startTime = ctx.currentTime;
+  tones.forEach(([freq, dur, pause]) => {
+    let osc = ctx.createOscillator();
+    let gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.20;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + dur);
+    startTime += (dur + pause);
+  });
+}
+
+function playWebAudioGhostBehind() {
+  let ctx = getWebAudioContext();
+  if (!ctx) return;
+  let osc = ctx.createOscillator();
+  let gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 440; // A4 (tiefer Bass-Beep)
+  gain.gain.value = 0.25;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.060);
+}
+
+function playWebAudioGhostVictory() {
+  let ctx = getWebAudioContext();
+  if (!ctx) return;
+  // Stakkato-Fanfare: C5, E5, G5, pause, G5, C6 ("da - da - da --- dadaaaaa!")
+  const notes = [
+    [523, 0.065, 0.030],  // C5 (kurz stakkato)
+    [659, 0.065, 0.030],  // E5 (kurz stakkato)
+    [784, 0.065, 0.090],  // G5 (kurz stakkato) + dramatische Pause
+    [784, 0.075, 0.020],  // G5 (Auftakt "da-")
+    [1046, 0.480, 0.050]  // C6 (langer Schlusston "daaaaa!")
+  ];
+  let startTime = ctx.currentTime;
+  notes.forEach(([freq, dur, pause]) => {
+    let osc = ctx.createOscillator();
+    let gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.25;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + dur);
+    startTime += (dur + pause);
+  });
+}
+
+window.getWebAudioContext = getWebAudioContext;
+window.playWebAudioGhostAhead = playWebAudioGhostAhead;
+window.playWebAudioGhostBehind = playWebAudioGhostBehind;
+window.playWebAudioGhostVictory = playWebAudioGhostVictory;
