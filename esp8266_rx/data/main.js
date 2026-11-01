@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.2'; 
+window.UI_VERSION = '4.5.4'; 
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -23,7 +23,30 @@ window.formatLapTime = formatLapTime;
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
 let ghostTtsDeltaEnabled = JSON.parse(localStorage.getItem('ghostTtsDeltaEnabled') ?? 'true');
 let ghostAudioBeepsEnabled = JSON.parse(localStorage.getItem('ghostAudioBeepsEnabled') ?? 'true');
+let localGhostHuntActive = JSON.parse(localStorage.getItem('localGhostHuntActive') ?? 'false');
 let currentGhostTarget = { type: 0, lap: 0, s1: 0, s2: 0, s3: 0, s4: 0, szMask: 0, driver: "", car: "" };
+try {
+  let savedGTarget = localStorage.getItem('localGhostTarget');
+  if (savedGTarget) currentGhostTarget = JSON.parse(savedGTarget);
+} catch (e) {}
+window.localGhostHuntActive = localGhostHuntActive;
+window.currentGhostTarget = currentGhostTarget;
+
+function updateGhostButtonStates() {
+  let btn = document.getElementById('ghostHuntDriverBtn');
+  if (btn) {
+    if (localGhostHuntActive || currentMode === 5) {
+      btn.innerHTML = "👻 Geisterjagd: <span style='color:var(--neon-green); font-weight:bold;'>AN</span>";
+      btn.style.boxShadow = "0 0 15px rgba(0, 255, 157, 0.6)";
+      btn.style.borderColor = "var(--neon-green)";
+    } else {
+      btn.innerHTML = "👻 Geisterjagd";
+      btn.style.boxShadow = "none";
+      btn.style.borderColor = "var(--neon-purple)";
+    }
+  }
+}
+window.updateGhostButtonStates = updateGhostButtonStates;
 
 let userRole = localStorage.getItem('rctl_user_role') || null; 
 
@@ -528,6 +551,9 @@ function onGhostBeatenLiveEvent(msg) {
     pill.className = 'ghost-delta-pill ghost-delta-minus';
   }
 
+  if (typeof playWebAudioGhostVictory === 'function') {
+    playWebAudioGhostVictory();
+  }
   if (typeof speak === 'function') {
     speak("Geist geschlagen! Neue Bestzeit!", true);
   }
@@ -573,7 +599,8 @@ function renderGhostHud() {
   let hud = document.getElementById('ghostHudContainer');
   if (!hud) return;
 
-  if (currentMode !== 5) {
+  let isGhostActive = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+  if (!isGhostActive) {
     hud.style.display = 'none';
     return;
   }
@@ -584,7 +611,7 @@ function renderGhostHud() {
   let gName = document.getElementById('ghostTargetName');
   let gTime = document.getElementById('ghostTargetTime');
   if (gName) {
-    let typeLabels = ["Streckenrekord", "Tagesbestzeit", "Persönliche Bestzeit", "Zielzeit"];
+    let typeLabels = ["Streckenrekord", "Tagesbestzeit", "Persönliche Bestzeit", "Zielzeit", "Session-Führender"];
     let prefix = typeLabels[currentGhostTarget.type] || "Geist";
     gName.innerText = currentGhostTarget.driver ? `${prefix} (${currentGhostTarget.driver})` : prefix;
   }
@@ -748,11 +775,12 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
     return;
   }
 
+  let isGhost = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
   let pos = rowData._defaultPos || "-";
-  if (dPos) dPos.innerText = (currentMode === 5) ? "GHOST" : `P${pos}`;
+  if (dPos) dPos.innerText = isGhost ? "GHOST" : `P${pos}`;
 
   let pbLabel = dPb && dPb.parentElement ? dPb.parentElement.querySelector('.dimmer-label') : null;
-  if (pbLabel) pbLabel.innerText = (currentMode === 5) ? "GEIST (ZIELZEIT)" : "Persönliche Bestzeit";
+  if (pbLabel) pbLabel.innerText = isGhost ? "GEIST (ZIELZEIT)" : "Persönliche Bestzeit";
 
   let carState = rowData.state || statusCarsMap[carId] || null;
   if (awaitingBaseCrossMap[carId]) carState = 'outlap';
@@ -768,7 +796,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   }
 
   if (dPb) {
-    if (currentMode === 5 && currentGhostTarget && currentGhostTarget.lap > 0) {
+    if (isGhost && currentGhostTarget && currentGhostTarget.lap > 0) {
       dPb.innerText = formatLapTime(currentGhostTarget.lap, '--:--');
     } else {
       dPb.innerText = formatLapTime(rowData.bestLap, '--:--');
@@ -792,7 +820,7 @@ function updateDashboardDriverCol(colIdx, carId, rowData, sessionOverallBestLap,
   if (dDelta) {
     if (rowData.lastLapIsOutLap) {
       dDelta.innerText = '';
-    } else if (currentMode === 5 && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
+    } else if (isGhost && currentGhostTarget && currentGhostTarget.lap > 0 && rowData.lastLap > 0) {
       let gDiff = rowData.lastLap - currentGhostTarget.lap;
       let gSec = (Math.abs(gDiff) / 1000).toFixed(2).replace('.', ',');
       if (gDiff <= 0) {
@@ -2654,12 +2682,16 @@ async function updateData(fullSync = false) {
     // --- RENN-DASHBOARD UPDATE (1 ODER 2 FAHRER SPLITSCREEN) ---
     let dMode = document.getElementById('dimmerModeText');
     if (dMode) {
-      if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
+      if (currentMode === 5) dMode.innerText = "GEISTERJAGD 👻";
+      else if (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive) {
+        let baseM = (currentMode === 1) ? "QUALIFYING" : (currentMode === 4 ? "DRAGRACE" : "TRAINING");
+        dMode.innerText = `${baseM} (GEISTERJAGD 👻)`;
+      }
+      else if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
       else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? "QUALIFYING (BEENDET)" : "QUALIFYING";
       else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? `RENNEN (${leaderLaps}/${targetLaps} RND)` : "RENNEN (RUNDEN)";
       else if (currentMode === 3) dMode.innerText = "RENNEN (ZEIT)";
       else if (currentMode === 4) dMode.innerText = "DRAGRACE";
-      else if (currentMode === 5) dMode.innerText = "GEISTERJAGD 👻";
     }
 
     let dLeaderLap = document.getElementById('dimmerLeaderLapText');
@@ -3167,6 +3199,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadCarNames();
     updateTTSFilterDisplay();
     populateDriverQuickSelect();
+    updateGhostButtonStates();
+    if (localGhostHuntActive) {
+      renderGhostHud();
+    }
     await new Promise(r => setTimeout(r, 50));
     await loadWifiStatus();
   } catch (e) {
@@ -3194,6 +3230,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('resetConfirmModal')) closeResetModal();
   if (event.target === document.getElementById('newTrackModal')) closeNewTrackModal();
   if (event.target === document.getElementById('storageFullModal')) closeStorageFullModal();
+  if (event.target === document.getElementById('ghostHuntModal')) closeGhostHuntModal();
   if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
   if (event.target === document.getElementById('arcadeModal')) closeArcadeModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {

@@ -255,6 +255,33 @@ function updateGhostHuntModalDisplay() {
     }
   } else if (type === 3) {
     previewEl.innerHTML = `🎯 <strong>Freie Zielzeit:</strong> Gib unten deine Wunsch-Rundenzeit in Sekunden ein.`;
+  } else if (type === 4) {
+    let leader = (typeof lastLapsData !== 'undefined' && lastLapsData.length > 0) ? [...lastLapsData].filter(c => c.bestLap > 0).sort((a,b)=>a.bestLap-b.bestLap)[0] : null;
+    if (leader && leader.bestLap > 0) {
+      previewEl.innerHTML = `🏎️ <strong>Session-Führender:</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${(leader.bestLap/1000).toFixed(3)}s</span> von ${leader.driver || ('Fahrer ' + leader.id)}`;
+    } else {
+      previewEl.innerHTML = `🏎️ <strong>Session-Führender:</strong> <span style="color:var(--neon-cyan);">Noch keine gezeitete Runde in dieser Session!</span>`;
+    }
+  }
+
+  let actionBox = document.getElementById('ghostModalActionButtons');
+  if (actionBox) {
+    let isGhostOn = (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+    let role = (typeof userRole !== 'undefined' && userRole) ? userRole : 'driver';
+
+    if (role === 'admin') {
+      actionBox.innerHTML = `
+        <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
+        ${isGhostOn ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">⏹️ Lokalen Geist Beenden</button>' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Mein Lokaler Geist</button>'}
+        <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">🚀 Modus 5 für alle starten</button>
+      `;
+    } else {
+      actionBox.innerHTML = `
+        <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
+        ${isGhostOn ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">⏹️ Geisterjagd Beenden</button>' : ''}
+        <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? '🔄 Geist Aktualisieren' : '🚀 Geisterjagd Starten'}</button>
+      `;
+    }
   }
 }
 
@@ -354,3 +381,125 @@ function startGhostHuntSession() {
       updateData(true);
     }).catch(err => console.error(err));
 }
+
+function startDriverLocalGhostHuntFromModal() {
+  let typeSelect = document.getElementById('ghostTargetTypeSelect');
+  let type = typeSelect ? parseInt(typeSelect.value) : 0;
+  let customLapMs = 0;
+
+  if (type === 3) {
+    let inp = document.getElementById('ghostCustomTimeInput');
+    let sec = inp ? parseFloat(inp.value.replace(',', '.')) : 0;
+    if (isNaN(sec) || sec <= 0) {
+      if (typeof showAlert === 'function') showAlert("Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!");
+      return;
+    }
+    customLapMs = Math.round(sec * 1000);
+  }
+
+  startDriverLocalGhostHunt(type, customLapMs);
+}
+
+function startDriverLocalGhostHunt(type, customLapMs = 0) {
+  let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
+  let gTarget = {
+    type: type,
+    lap: 0,
+    s1: 0,
+    s2: 0,
+    s3: 0,
+    s4: 0,
+    szMask: 0,
+    driver: "Geist",
+    car: ""
+  };
+
+  let speakText = "Geisterjagd aktiviert! Schnapp dir den Geist!";
+
+  if (type === 0) {
+    gTarget.lap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
+    gTarget.s1 = (typeof allTimeBestS1 !== 'undefined') ? allTimeBestS1 : 0;
+    gTarget.s2 = (typeof allTimeBestS2 !== 'undefined') ? allTimeBestS2 : 0;
+    gTarget.s3 = (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0;
+    gTarget.s4 = (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0;
+    gTarget.szMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
+    gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : "Streckenrekord";
+    gTarget.car = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : "";
+    speakText = "Geisterjagd gegen den Streckenrekord!";
+  } else if (type === 1) {
+    gTarget.lap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
+    gTarget.s1 = (typeof dailyBestS1 !== 'undefined') ? dailyBestS1 : 0;
+    gTarget.s2 = (typeof dailyBestS2 !== 'undefined') ? dailyBestS2 : 0;
+    gTarget.s3 = (typeof dailyBestS3 !== 'undefined') ? dailyBestS3 : 0;
+    gTarget.s4 = (typeof dailyBestS4 !== 'undefined') ? dailyBestS4 : 0;
+    gTarget.szMask = (typeof dailyBestSzMask !== 'undefined') ? dailyBestSzMask : 0;
+    gTarget.driver = (typeof dailyBestDriver !== 'undefined' && dailyBestDriver) ? dailyBestDriver : "Tagesbestzeit";
+    gTarget.car = (typeof dailyBestCar !== 'undefined') ? dailyBestCar : "";
+    speakText = "Geisterjagd gegen die Tagesbestzeit!";
+  } else if (type === 2) {
+    let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
+    let pb = (row && row.bestLap > 0) ? row.bestLap : 0;
+    gTarget.lap = pb;
+    gTarget.s1 = row ? (row.bestSz1 || 0) : 0;
+    gTarget.s2 = row ? (row.bestSz2 || 0) : 0;
+    gTarget.s3 = row ? (row.bestSz3 || 0) : 0;
+    gTarget.s4 = row ? (row.bestSz4 || 0) : 0;
+    gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
+    gTarget.driver = (row && row.driver) ? row.driver : ("Fahrer " + activeCarId);
+    speakText = (pb > 0) ? "Geisterjagd gegen deine persönliche Bestzeit!" : "Geisterjagd aktiviert! Deine erste Runde setzt den Geist!";
+  } else if (type === 3) {
+    gTarget.lap = customLapMs;
+    gTarget.driver = "Zielzeit";
+    speakText = "Geisterjagd gegen Zielzeit!";
+  } else if (type === 4) {
+    let leader = (typeof lastLapsData !== 'undefined' && lastLapsData.length > 0) ? [...lastLapsData].filter(c => c.bestLap > 0).sort((a,b)=>a.bestLap-b.bestLap)[0] : null;
+    if (leader && leader.bestLap > 0) {
+      gTarget.lap = leader.bestLap;
+      gTarget.s1 = leader.bestSz1 || 0;
+      gTarget.s2 = leader.bestSz2 || 0;
+      gTarget.s3 = leader.bestSz3 || 0;
+      gTarget.s4 = leader.bestSz4 || 0;
+      gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
+      gTarget.driver = leader.driver || ("Fahrer " + leader.id);
+      speakText = "Geisterjagd gegen " + gTarget.driver + "!";
+    } else {
+      speakText = "Noch keine Runden in dieser Session! Erste Runde setzt den Geist.";
+    }
+  }
+
+  currentGhostTarget = gTarget;
+  localGhostHuntActive = true;
+  localStorage.setItem('localGhostHuntActive', 'true');
+  localStorage.setItem('localGhostTarget', JSON.stringify(gTarget));
+
+  closeGhostHuntModal();
+  if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
+  if (typeof renderGhostHud === 'function') renderGhostHud();
+
+  if (typeof speak === 'function') speak(speakText, true);
+}
+
+function stopDriverLocalGhostHunt() {
+  localGhostHuntActive = false;
+  localStorage.removeItem('localGhostHuntActive');
+  localStorage.removeItem('localGhostTarget');
+
+  closeGhostHuntModal();
+  if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
+
+  let hud = document.getElementById('ghostHudContainer');
+  if (hud && currentMode !== 5) hud.style.display = 'none';
+
+  let banner = document.getElementById('ghostBeatenBanner');
+  if (banner && currentMode !== 5) banner.style.display = 'none';
+
+  if (typeof speak === 'function') speak("Geisterjagd beendet.", true);
+}
+
+window.openGhostHuntModal = openGhostHuntModal;
+window.closeGhostHuntModal = closeGhostHuntModal;
+window.updateGhostHuntModalDisplay = updateGhostHuntModalDisplay;
+window.startGhostHuntSession = startGhostHuntSession;
+window.startDriverLocalGhostHunt = startDriverLocalGhostHunt;
+window.stopDriverLocalGhostHunt = stopDriverLocalGhostHunt;
+window.startDriverLocalGhostHuntFromModal = startDriverLocalGhostHuntFromModal;

@@ -192,8 +192,10 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
       ghostDeltaMs = (int32_t)splitTimeMs - (int32_t)refGhostSplit;
       hasGhostDelta = true;
       if (ghostAudioEnabled) {
-        if (ghostDeltaMs <= 0) playBuzzerGhostAhead();
-        else playBuzzerGhostBehind();
+        if (getActiveCarsCount(300000UL) <= 1) {
+          if (ghostDeltaMs <= 0) playBuzzerGhostAhead();
+          else playBuzzerGhostBehind();
+        }
       }
     }
   }
@@ -364,6 +366,17 @@ bool areAllActiveCarsFinished() {
     }
   }
   return true;
+}
+
+uint8_t getActiveCarsCount(uint32_t timeoutMs) {
+  uint32_t now = millis();
+  uint8_t count = 0;
+  for (uint8_t i = 1; i <= MAX_CARS; i++) {
+    if (lastSeenMs[i] > 0 && (now - lastSeenMs[i] < timeoutMs)) {
+      count++;
+    }
+  }
+  return count;
 }
 
 void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs) {

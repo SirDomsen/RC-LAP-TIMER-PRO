@@ -136,6 +136,7 @@ void resetAllLaps(bool isHardReset = false);
 void addRecentID(uint8_t newId);
 uint8_t getCurrentPosition(uint8_t carId);
 bool areAllActiveCarsFinished();
+uint8_t getActiveCarsCount(uint32_t timeoutMs = 300000UL);
 uint32_t getAverageLapTimeMs(uint8_t carId);
 
 void syncClockOnce(uint64_t clientTsSec);

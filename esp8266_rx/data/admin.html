@@ -404,6 +404,7 @@
           <option value="0">🏆 Streckenrekord-Geist (All-Time P1)</option>
           <option value="1">⏱️ Tagesbestzeit-Geist (Heutiges P1)</option>
           <option value="2">👤 Eigener Geist / Session-PB</option>
+          <option value="4">🏎️ Live-Führender der Session</option>
           <option value="3">🎯 Freie Wunsch-Zielzeit</option>
         </select>
       </div>
@@ -419,7 +420,7 @@
         <input type="text" id="ghostCustomTimeInput" class="form-input" placeholder="12.500" style="width:100%; padding:10px; font-size:15px; font-family:monospace; background:#0d1117; color:var(--neon-green); border:1px solid #333; border-radius:6px;">
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #222; padding-top:12px;">
+      <div id="ghostModalActionButtons" style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #222; padding-top:12px; flex-wrap:wrap;">
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Abbrechen</button>
         <button class="btn btn-purple" style="font-weight:bold; padding:10px 18px; box-shadow: 0 0 12px rgba(181,50,255,0.5);" onclick="startGhostHuntSession()">🚀 Geisterjagd Starten</button>
       </div>
@@ -793,7 +794,7 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.2</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.4</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>

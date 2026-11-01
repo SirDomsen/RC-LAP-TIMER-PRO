@@ -394,6 +394,21 @@ function onSectorLiveEvent(msg) {
     requestUpdateData();
   }
 
+  let isGhostHuntActive = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+  let effectiveGhostDelta = msg.ghostDelta;
+
+  if (effectiveGhostDelta === undefined && isGhostHuntActive && isCarAllowedForTTS(carId) && typeof currentGhostTarget !== 'undefined' && currentGhostTarget) {
+    let refSplit = 0;
+    if (msg.sector === 1) refSplit = currentGhostTarget.s1;
+    else if (msg.sector === 2) refSplit = (currentGhostTarget.s1 > 0 && currentGhostTarget.s2 > 0) ? (currentGhostTarget.s1 + currentGhostTarget.s2) : 0;
+    else if (msg.sector === 3) refSplit = (currentGhostTarget.s1 > 0 && currentGhostTarget.s2 > 0 && currentGhostTarget.s3 > 0) ? (currentGhostTarget.s1 + currentGhostTarget.s2 + currentGhostTarget.s3) : 0;
+    else if (msg.sector === 4) refSplit = currentGhostTarget.lap;
+
+    if (refSplit > 0 && msg.split > 0) {
+      effectiveGhostDelta = msg.split - refSplit;
+    }
+  }
+
   // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer ausgewaehlte Fahrzeuge (Fahrer 1 & 2)
   if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
     let colIdx = (selectedTTSCars[0] === carId) ? 1 : ((selectedTTSCars.length > 1 && selectedTTSCars[1] === carId) ? 2 : 0);
@@ -418,9 +433,9 @@ function onSectorLiveEvent(msg) {
 
         let dimDelta = document.getElementById(`dimmer${colIdx}-sz${msg.sector}-delta`);
         if (dimDelta) {
-          if (currentMode === 5 && msg.ghostDelta !== undefined) {
-            let isAhead = (msg.ghostDelta <= 0);
-            dimDelta.innerText = (isAhead ? '' : '+') + (msg.ghostDelta / 1000).toFixed(2) + 's';
+          if (isGhostHuntActive && effectiveGhostDelta !== undefined) {
+            let isAhead = (effectiveGhostDelta <= 0);
+            dimDelta.innerText = (isAhead ? '' : '+') + (effectiveGhostDelta / 1000).toFixed(2) + 's';
             dimDelta.className = 'dimmer-sz-delta ' + (isAhead ? 'delta-green' : 'delta-orange');
           }
         }
@@ -428,13 +443,20 @@ function onSectorLiveEvent(msg) {
     }
   }
 
-  if (currentMode === 5 || msg.ghostDelta !== undefined) {
+  if (isGhostHuntActive && effectiveGhostDelta !== undefined) {
     if (typeof updateGhostHudSector === 'function') {
-      updateGhostHudSector(msg);
+      updateGhostHudSector({ ...msg, ghostDelta: effectiveGhostDelta });
     }
-    if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled && isCarAllowedForTTS(carId) && msg.ghostDelta !== undefined) {
+    if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled && isCarAllowedForTTS(carId)) {
+      if (effectiveGhostDelta <= 0) {
+        if (typeof playWebAudioGhostAhead === 'function') playWebAudioGhostAhead();
+      } else {
+        if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+      }
+    }
+    if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled && isCarAllowedForTTS(carId)) {
       if (typeof formatGhostDeltaForTTS === 'function') {
-        let ttsText = formatGhostDeltaForTTS(msg.ghostDelta);
+        let ttsText = formatGhostDeltaForTTS(effectiveGhostDelta);
         if (ttsText) speak(ttsText, false, carId);
       }
     }
@@ -488,6 +510,36 @@ function onLapLiveEvent(msg) {
       }
       if (dPb && isPersonalBest && msg.lapTime > 0) {
         dPb.innerText = (msg.lapTime / 1000).toFixed(2) + 's';
+      }
+    }
+  }
+
+  // Geisterjagd Check (Modus 5 oder lokale Geisterjagd)
+  let isGhostHuntLap = (currentMode === 5) || (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive);
+  if (isGhostHuntLap && isCarAllowedForTTS(carId) && !isOutLapDone && msg.lapTime > 0) {
+    if (typeof currentGhostTarget !== 'undefined' && currentGhostTarget) {
+      if (!currentGhostTarget.lap || currentGhostTarget.lap === 0) {
+        currentGhostTarget.lap = msg.lapTime;
+        currentGhostTarget.s1 = msg.s1 || 0;
+        currentGhostTarget.s2 = msg.s2 || 0;
+        currentGhostTarget.s3 = msg.s3 || 0;
+        currentGhostTarget.s4 = msg.s4 || 0;
+        currentGhostTarget.driver = driverName;
+        if (typeof renderGhostHud === 'function') renderGhostHud();
+        speak("Geist gesetzt: " + (msg.lapTime / 1000).toFixed(2) + " Sekunden! Schnapp ihn dir!", true);
+      } else if (msg.lapTime <= currentGhostTarget.lap) {
+        let deltaToGhost = msg.lapTime - currentGhostTarget.lap;
+        if (typeof onGhostBeatenLiveEvent === 'function') {
+          onGhostBeatenLiveEvent({
+            lapTime: msg.lapTime,
+            delta: deltaToGhost,
+            driver: driverName,
+            s1: msg.s1 || 0,
+            s2: msg.s2 || 0,
+            s3: msg.s3 || 0,
+            s4: msg.s4 || 0
+          });
+        }
       }
     }
   }
