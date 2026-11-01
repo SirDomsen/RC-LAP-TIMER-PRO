@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.5.6">
+  <link rel="stylesheet" href="style.css?v=4.5.7">
 </head>
 <body class="role-driver">
 
@@ -30,7 +30,7 @@
         </div>
       </div>
       <div>
-        <div id="dimmerModeText" class="dimmer-mode-badge" onclick="if(typeof currentMode !== 'undefined' && currentMode === 5 && typeof openGhostHuntModal === 'function') openGhostHuntModal();" title="Klicken für Geisterjagd-Einstellungen" style="cursor:pointer;">FREIES TRAINING</div>
+        <div id="dimmerModeText" class="dimmer-mode-badge" onclick="if(typeof openGhostHuntModal === 'function') openGhostHuntModal();" title="Klicken für Geister-Einstellungen" style="cursor:pointer;">FREIES TRAINING</div>
       </div>
       
       <div class="dimmer-top-stats">
@@ -266,7 +266,7 @@
         <div id="ghostHudContainer" class="ghost-hud" style="display:none;">
           <div class="ghost-card-wrapper">
             <!-- GEIST KARTE (KLICKBAR) -->
-            <div class="ghost-card ghost-target-card" onclick="openGhostHuntModal()" style="cursor:pointer;" title="Klicken, um Geist-Ziel zu wählen / ändern">
+            <div class="ghost-card ghost-target-card" onclick="openGhostHuntModal()" role="button" tabindex="0" style="cursor:pointer;" title="Klicken, um Geist-Ziel zu wählen / ändern">
               <div class="ghost-card-header">
                 <span class="ghost-icon">👻</span>
                 <div>
@@ -343,7 +343,7 @@
       <div>
         <button class="btn btn-purple" id="statsOverviewBtn" onclick="openStatsOverviewModal()">📊 Statistiken</button>
         <button class="btn btn-purple" onclick="openDriverConfigModal()">⚙️ Einstellungen</button>
-        <button class="btn btn-purple" id="ghostHuntDriverBtn" onclick="openGhostHuntModal()" style="border-color:var(--neon-purple);">👻 Geisterjagd</button>
+        <button class="btn btn-purple" id="ghostHuntDriverBtn" onclick="openGhostHuntModal()" style="border-color:var(--neon-purple);">👻 Ghosthunt</button>
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
         <button class="btn btn-purple" onclick="activateOledDimmer()" title="Öffnet das Renn-Dashboard">🏎️ Dashboard</button>
@@ -406,7 +406,7 @@
   <div id="ghostHuntModal" class="modal" style="z-index: 10006;">
     <div class="modal-content" style="max-width: 500px; border: 1px solid var(--neon-purple); box-shadow: 0 0 25px rgba(181, 50, 255, 0.35);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom: 1px solid #222; padding-bottom: 8px;">
-        <h3 style="color:var(--neon-purple); margin:0; font-family:var(--font-display);">👻 GEISTERJAGD (SOLO EVENT)</h3>
+        <h3 style="color:var(--neon-purple); margin:0; font-family:var(--font-display);">👻 GHOSTHUNT (GEISTER-AUSWAHL)</h3>
         <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeGhostHuntModal()">✕</button>
       </div>
 
@@ -434,7 +434,7 @@
 
       <div id="ghostModalActionButtons" style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #222; padding-top:12px; flex-wrap:wrap;">
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        <button class="btn btn-purple" style="font-weight:bold; padding:10px 18px; box-shadow: 0 0 12px rgba(181,50,255,0.5);" onclick="startDriverLocalGhostHuntFromModal()">🚀 Geisterjagd Starten</button>
+        <button class="btn btn-purple" style="font-weight:bold; padding:10px 18px; box-shadow: 0 0 12px rgba(181,50,255,0.5);" onclick="startDriverLocalGhostHuntFromModal()">👻 Ghosthunt Starten</button>
       </div>
     </div>
   </div>
@@ -457,13 +457,13 @@
           </label>
           <label style="cursor:pointer; display: block; margin-bottom: 12px;">
             <input type="checkbox" id="driver_cfg_ghost_audio" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
-            <strong>👻 Geisterjagd Sektor-Pieptöne (Buzzer & Beeps)</strong>
-            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Hoher Ton bei Vorsprung, tiefer Ton bei Rückstand</div>
+            <strong>👻 Ghost Sektor-Pieptöne (Buzzer & Beeps)</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Hoher Doppel-Beep bei Vorsprung, Bass-Beep bei Rückstand</div>
           </label>
           <label style="cursor:pointer; display: block; margin-bottom: 12px;">
             <input type="checkbox" id="driver_cfg_ghost_tts" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
-            <strong>🗣️ Geisterjagd Sektor-Sprachausgabe (Delta)</strong>
-            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Sagt Vorsprung/Rückstand auf Hundertstel an (z. B. „Minus eins-fünfundzwanzig“)</div>
+            <strong>🗣️ Ghost Sektor-Sprachausgabe (Delta)</strong>
+            <div style="font-size:11px; color:var(--text-muted); margin-left: 28px; margin-top:2px;">Sagt Vorsprung/Rückstand auf Hundertstel an (z. B. „Minus eins fünfundzwanzig“)</div>
           </label>
           <label style="cursor:pointer; display: block; margin-bottom: 12px;">
             <input type="checkbox" id="driver_cfg_announce_lap_times" style="transform: scale(1.3); margin-right: 10px;" onchange="saveDriverAudioConfig()">
@@ -632,10 +632,10 @@
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="qrcode.min.js?v=4.5.6"></script>
-  <script src="tts.js?v=4.5.6"></script>
-  <script src="websocket.js?v=4.5.6"></script>
-  <script src="modes.js?v=4.5.6"></script>
-  <script src="main.js?v=4.5.6"></script>
+  <script src="qrcode.min.js?v=4.5.7"></script>
+  <script src="tts.js?v=4.5.7"></script>
+  <script src="websocket.js?v=4.5.7"></script>
+  <script src="modes.js?v=4.5.7"></script>
+  <script src="main.js?v=4.5.7"></script>
 </body>
 </html>

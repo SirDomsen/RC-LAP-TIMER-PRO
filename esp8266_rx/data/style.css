@@ -1523,6 +1523,17 @@ footer {
   background: #000000;
   border-width: 2px;
 }
+#ghostHudSlotDimmer .ghost-target-card {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(181, 50, 255, 0.4);
+}
+#ghostHudSlotDimmer .ghost-target-card:active {
+  transform: scale(0.98);
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 20px rgba(181, 50, 255, 0.6);
+}
 #ghostHudSlotDimmer .ghost-time-val {
   font-size: 38px;
 }

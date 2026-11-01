@@ -143,7 +143,7 @@ function formatGhostDeltaForTTS(deltaMs) {
 
   if (seconds > 0) {
     let secWord = (seconds === 1) ? "eins" : String(seconds);
-    return `${prefix}${secWord}-${hStr}`;
+    return `${prefix}${secWord} ${hStr}`;
   } else {
     return `${prefix}${hStr}`;
   }

@@ -290,14 +290,14 @@ function updateGhostHuntModalDisplay() {
     if (role === 'admin') {
       actionBox.innerHTML = `
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Lokalen Geist Beenden') + '</button>' : (isGhostOn ? '' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Mein Lokaler Geist</button>')}
-        <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">🚀 Modus 5 für alle starten</button>
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Ghosthunt beenden') + '</button>' : (isGhostOn ? '' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Ghosthunt starten</button>')}
+        <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">🚀 Ghost Battle für alle starten</button>
       `;
     } else {
       actionBox.innerHTML = `
         <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Geisterjagd Beenden') + '</button>' : ''}
-        <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? '🔄 Geist Aktualisieren' : '🚀 Geisterjagd Starten'}</button>
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Ghosthunt beenden') + '</button>' : ''}
+        <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? '🔄 Geist Aktualisieren' : '👻 Ghosthunt starten'}</button>
       `;
     }
   }
@@ -326,7 +326,7 @@ function startGhostHuntSession() {
   params.append('mode', '5');
   params.append('ghostType', type);
 
-  let speakText = "Geisterjagd gestartet! Schnapp dir den Geist!";
+  let speakText = "Ghost Battle gestartet!";
 
   if (type === 0) {
     let recLap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
@@ -375,7 +375,7 @@ function startGhostHuntSession() {
     params.append('ghostS2', (typeof dailyBestS2 !== 'undefined') ? dailyBestS2 : 0);
     params.append('ghostS3', (typeof dailyBestS3 !== 'undefined') ? dailyBestS3 : 0);
     params.append('ghostS4', (typeof dailyBestS4 !== 'undefined') ? dailyBestS4 : 0);
-    speakText = "Geisterjagd gegen die Tagesbestzeit!";
+    speakText = "Ghost Battle gegen die Tagesbestzeit!";
   } else if (type === 2) {
     let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
     let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
@@ -391,16 +391,16 @@ function startGhostHuntSession() {
       params.append('ghostS3', row.bestSz3 || 0);
       params.append('ghostS4', row.bestSz4 || 0);
       params.append('ghostCarId', activeCarId);
-      speakText = "Geisterjagd gegen deine persönliche Bestzeit!";
+      speakText = "Ghost Battle gegen deine persönliche Bestzeit!";
     } else {
       params.append('ghostLap', 0);
       params.append('ghostCarId', activeCarId);
-      speakText = "Geisterjagd gestartet! Deine erste Runde setzt den Geist!";
+      speakText = "Ghost Battle gestartet! Deine erste Runde setzt den Geist!";
     }
   } else if (type === 3) {
     params.append('ghostLap', customLapMs);
     params.append('ghostDriver', "Zielzeit");
-    speakText = "Geisterjagd gegen Zielzeit!";
+    speakText = "Ghost Battle gegen Zielzeit!";
   }
 
   window.sessionStartTs = Math.floor(Date.now() / 1000);
@@ -451,7 +451,7 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     car: ""
   };
 
-  let speakText = "Geisterjagd aktiviert! Schnapp dir den Geist!";
+  let speakText = "Ghosthunt aktiviert! Schnapp dir den Geist!";
 
   if (type === 0) {
     let recLap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
@@ -481,7 +481,7 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
       gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : "Streckenrekord";
       gTarget.car = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : "";
     }
-    speakText = "Ghost Battle gestartet!";
+    speakText = "Ghosthunt gegen den Streckenrekord!";
   } else if (type === 1) {
     gTarget.lap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
     gTarget.s1 = (typeof dailyBestS1 !== 'undefined') ? dailyBestS1 : 0;
@@ -491,7 +491,7 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     gTarget.szMask = (typeof dailyBestSzMask !== 'undefined') ? dailyBestSzMask : 0;
     gTarget.driver = (typeof dailyBestDriver !== 'undefined' && dailyBestDriver) ? dailyBestDriver : "Tagesbestzeit";
     gTarget.car = (typeof dailyBestCar !== 'undefined') ? dailyBestCar : "";
-    speakText = "Geisterjagd gegen die Tagesbestzeit!";
+    speakText = "Ghosthunt gegen die Tagesbestzeit!";
   } else if (type === 2) {
     let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
     let pb = (row && row.bestLap > 0) ? row.bestLap : 0;
@@ -502,11 +502,11 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     gTarget.s4 = row ? (row.bestSz4 || 0) : 0;
     gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
     gTarget.driver = (row && row.driver) ? row.driver : ("Fahrer " + activeCarId);
-    speakText = (pb > 0) ? "Geisterjagd gegen deine persönliche Bestzeit!" : "Geisterjagd aktiviert! Deine erste Runde setzt den Geist!";
+    speakText = (pb > 0) ? "Ghosthunt gegen deine persönliche Bestzeit!" : "Ghosthunt aktiviert! Deine erste Runde setzt den Geist!";
   } else if (type === 3) {
     gTarget.lap = customLapMs;
     gTarget.driver = "Zielzeit";
-    speakText = "Geisterjagd gegen Zielzeit!";
+    speakText = "Ghosthunt gegen Zielzeit!";
   } else if (type === 4) {
     let leader = (typeof lastLapsData !== 'undefined' && lastLapsData.length > 0) ? [...lastLapsData].filter(c => c.bestLap > 0).sort((a,b)=>a.bestLap-b.bestLap)[0] : null;
     if (leader && leader.bestLap > 0) {
@@ -517,7 +517,7 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
       gTarget.s4 = leader.bestSz4 || 0;
       gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
       gTarget.driver = leader.driver || ("Fahrer " + leader.id);
-      speakText = "Geisterjagd gegen " + gTarget.driver + "!";
+      speakText = "Ghosthunt gegen " + gTarget.driver + "!";
     } else {
       speakText = "Noch keine Runden in dieser Session! Erste Runde setzt den Geist.";
     }
@@ -560,7 +560,7 @@ function stopDriverLocalGhostHunt() {
     let banner = document.getElementById('ghostBeatenBanner');
     if (banner) banner.style.display = 'none';
 
-    if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
+    if (typeof speak === 'function') speak("Ghosthunt beendet.", true);
   }
 }
 

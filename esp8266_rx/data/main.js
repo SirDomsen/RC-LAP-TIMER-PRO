@@ -36,12 +36,13 @@ function updateGhostButtonStates() {
   let btn = document.getElementById('ghostHuntDriverBtn');
   if (btn) {
     let isGhostOn = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+    let label = (currentMode === 5) ? "Ghost Battle" : "Ghosthunt";
     if (isGhostOn) {
-      btn.innerHTML = "👻 Geisterjagd: <span style='color:var(--neon-green); font-weight:bold;'>AN</span>";
+      btn.innerHTML = `👻 ${label}: <span style='color:var(--neon-green); font-weight:bold;'>AN</span>`;
       btn.style.boxShadow = "0 0 15px rgba(0, 255, 157, 0.6)";
       btn.style.borderColor = "var(--neon-green)";
     } else {
-      btn.innerHTML = "👻 Geisterjagd";
+      btn.innerHTML = `👻 ${label}`;
       btn.style.boxShadow = "none";
       btn.style.borderColor = "var(--neon-purple)";
     }
@@ -424,6 +425,23 @@ function syncGhostHudSlot() {
     hud.style.display = 'block';
   }
 
+  // Sicherstellen, dass die Geister-Kachel im Dashboard und in Normalansicht immer klick- und tippbar ist
+  let targetCards = document.querySelectorAll('.ghost-target-card');
+  targetCards.forEach(card => {
+    if (!card._ghostClickBound) {
+      card._ghostClickBound = true;
+      card.style.cursor = 'pointer';
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      let triggerModal = (e) => {
+        if (e) e.stopPropagation();
+        if (typeof openGhostHuntModal === 'function') openGhostHuntModal();
+      };
+      card.addEventListener('click', triggerModal);
+      card.addEventListener('touchend', triggerModal);
+    }
+  });
+
   // Im Admin-OLED-Dashboard bei Geisterjagd die Mehrfahrer-Tabelle ausblenden, damit das Geister-HUD Platz hat:
   let dimTable = document.getElementById('dimmerLeaderboardContainer');
   let isGhostInDimmer = isDimmerActive && isGhostActive;
@@ -534,19 +552,31 @@ function onGhostBeatenLiveEvent(msg) {
   if (!msg) return;
   let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
   let isMyHunter = (msg.carId === undefined || msg.carId === activeGhostHunterId);
-
-  currentGhostTarget.lap = msg.lapTime;
-  currentGhostTarget.s1 = msg.s1 || 0;
-  currentGhostTarget.s2 = msg.s2 || 0;
-  currentGhostTarget.s3 = msg.s3 || 0;
-  currentGhostTarget.s4 = msg.s4 || 0;
-  currentGhostTarget.szMask = msg.szMask || 0;
-  currentGhostTarget.driver = msg.driver || "Neuer Geist";
-  window.currentGhostTarget = currentGhostTarget;
-
   let isLocalGhostActive = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
-  if (isLocalGhostActive) {
-    localStorage.setItem('localGhostTarget', JSON.stringify(currentGhostTarget));
+
+  if (window.adminGhostTarget) {
+    window.adminGhostTarget.lap = msg.lapTime;
+    window.adminGhostTarget.s1 = msg.s1 || 0;
+    window.adminGhostTarget.s2 = msg.s2 || 0;
+    window.adminGhostTarget.s3 = msg.s3 || 0;
+    window.adminGhostTarget.s4 = msg.s4 || 0;
+    window.adminGhostTarget.szMask = msg.szMask || 0;
+    window.adminGhostTarget.driver = msg.driver || "Neuer Geist";
+  }
+
+  if (!isLocalGhostActive || isMyHunter) {
+    currentGhostTarget.lap = msg.lapTime;
+    currentGhostTarget.s1 = msg.s1 || 0;
+    currentGhostTarget.s2 = msg.s2 || 0;
+    currentGhostTarget.s3 = msg.s3 || 0;
+    currentGhostTarget.s4 = msg.s4 || 0;
+    currentGhostTarget.szMask = msg.szMask || 0;
+    currentGhostTarget.driver = msg.driver || "Neuer Geist";
+    window.currentGhostTarget = currentGhostTarget;
+
+    if (isLocalGhostActive) {
+      localStorage.setItem('localGhostTarget', JSON.stringify(currentGhostTarget));
+    }
   }
 
   let banner = document.getElementById('ghostBeatenBanner');
@@ -2748,10 +2778,10 @@ async function updateData(fullSync = false) {
     // --- RENN-DASHBOARD UPDATE (1 ODER 2 FAHRER SPLITSCREEN) ---
     let dMode = document.getElementById('dimmerModeText');
     if (dMode) {
-      if (currentMode === 5) dMode.innerText = "GEISTERJAGD 👻";
+      if (currentMode === 5) dMode.innerText = "GHOST BATTLE 👻";
       else if (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive) {
         let baseM = (currentMode === 1) ? "QUALIFYING" : (currentMode === 4 ? "DRAGRACE" : "TRAINING");
-        dMode.innerText = `${baseM} (GEISTERJAGD 👻)`;
+        dMode.innerText = `${baseM} (GHOSTHUNT 👻)`;
       }
       else if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
       else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? "QUALIFYING (BEENDET)" : "QUALIFYING";
@@ -2834,7 +2864,7 @@ async function updateData(fullSync = false) {
       if (currentMode === 2) modeText = "Rennen (Runden)";
       if (currentMode === 3) modeText = "Rennen (Zeit)";
       if (currentMode === 4) modeText = "Dragrace";
-      if (currentMode === 5) modeText = "Geisterjagd 👻";
+      if (currentMode === 5) modeText = "Ghost Battle 👻";
       let modeElem = document.getElementById('modeDisplay');
       if (modeElem) modeElem.innerText = modeText;
 
@@ -3008,7 +3038,7 @@ function finishSessionNow() {
     if (typeof announceRaceResults === 'function') announceRaceResults();
   } else if (currentMode === 5) {
     if (timerElem) timerElem.innerText = "ZIEL";
-    speak("Ghost-Battle beendet.", true);
+    speak("Ghost Battle beendet.", true);
   } else {
     if (timerElem) timerElem.innerText = "ZIEL";
     speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);

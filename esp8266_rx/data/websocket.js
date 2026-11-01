@@ -299,7 +299,6 @@ function handleLiveEvent(msg) {
       announced10 = false;
       timeExpiredAnnounced = false;
       if (prevMode === 5) {
-        if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
         let ghHud = document.getElementById('ghostHudContainer');
         if (ghHud) ghHud.style.display = 'none';
         let ghBanner = document.getElementById('ghostBeatenBanner');
@@ -346,7 +345,7 @@ function onSessionStartLiveEvent(msg) {
     if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
     if (typeof renderGhostHud === 'function') renderGhostHud();
   } else if (prevMode === 5 && currentMode !== 5) {
-    if (typeof speak === 'function') speak("Ghost-Battle beendet.", true);
+    if (typeof speak === 'function') speak("Ghost Battle beendet.", true);
     let ghHud = document.getElementById('ghostHudContainer');
     if (ghHud) ghHud.style.display = 'none';
     let ghBanner = document.getElementById('ghostBeatenBanner');
@@ -442,12 +441,14 @@ function onSectorLiveEvent(msg) {
     requestUpdateData();
   }
 
-  let isGhostHuntActive = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let isLocalGhostActive = (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
+  let isGhostHuntActive = (currentMode === 5) || isLocalGhostActive;
   let activeGhostHunterId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
   let isGhostHunter = (carId === activeGhostHunterId);
-  let effectiveGhostDelta = (isGhostHunter) ? msg.ghostDelta : undefined;
+  let effectiveGhostDelta = undefined;
 
-  if (effectiveGhostDelta === undefined && isGhostHuntActive && isGhostHunter && typeof currentGhostTarget !== 'undefined' && currentGhostTarget) {
+  // Wenn der Fahrer einen persönlichen Geist gewählt hat, berechnen wir das Delta strikt lokal gegen currentGhostTarget
+  if (isLocalGhostActive && isGhostHunter && typeof currentGhostTarget !== 'undefined' && currentGhostTarget) {
     let refSplit = 0;
     if (msg.sector === 1) refSplit = currentGhostTarget.s1;
     else if (msg.sector === 2) refSplit = (currentGhostTarget.s1 > 0 && currentGhostTarget.s2 > 0) ? (currentGhostTarget.s1 + currentGhostTarget.s2) : 0;
@@ -457,6 +458,8 @@ function onSectorLiveEvent(msg) {
     if (refSplit > 0 && msg.split > 0) {
       effectiveGhostDelta = msg.split - refSplit;
     }
+  } else if (isGhostHunter) {
+    effectiveGhostDelta = msg.ghostDelta;
   }
 
   // Live-Aktualisierung des Dashboards/OLED-Dimmers fuer ausgewaehlte Fahrzeuge (Fahrer 1 & 2)
@@ -495,24 +498,28 @@ function onSectorLiveEvent(msg) {
 
   // Geisterjagd Arcade-Sounds, HUD-Update & TTS: Streng NUR fuer den aktiven Jaeger (Fahrer 1)!
   // Fahrer 2 ist reiner Zuhoerer fuer seine eigenen Rundenzeiten und erzeugt keine Geister-Sounds.
+  // WICHTIG: Bei Zieldurchfahrt (isFinal / sector 4) KEINEN Sektor-Beep spielen, hier spielt nur die Runden-Fanfare / Runden-Ton!
+  let isFinalSector = !!msg.isFinal || (msg.sector === 4);
   if (isGhostHuntActive && isGhostHunter && effectiveGhostDelta !== undefined) {
     if (typeof updateGhostHudSector === 'function') {
       updateGhostHudSector({ ...msg, ghostDelta: effectiveGhostDelta });
     }
-    if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) {
-      if (effectiveGhostDelta <= 0) {
-        if (typeof playWebAudioGhostAhead === 'function') playWebAudioGhostAhead();
-      } else {
-        if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+    if (!isFinalSector) {
+      if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) {
+        if (effectiveGhostDelta <= 0) {
+          if (typeof playWebAudioGhostAhead === 'function') playWebAudioGhostAhead();
+        } else {
+          if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+        }
+      }
+      if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled) {
+        if (typeof formatGhostDeltaForTTS === 'function') {
+          let ttsText = formatGhostDeltaForTTS(effectiveGhostDelta);
+          if (ttsText) speak(ttsText, false, carId);
+        }
       }
     }
-    if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled) {
-      if (typeof formatGhostDeltaForTTS === 'function') {
-        let ttsText = formatGhostDeltaForTTS(effectiveGhostDelta);
-        if (ttsText) speak(ttsText, false, carId);
-      }
-    }
-  } else if (sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
+  } else if (!isFinalSector && sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
     let driver = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
     let text = "";
     if (msg.isOverallBest) {
@@ -646,7 +653,15 @@ function onLapLiveEvent(msg) {
     } else if (msg.lapTime > 0) {
       let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.lapTime) : (msg.lapTime / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
-      if (currentMode !== 0 && position > 0) posText = ", Platz " + position + ", ";
+      if (currentMode === 5) {
+        if (position === 1) {
+          posText = ", du bist der Schnellste! ";
+        } else if (position > 1) {
+          posText = ", du hast derzeit die " + position + ". schnellste Zeit, ";
+        }
+      } else if (currentMode !== 0 && position > 0) {
+        posText = ", Platz " + position + ", ";
+      }
 
       let lapAnnouncement = "";
       let isRaceMode = (currentMode >= 2);

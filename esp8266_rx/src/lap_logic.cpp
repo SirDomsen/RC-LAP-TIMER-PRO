@@ -179,7 +179,7 @@ void setGhostTarget(uint8_t targetType, uint32_t lapMs, uint32_t s1, uint32_t s2
   broadcastWebSocket(ghostBuf);
 }
 
-void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeMs, uint32_t splitTimeMs, bool isPB, bool isOverallBest, int32_t deltaMs) {
+void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeMs, uint32_t splitTimeMs, bool isPB, bool isOverallBest, int32_t deltaMs, bool isFinalSector = false) {
   int32_t ghostDeltaMs = 0;
   bool hasGhostDelta = false;
 
@@ -192,7 +192,7 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
     if (refGhostSplit > 0) {
       ghostDeltaMs = (int32_t)splitTimeMs - (int32_t)refGhostSplit;
       hasGhostDelta = true;
-      if (ghostAudioEnabled) {
+      if (ghostAudioEnabled && !isFinalSector) {
         if (getActiveCarsCount(300000UL) <= 1) {
           if (ghostDeltaMs <= 0) playBuzzerGhostAhead();
           else playBuzzerGhostBehind();
@@ -201,20 +201,20 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
     }
   }
 
-  char buffer[240];
+  char buffer[256];
   if (hasGhostDelta) {
     snprintf(buffer, sizeof(buffer), 
-      "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld,\"ghostDelta\":%ld}",
+      "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld,\"ghostDelta\":%ld,\"isFinal\":%s}",
       carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
-      isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs, (long)ghostDeltaMs);
+      isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs, (long)ghostDeltaMs, isFinalSector ? "true" : "false");
     broadcastWebSocket(buffer);
     return;
   }
 
   snprintf(buffer, sizeof(buffer), 
-    "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld}",
+    "{\"type\":\"sector\",\"carId\":%d,\"driver\":\"%s\",\"sector\":%d,\"time\":%lu,\"split\":%lu,\"isPB\":%s,\"isOverallBest\":%s,\"delta\":%ld,\"isFinal\":%s}",
     carId, driverNames[carId].c_str(), sectorNum, (unsigned long)sectorTimeMs, (unsigned long)splitTimeMs,
-    isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs);
+    isPB ? "true" : "false", isOverallBest ? "true" : "false", (long)deltaMs, isFinalSector ? "true" : "false");
   broadcastWebSocket(buffer);
 }
 
@@ -331,7 +331,7 @@ uint8_t getCurrentPosition(uint8_t carId) {
   uint8_t pos = 1;
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (i == carId) continue;
-    if (currentMode == MODE_DRAGRACE || currentMode == MODE_QUALIFYING) {
+    if (currentMode == MODE_DRAGRACE || currentMode == MODE_QUALIFYING || currentMode == MODE_GHOST_HUNT) {
       if (bestLapDuration[i] > 0 && (bestLapDuration[carId] == 0 || bestLapDuration[i] < bestLapDuration[carId])) {
         pos++;
       }
@@ -882,7 +882,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
             else if (finalSectorNum == 3) { sz3TimeMs[carId] = sFinal; split3TimeMs[carId] = currentLapTimeMs; }
             else if (finalSectorNum == 2) { sz2TimeMs[carId] = sFinal; split2TimeMs[carId] = currentLapTimeMs; }
           }
-          broadcastSectorEvent(carId, finalSectorNum, sFinal, currentLapTimeMs, isPB, isOverall, deltaMs);
+          broadcastSectorEvent(carId, finalSectorNum, sFinal, currentLapTimeMs, isPB, isOverall, deltaMs, true);
         }
       }
     }
