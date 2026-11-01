@@ -434,13 +434,14 @@ function playWebAudioGhostBehind() {
 function playWebAudioGhostVictory() {
   let ctx = getWebAudioContext();
   if (!ctx) return;
-  // Stakkato-Fanfare: C5, E5, G5, pause, G5, C6 ("da - da - da --- dadaaaaa!")
+  // Siegesfanfare: G4, C5, E5, G5, E5, G5
   const notes = [
-    [523, 0.065, 0.030],  // C5 (kurz stakkato)
-    [659, 0.065, 0.030],  // E5 (kurz stakkato)
-    [784, 0.065, 0.090],  // G5 (kurz stakkato) + dramatische Pause
-    [784, 0.075, 0.020],  // G5 (Auftakt "da-")
-    [1046, 0.480, 0.050]  // C6 (langer Schlusston "daaaaa!")
+    [392, 0.065, 0.025],  // G4
+    [523, 0.065, 0.025],  // C5
+    [659, 0.065, 0.025],  // E5
+    [784, 0.160, 0.040],  // G5
+    [659, 0.075, 0.020],  // E5
+    [784, 0.400, 0.040]   // G5
   ];
   let startTime = ctx.currentTime;
   notes.forEach(([freq, dur, pause]) => {

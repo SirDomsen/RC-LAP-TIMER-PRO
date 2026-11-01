@@ -33,18 +33,20 @@ static const ToneStep recordSeq[] PROGMEM = {
   { 0,     50 }
 };
 
-// 4. Geisterjagd: Siegesfanfare bei geschlagenem Geist ("da - da - da --- dadaaaaa!")
+// 4. Geisterjagd: Siegesfanfare bei geschlagenem Geist (G4 - C5 - E5 - G5 - E5 - G5)
 static const ToneStep ghostVictorySeq[] PROGMEM = {
-  { 523,   65 }, // C5 (kurz stakkato)
-  { 0,     30 },
-  { 659,   65 }, // E5 (kurz stakkato)
-  { 0,     30 },
-  { 784,   65 }, // G5 (kurz stakkato)
-  { 0,     90 }, // dramatische Pause ("da - da - da ---")
-  { 784,   75 }, // G5 (Auftakt "da-")
+  { 392,   65 }, // G4
+  { 0,     25 },
+  { 523,   65 }, // C5
+  { 0,     25 },
+  { 659,   65 }, // E5
+  { 0,     25 },
+  { 784,  160 }, // G5
+  { 0,     40 },
+  { 659,   75 }, // E5
   { 0,     20 },
-  { 1046, 480 }, // C6 (langer Schlusston "daaaaa!")
-  { 0,     50 }
+  { 784,  400 }, // G5
+  { 0,     40 }
 };
 
 // 5. Geisterjagd: Sektor Grün (Vorsprung - schneller Doppel-Beep hoch)
