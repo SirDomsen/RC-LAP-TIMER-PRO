@@ -32,7 +32,7 @@ static const ArcadeTrack ARCADE_TRACKS[] = {
   { "gpc_menu",   "Grand Prix Circuit - Menu Theme",     gpcMenuSeq,           sizeof(gpcMenuSeq) / sizeof(ToneStep),           false },
   { "td1_title",  "Test Drive 1 - Title Theme",          TestDrive1_titleSeq,  sizeof(TestDrive1_titleSeq) / sizeof(ToneStep),  true  },
   { "td1_menu",   "Test Drive 1 - Menu Beat",            TestDrive_1_menuSeq,  sizeof(TestDrive_1_menuSeq) / sizeof(ToneStep),  true  },
-  { "td3_theme",  "Test Drive 3 - The Passion (Theme)",  td3MenuSeq,            sizeof(td3MenuSeq) / sizeof(ToneStep),            true  },
+  { "td3_theme",  "Test Drive 3 - Title Theme",          td3MenuSeq,            sizeof(td3MenuSeq) / sizeof(ToneStep),            true  },
   { "td3_radio1", "Test Drive 3 - Radio 1",              td3_radio1Seq,        sizeof(td3_radio1Seq) / sizeof(ToneStep),        true  },
   { "td3_radio2", "Test Drive 3 - Radio 2",              td3_radio2Seq,        sizeof(td3_radio2Seq) / sizeof(ToneStep),        true  },
   { "td3_radio3", "Test Drive 3 - Radio 3",              td3_radio3Seq,        sizeof(td3_radio3Seq) / sizeof(ToneStep),        true  }

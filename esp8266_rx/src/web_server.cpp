@@ -550,28 +550,44 @@ void initNetworkAndServer() {
     scheduleESPReset(600);
   });
 
-  server.on("/api/debug/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+  auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(200);
-    json = "{\"freeHeap\":";
-    json += ESP.getFreeHeap();
-    json += ",\"frag\":";
+    json.reserve(256);
+    uint32_t uptime = millis() / 1000UL;
+    uint32_t freeHeap = ESP.getFreeHeap();
 #if defined(ESP8266)
-    json += ESP.getHeapFragmentation();
+    uint8_t frag = ESP.getHeapFragmentation();
 #else
-    json += 0;
+    uint8_t frag = 0;
 #endif
+    uint32_t cpu = ESP.getCpuFreqMHz();
+    float maxLoopMs = perfMaxLoopUs / 1000.0f;
+
+    json = "{\"freeHeap\":";
+    json += freeHeap;
+    json += ",\"free_heap\":";
+    json += freeHeap;
+    json += ",\"frag\":";
+    json += frag;
     json += ",\"maxLoopUs\":";
     json += perfMaxLoopUs;
+    json += ",\"max_loop_ms\":";
+    json += String(maxLoopMs, 1);
     json += ",\"avgLoopUs\":";
     json += perfAvgLoopUs;
     json += ",\"cpuMhz\":";
-    json += ESP.getCpuFreqMHz();
+    json += cpu;
+    json += ",\"cpu_mhz\":";
+    json += cpu;
     json += ",\"uptimeSec\":";
-    json += (millis() / 1000UL);
+    json += uptime;
+    json += ",\"uptime\":";
+    json += uptime;
     json += "}";
     request->send(200, "application/json", json);
-  });
+  };
+  server.on("/api/debug/system", HTTP_GET, handleSystemMetrics);
+  server.on("/api/system/metrics", HTTP_GET, handleSystemMetrics);
 
   server.on("/api/allconfig", HTTP_GET, handleGetAllConfig);
   server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);

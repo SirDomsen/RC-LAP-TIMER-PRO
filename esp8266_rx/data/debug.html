@@ -272,15 +272,15 @@
         <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
           <select id="debugArcadeSelect" style="flex:1; min-width:240px; padding:6px 10px;">
             <optgroup label="Grand Prix Circuit (1988)">
-              <option value="gpc_title" selected>🏎️ Title Theme (Chiptune)</option>
-              <option value="gpc_menu">🏁 Menu Theme (Upbeat Chiptune)</option>
+              <option value="gpc_title" selected>🏎️ Title Theme</option>
+              <option value="gpc_menu">🏁 Menu Theme</option>
             </optgroup>
             <optgroup label="Test Drive 1 (1987)">
               <option value="td1_title">🚗 Intro / Title Theme</option>
-              <option value="td1_menu">⚡ Menu Beat (Original Groove)</option>
+              <option value="td1_menu">⚡ Menu Beat</option>
             </optgroup>
             <optgroup label="Test Drive 3: The Passion (1990)">
-              <option value="td3_theme">🔥 The Passion (Main Theme)</option>
+              <option value="td3_theme">🔥 Title Theme</option>
               <option value="td3_radio1">📻 Radio 1 (Synth-Rock)</option>
               <option value="td3_radio2">📻 Radio 2 (Synth-Bass)</option>
               <option value="td3_radio3">📻 Radio 3 (Melodic Groove)</option>
@@ -513,19 +513,28 @@
       let tStart = performance.now();
       try {
         let res = await fetch('/api/system/metrics');
+        if (!res.ok && res.status === 404) {
+          res = await fetch('/api/debug/system');
+        }
         let tEnd = performance.now();
         if (res.ok) {
           let data = await res.json();
-          currentUptimeSec = data.uptime;
-          document.getElementById('valUptime').innerText = formatUptime(data.uptime);
-          document.getElementById('valCpu').innerText = data.cpu_mhz + " MHz";
-          document.getElementById('valHeap').innerText = Math.round(data.free_heap / 1024) + " KB";
+          let uptime = data.uptime ?? data.uptimeSec ?? 0;
+          let cpu = data.cpu_mhz ?? data.cpuMhz ?? "--";
+          let heap = data.free_heap ?? data.freeHeap ?? 0;
+          let frag = data.frag ?? 0;
+          let maxLoop = data.max_loop_ms ?? (data.maxLoopUs !== undefined ? (data.maxLoopUs / 1000).toFixed(1) : "--");
+
+          currentUptimeSec = uptime;
+          document.getElementById('valUptime').innerText = formatUptime(uptime);
+          document.getElementById('valCpu').innerText = cpu + " MHz";
+          document.getElementById('valHeap').innerText = Math.round(heap / 1024) + " KB";
           
           let fragEl = document.getElementById('valFrag');
-          fragEl.innerText = data.frag + " %";
-          fragEl.style.color = data.frag > 30 ? "var(--neon-orange)" : (data.frag > 50 ? "var(--neon-red)" : "var(--neon-green)");
+          fragEl.innerText = frag + " %";
+          fragEl.style.color = frag > 30 ? "var(--neon-orange)" : (frag > 50 ? "var(--neon-red)" : "var(--neon-green)");
           
-          document.getElementById('valMaxLoop').innerText = data.max_loop_ms + " ms";
+          document.getElementById('valMaxLoop').innerText = maxLoop + " ms";
           document.getElementById('valPing').innerText = Math.round(tEnd - tStart) + " ms";
         }
       } catch (e) {
@@ -614,6 +623,8 @@
       const assets = [
         { url: '/index.html?v=4.5.9', type: 'html' },
         { url: '/admin.html?v=4.5.9', type: 'html' },
+        { url: '/update.html?v=4.5.9', type: 'html' },
+        { url: '/debug.html?v=4.5.9', type: 'html' },
         { url: '/style.css?v=4.5.9', type: 'css' },
         { url: '/tts.js?v=4.5.9', type: 'js' },
         { url: '/websocket.js?v=4.5.9', type: 'js' },
