@@ -1066,6 +1066,15 @@ tr.my-selected-car-row {
 .modal-content.theme-orange { border-color: var(--neon-orange) !important; box-shadow: 0 0 35px rgba(255, 153, 0, 0.45) !important; }
 .modal-content.theme-cyan   { border-color: var(--neon-cyan) !important; box-shadow: 0 0 35px rgba(0, 229, 255, 0.4) !important; }
 .modal-content.theme-green  { border-color: var(--neon-green) !important; box-shadow: 0 0 35px rgba(0, 255, 102, 0.4) !important; }
+
+/* QR-Code Modal */
+#qrCodeContainer canvas,
+#qrCodeContainer img {
+  display: block;
+  margin: 0 auto;
+  border-radius: 4px;
+}
+
 .modal-body { 
   overflow-y: auto; 
   padding-right: 5px; 

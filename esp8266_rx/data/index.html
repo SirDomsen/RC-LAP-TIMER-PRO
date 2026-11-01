@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="style.css?v=4.5.2">
+  <link rel="stylesheet" href="style.css?v=4.5.5">
 </head>
 <body class="role-driver">
 
@@ -347,6 +347,7 @@
         <button class="btn" id="ttsToggleBtn" onclick="toggleTTS()">🔊 Ton: AN</button>
         <button class="btn btn-ios" id="iosUnmuteBtn" onclick="unmuteIOSAudio()">📱 iOS Ton</button>
         <button class="btn btn-purple" onclick="activateOledDimmer()" title="Öffnet das Renn-Dashboard">🏎️ Dashboard</button>
+        <button class="btn btn-cyan" id="qrCodeBtn" onclick="openQrModal()" title="QR-Code zum Verbinden anzeigen">📲 QR-Code</button>
       </div>
       <div style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
         Sprachausgabe für: <strong id="ttsSelectedCarsDisplay" style="color: var(--neon-cyan);">Alle Fahrzeuge</strong>
@@ -574,6 +575,35 @@
     </div>
   </div>
 
+  <!-- MODAL: QR-CODE (VERBINDUNG / IP-ADRESSE) -->
+  <div id="qrModal" class="modal" style="z-index: 10007;">
+    <div class="modal-content" style="max-width: 380px; text-align: center; border: 1px solid var(--neon-cyan); box-shadow: 0 0 25px rgba(0, 229, 255, 0.35);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom: 1px solid #222; padding-bottom: 8px;">
+        <h3 style="color:var(--neon-cyan); margin:0; font-family:var(--font-display); font-size:15px; letter-spacing:1px;">📲 MIT ZEITMESSUNG VERBINDEN</h3>
+        <button class="btn btn-danger" style="padding:4px 10px; font-size:16px; cursor:pointer;" onclick="closeQrModal()">✕</button>
+      </div>
+
+      <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:5px 0;">
+        <p style="font-size:13px; color:var(--text-muted); margin-top:0; margin-bottom:12px; line-height:1.4;">
+          Scanne den QR-Code mit der Handykamera, um die Zeitmessung direkt im Browser zu öffnen:
+        </p>
+
+        <!-- QR-Code Container -->
+        <div id="qrCodeContainer" style="background:#ffffff; padding:14px; border-radius:12px; display:inline-flex; justify-content:center; align-items:center; box-shadow:0 0 20px rgba(0,229,255,0.35); margin:6px auto;"></div>
+
+        <!-- URL-Anzeige -->
+        <div style="margin-top:14px; width:100%; box-sizing:border-box; background:rgba(0,0,0,0.5); padding:10px; border-radius:8px; border:1px dashed var(--neon-cyan);">
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Direkt-Link:</div>
+          <a id="qrUrlLink" href="#" target="_blank" style="font-family:monospace; font-size:14px; color:var(--neon-green); font-weight:bold; word-break:break-all; text-decoration:none;">http://...</a>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px;">
+        <button class="btn btn-warning" style="margin:0; width:100%;" onclick="closeQrModal()">Schließen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- UNIVERSELLES DIALOG-MODAL -->
   <div id="universalModal" class="modal" style="z-index: 10010;">
     <div class="modal-content" id="universalModalContent" style="max-width:460px; text-align:center;">
@@ -596,15 +626,16 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.4</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.5.5</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
-  <script src="tts.js?v=4.5.4"></script>
-  <script src="websocket.js?v=4.5.4"></script>
-  <script src="modes.js?v=4.5.4"></script>
-  <script src="main.js?v=4.5.4"></script>
+  <script src="qrcode.min.js?v=4.5.5"></script>
+  <script src="tts.js?v=4.5.5"></script>
+  <script src="websocket.js?v=4.5.5"></script>
+  <script src="modes.js?v=4.5.5"></script>
+  <script src="main.js?v=4.5.5"></script>
 </body>
 </html>

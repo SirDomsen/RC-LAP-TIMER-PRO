@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.4'; 
+window.UI_VERSION = '4.5.5'; 
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -3283,6 +3283,53 @@ window.addEventListener('DOMContentLoaded', async () => {
   }, 800);
 });
 
+// ==========================================
+// QR-CODE VERBINDUNG / IP-ADRESSE
+// ==========================================
+let qrCodeInstance = null;
+
+function openQrModal() {
+  const modal = document.getElementById('qrModal');
+  if (!modal) return;
+
+  const currentUrl = window.location.origin ? (window.location.origin + '/') : (window.location.protocol + '//' + window.location.host + '/');
+
+  const linkEl = document.getElementById('qrUrlLink');
+  if (linkEl) {
+    linkEl.href = currentUrl;
+    linkEl.textContent = currentUrl;
+  }
+
+  const container = document.getElementById('qrCodeContainer');
+  if (container) {
+    container.innerHTML = '';
+    try {
+      if (typeof QRCode !== 'undefined') {
+        qrCodeInstance = new QRCode(container, {
+          text: currentUrl,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } else {
+        container.innerHTML = '<span style="color:#000; font-size:12px; font-weight:bold;">QR-Bibliothek nicht geladen.</span>';
+      }
+    } catch (e) {
+      console.error("[QR] Fehler beim Erstellen des QR-Codes:", e);
+      container.innerHTML = '<span style="color:#000; font-size:12px; font-weight:bold;">Generierungsfehler</span>';
+    }
+  }
+
+  modal.style.display = 'block';
+}
+
+function closeQrModal() {
+  const modal = document.getElementById('qrModal');
+  if (modal) modal.style.display = 'none';
+}
+
 window.onclick = function(event) {
   if (event.target === document.getElementById('universalModal')) closeUniversalDialog(false);
   if (event.target === document.getElementById('adminConfirmModal')) closeAdminConfirmModal();
@@ -3296,6 +3343,7 @@ window.onclick = function(event) {
   if (event.target === document.getElementById('ghostHuntModal')) closeGhostHuntModal();
   if (event.target === document.getElementById('trackRecordsModal')) closeTrackRecordsModal();
   if (event.target === document.getElementById('arcadeModal')) closeArcadeModal();
+  if (event.target === document.getElementById('qrModal')) closeQrModal();
   if (event.target === document.getElementById('roleSelectModal') && userRole) {
     document.getElementById('roleSelectModal').style.display = 'none';
   }
@@ -3317,6 +3365,7 @@ document.addEventListener('keydown', function(e) {
     closeStorageFullModal();
     closeTrackRecordsModal();
     closeArcadeModal();
+    closeQrModal();
     if (userRole && document.getElementById('roleSelectModal')) {
       document.getElementById('roleSelectModal').style.display = 'none';
     }
