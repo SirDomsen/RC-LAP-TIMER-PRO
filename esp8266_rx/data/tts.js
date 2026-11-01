@@ -458,7 +458,33 @@ function playWebAudioGhostVictory() {
   });
 }
 
+function playWebAudioSectorTick(driverNum = 1) {
+  let ctx = getWebAudioContext();
+  if (!ctx) return;
+  // A7 = 3520 Hz
+  // Fahrer 1: einfacher Tick: A7, 25ms
+  // Fahrer 2: doppelter Tick: A7 20ms, 15ms Pause, A7 20ms
+  let tones = (driverNum === 2)
+    ? [ [3520, 0.020, 0.015], [3520, 0.020, 0.005] ]
+    : [ [3520, 0.025, 0.005] ];
+
+  let startTime = ctx.currentTime;
+  tones.forEach(([freq, dur, pause]) => {
+    let osc = ctx.createOscillator();
+    let gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.20;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + dur);
+    startTime += (dur + pause);
+  });
+}
+
 window.getWebAudioContext = getWebAudioContext;
 window.playWebAudioGhostAhead = playWebAudioGhostAhead;
 window.playWebAudioGhostBehind = playWebAudioGhostBehind;
 window.playWebAudioGhostVictory = playWebAudioGhostVictory;
+window.playWebAudioSectorTick = playWebAudioSectorTick;

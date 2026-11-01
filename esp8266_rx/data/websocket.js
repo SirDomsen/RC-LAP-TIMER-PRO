@@ -512,26 +512,48 @@ function onSectorLiveEvent(msg) {
   // Fahrer 2 ist reiner Zuhoerer fuer seine eigenen Rundenzeiten und erzeugt keine Geister-Sounds.
   // WICHTIG: Bei Zieldurchfahrt (isFinal / sector 4) KEINEN Sektor-Beep spielen, hier spielt nur die Runden-Fanfare / Runden-Ton!
   let isFinalSector = !!msg.isFinal || (msg.sector === 4);
-  if (isGhostHuntActive && isGhostHunter && effectiveGhostDelta !== undefined) {
+  let driverIdx = 0;
+  if (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) {
+    if (selectedTTSCars[0] === carId) driverIdx = 1;
+    else if (selectedTTSCars.length >= 2 && selectedTTSCars[1] === carId) driverIdx = 2;
+  }
+
+  if (isGhostHuntActive && isGhostHunter) {
     if (typeof updateGhostHudSector === 'function') {
       updateGhostHudSector({ ...msg, ghostDelta: effectiveGhostDelta });
     }
     if (!isFinalSector) {
-      if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) {
-        if (effectiveGhostDelta <= 0) {
-          if (typeof playWebAudioGhostAhead === 'function') playWebAudioGhostAhead();
-        } else {
-          if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+      if (effectiveGhostDelta !== undefined) {
+        if (typeof ghostAudioBeepsEnabled !== 'undefined' && ghostAudioBeepsEnabled) {
+          if (effectiveGhostDelta <= 0) {
+            if (typeof playWebAudioGhostAhead === 'function') playWebAudioGhostAhead();
+          } else {
+            if (typeof playWebAudioGhostBehind === 'function') playWebAudioGhostBehind();
+          }
         }
-      }
-      if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled) {
-        if (typeof formatGhostDeltaForTTS === 'function') {
-          let ttsText = formatGhostDeltaForTTS(effectiveGhostDelta);
-          if (ttsText) speak(ttsText, false, carId);
+        if (typeof ghostTtsDeltaEnabled !== 'undefined' && ghostTtsDeltaEnabled) {
+          if (typeof formatGhostDeltaForTTS === 'function') {
+            let ttsText = formatGhostDeltaForTTS(effectiveGhostDelta);
+            if (ttsText) speak(ttsText, false, carId);
+          }
+        }
+      } else {
+        // Geist hat für diese SZ keine Vergleichszeit -> neutraler Durchfahrts-Tick (Fahrer 1)!
+        let ticksOn = (typeof sectorTicksEnabled === 'undefined') || sectorTicksEnabled;
+        if (ticksOn && typeof playWebAudioSectorTick === 'function') {
+          playWebAudioSectorTick(1);
         }
       }
     }
-  } else if (!isFinalSector && sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
+  } else if (!isFinalSector && driverIdx > 0) {
+    // Normaler Modus (Training/Quali/Rennen) oder Fahrer 2: SZ-Durchfahrts-Tick
+    let ticksOn = (typeof sectorTicksEnabled === 'undefined') || sectorTicksEnabled;
+    if (ticksOn && typeof playWebAudioSectorTick === 'function') {
+      playWebAudioSectorTick(driverIdx);
+    }
+  }
+
+  if (!isFinalSector && sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
     let driver = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
     let text = "";
     if (msg.isOverallBest) {

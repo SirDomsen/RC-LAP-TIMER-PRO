@@ -135,8 +135,9 @@
 * **`update.html`:**
   * LittleFS-Dateimanager (Ordner-Ansicht, ZIP-Download einzelner Ordner oder des gesamten Speichers) und Firmware-OTA-Upload.
 * **`debug.html`:**
-  * Live-Monitoring von ESP-Loop-Zeiten, Heap, ESP-NOW Funkpaketen und Signalstärken.
-  * Integrierte **Frontend- & Asset-Live-Diagnose** (HTTP-Status, GZIP-Prüfung, Syntax-Check, WebSocket-Handshake).
+  * Live-Monitoring von ESP-Loop-Zeiten, Heap, ESP-NOW Funkpaketen und Signalstärken via Dual-Endpunkt (`/api/debug/system` & `/api/system/metrics`) mit dynamischer Farbkodierung (Neon-Cyan / Grün / Orange / Rot).
+  * Integrierte **Frontend- & Asset-Live-Diagnose** (automatische Prüfung von HTTP-Status, GZIP-Kompression, JS-Syntax und WebSocket-Handshake für alle 4 Webseiten inklusive `update.html` und `debug.html`).
+  * Integrierte **Audio & Buzzer Test-Konsole**: 3-teilige Prüfumgebung mit interaktiven Buttons für ESP8266 Hardware-Buzzer FX & 8-Track Jukebox, Smartphone Web Audio Synthesizer (100% klanggleich) und Web Speech API (TTS-Rennansagen).
 * **`banner.jpg` / `banner.webp` & `style.css`:**
   * Original Synthwave/Arcade Hero-Banner (1024×434 px, 2,36:1 Breitwandformat) mit Zielflaggen-Muster und integriertem "RC LAP TIMER" Logo im `.hero-header`.
   * Perfekt proportionierte, unverzerrte Skalierung (`aspect-ratio: 1024 / 434`) ohne HTML-Textüberlagerung.

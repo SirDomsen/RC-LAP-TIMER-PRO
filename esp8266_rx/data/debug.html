@@ -303,6 +303,8 @@
           Wird via Web Audio API (Square-Wave Oszillator) latenzfrei direkt auf dem Handy-Lautsprecher erzeugt.
         </div>
         <div class="audio-btn-row">
+          <button class="audio-btn" style="color:var(--neon-green); border-color:var(--neon-green);" onclick="playWebSectorTick(1)">⏱️ SZ-Tick F1 (A7 einfach 25ms)</button>
+          <button class="audio-btn" style="color:var(--neon-cyan); border-color:var(--neon-cyan);" onclick="playWebSectorTick(2)">⏱️ SZ-Tick F2 (A7 doppelt)</button>
           <button class="audio-btn btn-green" onclick="playWebGhostAhead()">🟢 Sektor-Vorsprung (Doppel-Beep)</button>
           <button class="audio-btn btn-danger" onclick="playWebGhostBehind()">🔴 Sektor-Rückstand (Bass-Beep)</button>
           <button class="audio-btn btn-gold" onclick="playWebGhostVictory()">👻 Geist geschlagen (Fanfare)</button>
@@ -843,6 +845,29 @@
       } else {
         updateAudioBadge('Web Audio: Nicht unterstützt', 'var(--neon-red)');
       }
+    }
+
+    function playWebSectorTick(driverNum = 1) {
+      let ctx = getDebugAudioContext();
+      if (!ctx) return;
+      // A7 = 3520 Hz
+      let tones = (driverNum === 2)
+        ? [ [3520, 0.020, 0.015], [3520, 0.020, 0.005] ]
+        : [ [3520, 0.025, 0.005] ];
+      let t = ctx.currentTime;
+      tones.forEach(([freq, dur, pause]) => {
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.value = 0.20;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur);
+        t += (dur + pause);
+      });
+      updateAudioBadge('Web Audio: SZ-Tick F' + driverNum + ' (A7 ' + (driverNum === 2 ? 'doppelt' : 'einfach') + ')');
     }
 
     function playWebGhostAhead() {

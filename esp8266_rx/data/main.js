@@ -21,6 +21,7 @@ function formatLapTime(ms, fallback = '---') {
 }
 window.formatLapTime = formatLapTime; 
 let sectorAudioEnabled = JSON.parse(localStorage.getItem('sectorAudioEnabled') ?? 'true');
+let sectorTicksEnabled = JSON.parse(localStorage.getItem('sectorTicksEnabled') ?? 'true');
 let ghostTtsDeltaEnabled = JSON.parse(localStorage.getItem('ghostTtsDeltaEnabled') ?? 'true');
 let ghostAudioBeepsEnabled = JSON.parse(localStorage.getItem('ghostAudioBeepsEnabled') ?? 'true');
 let localGhostHuntActive = JSON.parse(localStorage.getItem('localGhostHuntActive') ?? 'false');
@@ -31,6 +32,7 @@ try {
 } catch (e) {}
 window.localGhostHuntActive = localGhostHuntActive;
 window.currentGhostTarget = currentGhostTarget;
+window.sectorTicksEnabled = sectorTicksEnabled;
 
 function updateGhostButtonStates() {
   let btn = document.getElementById('ghostHuntDriverBtn');
@@ -474,6 +476,9 @@ function openDriverConfigModal() {
   let szAudioCb = document.getElementById('driver_cfg_sector_audio');
   if (szAudioCb) szAudioCb.checked = sectorAudioEnabled;
 
+  let szTicksCb = document.getElementById('driver_cfg_sector_ticks');
+  if (szTicksCb) szTicksCb.checked = (typeof sectorTicksEnabled !== 'undefined') ? sectorTicksEnabled : true;
+
   let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
 
@@ -497,6 +502,13 @@ function saveDriverAudioConfig() {
   if (szAudioCb) {
     sectorAudioEnabled = szAudioCb.checked;
     localStorage.setItem('sectorAudioEnabled', JSON.stringify(sectorAudioEnabled));
+  }
+
+  let szTicksCb = document.getElementById('driver_cfg_sector_ticks');
+  if (szTicksCb) {
+    sectorTicksEnabled = szTicksCb.checked;
+    window.sectorTicksEnabled = sectorTicksEnabled;
+    localStorage.setItem('sectorTicksEnabled', JSON.stringify(sectorTicksEnabled));
   }
 
   let lapTimeCb = document.getElementById('driver_cfg_announce_lap_times');
