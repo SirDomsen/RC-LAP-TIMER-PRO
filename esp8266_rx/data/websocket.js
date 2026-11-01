@@ -298,6 +298,7 @@ function handleLiveEvent(msg) {
       announced30 = false;
       announced10 = false;
       timeExpiredAnnounced = false;
+      if (typeof closeGhostHuntModal === 'function') closeGhostHuntModal();
       if (prevMode === 5) {
         let ghHud = document.getElementById('ghostHudContainer');
         if (ghHud) ghHud.style.display = 'none';
@@ -336,6 +337,10 @@ function onSessionStartLiveEvent(msg) {
   if (typeof lastStartAnnouncedTs !== 'undefined') lastStartAnnouncedTs = {};
   if (typeof loadTracks === 'function') loadTracks();
 
+  if (typeof closeGhostHuntModal === 'function') {
+    closeGhostHuntModal();
+  }
+
   if (currentMode === 5) {
     window.localGhostHuntActive = false;
     if (typeof localGhostHuntActive !== 'undefined') localGhostHuntActive = false;
@@ -344,8 +349,15 @@ function onSessionStartLiveEvent(msg) {
     if (typeof speak === 'function') speak("Ghost Battle gestartet!", true);
     if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
     if (typeof renderGhostHud === 'function') renderGhostHud();
-  } else if (prevMode === 5 && currentMode !== 5) {
-    if (typeof speak === 'function') speak("Ghost Battle beendet.", true);
+  } else {
+    if (prevMode === 5) {
+      if (typeof speak === 'function') speak("Ghost Battle beendet.", true);
+    }
+    window.localGhostHuntActive = false;
+    if (typeof localGhostHuntActive !== 'undefined') localGhostHuntActive = false;
+    localStorage.removeItem('localGhostHuntActive');
+    localStorage.removeItem('localGhostTarget');
+
     let ghHud = document.getElementById('ghostHudContainer');
     if (ghHud) ghHud.style.display = 'none';
     let ghBanner = document.getElementById('ghostBeatenBanner');

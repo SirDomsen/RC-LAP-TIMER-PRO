@@ -60,6 +60,9 @@ function startDragrace() {
 }
 
 function sendSession(mode, duration, laps, speakText) {
+  if (typeof closeGhostHuntModal === 'function') {
+    closeGhostHuntModal();
+  }
   if (typeof isStorageFull !== 'undefined' && (isStorageFull || currentFsPct >= 95)) {
     if (typeof openStorageFullModal === 'function') {
       openStorageFullModal();
