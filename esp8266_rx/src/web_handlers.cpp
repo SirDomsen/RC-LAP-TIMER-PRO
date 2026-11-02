@@ -301,6 +301,16 @@ void handleGetNames(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
+void handleGetNameHistory(AsyncWebServerRequest *request) {
+  if (!LittleFS.exists("/names_history.jsonl")) {
+    request->send(200, "application/x-ndjson", "");
+    return;
+  }
+  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/names_history.jsonl", "application/x-ndjson");
+  response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  request->send(response);
+}
+
 void handleGetVersion(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   String json;
@@ -336,9 +346,10 @@ void handlePostRename(AsyncWebServerRequest *request) {
     String car = request->hasParam("car") ? request->getParam("car")->value() : carNames[id];
     
     if (id >= 1 && id <= MAX_CARS) {
-      driverNames[id] = driver;
-      carNames[id] = car;
-      saveNamesToEEPROM(id, driver, car);
+      if (!saveNamesToEEPROM(id, driver, car)) {
+        request->send(500, "text/plain", "Fahrer-/Auto-Zuordnung konnte nicht dauerhaft gespeichert werden.");
+        return;
+      }
       if (dailyBestCarId == id || allTimeBestCarId == id) {
         if (dailyBestCarId == id) {
           dailyBestDriver = driver;

@@ -1,6 +1,7 @@
 let allSessionsCache = [];
 let sessionFileCache = {};
 let currentStatsTrackFilter = 'all';
+window.carNamesHistoryMap = window.carNamesHistoryMap || {};
 
 if (typeof formatLapTime !== 'function') {
   window.formatLapTime = function(ms, fallback = '---') {
@@ -62,18 +63,45 @@ function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-function getCarDriverName(carId) {
+function getHistoricalCarNames(carId, timestampMs) {
+  let entries = window.carNamesHistoryMap?.[carId];
+  let ts = Number(timestampMs) || 0;
+  if (!Array.isArray(entries) || ts <= 0) return null;
+
+  let latest = null;
+  entries.forEach(entry => {
+    if (Number(entry.ts) <= ts && (!latest || Number(entry.ts) >= Number(latest.ts))) {
+      latest = entry;
+    }
+  });
+  return latest;
+}
+
+function getCarDriverName(carId, timestampMs = 0) {
+  let historical = getHistoricalCarNames(carId, timestampMs);
+  if (historical?.driver) return historical.driver;
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.driver) {
     return carNamesMap[carId].driver;
   }
   return 'Fahrer ' + (carId || '?');
 }
 
-function getCarCarName(carId) {
+function getCarCarName(carId, timestampMs = 0) {
+  let historical = getHistoricalCarNames(carId, timestampMs);
+  if (historical?.car) return historical.car;
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.car) {
     return carNamesMap[carId].car;
   }
   return 'Auto ' + (carId || '?');
+}
+
+function getSessionResultNames(session, result) {
+  let timestampMs = Number(result.bestTs) || (Number(session.startTs) * 1000);
+  let historical = getHistoricalCarNames(result.id, timestampMs);
+  return {
+    driver: historical?.driver || result.driver || getCarDriverName(result.id),
+    car: historical?.car || result.car || getCarCarName(result.id)
+  };
 }
 
 function modeToTabName(mode) {
@@ -430,8 +458,9 @@ function getAggregatedRecords() {
 
       (s.results || []).forEach(r => {
         if (!r.bestLap || r.bestLap <= 0) return;
-        let dName = r.driver || getCarDriverName(r.id);
-        let cName = r.car || getCarCarName(r.id);
+        let names = getSessionResultNames(s, r);
+        let dName = names.driver;
+        let cName = names.car;
         let comboKey = `${tId}_${dName.toLowerCase()}_${cName.toLowerCase()}`;
 
         if (!comboBestMap[comboKey] || r.bestLap < comboBestMap[comboKey].lap) {
@@ -932,8 +961,9 @@ function renderSessionsByMode(mode, containerId) {
       let bestStr = formatLapTime(r.bestLap);
       let avgStr = formatLapTime(r.avgLap);
       let driverDetailId = `s_${safeId}_driver_${r.id}`;
-      let dName = carNamesMap[r.id]?.driver || r.driver || ("Fahrer " + r.id);
-      let cName = carNamesMap[r.id]?.car || r.car || ("Auto " + r.id);
+      let names = getSessionResultNames(s, r);
+      let dName = names.driver;
+      let cName = names.car;
 
       let isDriverOpen = !!openDriverDetailsMap[driverDetailId];
       let driverBtnText = isDriverOpen ? 'Details 🔼' : 'Details 🔽';
@@ -993,7 +1023,14 @@ async function fetchSessionFileData(filePath) {
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let data = await res.json();
   if (data && Array.isArray(data.laps)) {
-    data.laps = data.laps.map(normalizeLap);
+    data.laps = data.laps.map(normalizeLap).map(lap => {
+      let historical = getHistoricalCarNames(lap.carId, lap.ts);
+      return historical ? {
+        ...lap,
+        driver: historical.driver,
+        car: historical.car
+      } : lap;
+    });
   }
   sessionFileCache[filePath] = data;
   return data;
@@ -1163,6 +1200,7 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
     <thead>
       <tr>
         <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'lap')">${roundLabel} ${getSortIconHtml(state, 'lap')}</th>
+        <th>Fahrer / Auto</th>
         <th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz1')">SZ1 ${getSortIconHtml(state, 'sz1')}</th>
         ${showSz2Col ? `<th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz2')">SZ2 ${getSortIconHtml(state, 'sz2')}</th>` : ''}
         ${showSz3Col ? `<th class="sortable" onclick="event.stopPropagation(); sortEmbeddedDriverLaps('${elemId}', 'sz3')">SZ3 ${getSortIconHtml(state, 'sz3')}</th>` : ''}
@@ -1226,9 +1264,11 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
     let delCol = isAdmin
       ? `<td><button class="btn-icon" title="Runde löschen" onclick="deleteSingleLapFromSession('${sessionId}', '${sessionFile}', ${carId}, ${l.lap})">🗑</button></td>`
       : '';
+    let assignment = [l.driver, l.car].filter(Boolean).map(escapeHtml).join(' / ') || '—';
 
     html += `<tr>
       <td>${roundLabel} ${displayNum}</td>
+      <td>${assignment}</td>
       <td>${sz1Content}</td>
       ${showSz2Col ? `<td>${sz2Content}</td>` : ''}
       ${showSz3Col ? `<td>${sz3Content}</td>` : ''}
@@ -1882,6 +1922,7 @@ async function downloadStatsBackup() {
     exportedAt: Math.floor(Date.now() / 1000),
     tracks: [],
     names: {},
+    namesHistory: '',
     sessions: [],
     sessionFiles: {}
   };
@@ -1899,6 +1940,10 @@ async function downloadStatsBackup() {
     let nRes = await fetch('/api/names');
     if (!nRes.ok) throw new Error("Fahrernamen konnten nicht geladen werden (HTTP " + nRes.status + ").");
     backupData.names = await nRes.json();
+
+    let historyRes = await fetch('/api/names-history', { cache: 'no-store' });
+    if (!historyRes.ok) throw new Error("Namenshistorie konnte nicht geladen werden (HTTP " + historyRes.status + ").");
+    backupData.namesHistory = await historyRes.text();
 
     for (let s of backupData.sessions) {
       if (s.file) {
@@ -1933,6 +1978,22 @@ async function downloadStatsBackup() {
 function triggerRestoreBackup() {
   let inp = document.getElementById('backupFileInput');
   if (inp) inp.click();
+}
+
+function serializeNameHistoryForRestore(history) {
+  if (typeof history === 'string') return history;
+  if (!Array.isArray(history)) {
+    throw new Error("Die Namenshistorie hat kein gültiges Format.");
+  }
+
+  return history.map((entry, index) => {
+    if (!entry || !Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
+        !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+        typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
+      throw new Error(`Ungültiger Eintrag in der Namenshistorie (Eintrag ${index + 1}).`);
+    }
+    return JSON.stringify(entry);
+  }).join('\n');
 }
 
 async function handleRestoreBackup(event) {
@@ -1974,6 +2035,14 @@ async function handleRestoreBackup(event) {
 
       if (parsed.names) {
         await uploadBackupJson('/names.json', parsed.names);
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed, 'namesHistory')) {
+        let historyText = serializeNameHistoryForRestore(parsed.namesHistory);
+        let historyBlob = new Blob([historyText], { type: 'application/x-ndjson' });
+        let historyForm = new FormData();
+        historyForm.append('data', historyBlob, '/names_history.jsonl');
+        let historyResponse = await fetch('/api/upload', { method: 'POST', body: historyForm });
+        if (!historyResponse.ok) throw new Error("Namenshistorie konnte nicht wiederhergestellt werden (HTTP " + historyResponse.status + ").");
       }
 
       let fileKeys = Object.keys(parsed.sessionFiles);
@@ -2108,8 +2177,9 @@ async function rebuildSessionsIndexUI() {
               carTimeSumMap[c] = 0;
               carValidMap[c] = 0;
             }
-            if (origL.driver) carDriverNameMap[c] = origL.driver;
-            if (origL.car) carCarNameMap[c] = origL.car;
+            let historical = getHistoricalCarNames(c, l.ts);
+            if (historical?.driver || origL.driver) carDriverNameMap[c] = historical?.driver || origL.driver;
+            if (historical?.car || origL.car) carCarNameMap[c] = historical?.car || origL.car;
 
             if (l.lap > carLapsMap[c]) carLapsMap[c] = l.lap;
             else carLapsMap[c]++;
@@ -2148,13 +2218,15 @@ async function rebuildSessionsIndexUI() {
         let results = activeCarIds.map((c, idx) => {
           let avg = (carValidMap[c] > 0) ? Math.round(carTimeSumMap[c] / carValidMap[c]) : 0;
           let bestLapObj = carBestLapObjMap[c] || {};
+          let historical = getHistoricalCarNames(c, bestLapObj.ts);
           return {
             pos: idx + 1,
             id: c,
-            driver: carDriverNameMap[c] || getCarDriverName(c),
-            car: carCarNameMap[c] || getCarCarName(c),
+            driver: historical?.driver || carDriverNameMap[c] || getCarDriverName(c),
+            car: historical?.car || carCarNameMap[c] || getCarCarName(c),
             laps: carLapsMap[c] || 0,
             bestLap: carBestMap[c] || 0,
+            bestTs: (carBestLapObjMap[c] || {}).ts || 0,
             avgLap: avg,
             sz1: bestLapObj.sz1 || 0,
             sz2: bestLapObj.sz2 || 0,
@@ -2273,8 +2345,9 @@ async function rebuildSessionsIndexUI() {
         if (s.mode !== 4 && Array.isArray(s.results)) {
           s.results.forEach(r => {
             if (!r.bestLap || r.bestLap <= 0) return;
-            let dName = (r.driver || '').trim() || getCarDriverName(r.id);
-            let cName = (r.car || '').trim() || getCarCarName(r.id);
+            let names = getSessionResultNames(s, r);
+            let dName = (names.driver || '').trim() || getCarDriverName(r.id);
+            let cName = (names.car || '').trim() || getCarCarName(r.id);
             let comboKey = `${dName.toLowerCase()}_${cName.toLowerCase()}`;
 
             let entry = {

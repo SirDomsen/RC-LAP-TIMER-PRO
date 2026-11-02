@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.9'; 
+window.UI_VERSION = '4.5.11';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -78,6 +78,7 @@ let lastLapDeltaMap = {};
 let previousBestSzMap = {};
 let lastAnnouncedLapMap = {}; 
 let carNamesMap = {};
+window.carNamesHistoryMap = {};
 let audioUnmuted = false;
 let lastLapsData = [];
 let awaitingBaseCrossMap = {};
@@ -2234,9 +2235,40 @@ async function loadVersion() {
 async function loadCarNames() {
   try {
     let response = await fetch('/api/names');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
     let names = await response.json();
     for (let i = 1; i <= MAX_CARS; i++) {
       if (names[i]) carNamesMap[i] = names[i];
+    }
+
+    try {
+      let historyResponse = await fetch('/api/names-history', { cache: 'no-store' });
+      if (!historyResponse.ok) throw new Error('HTTP ' + historyResponse.status);
+      let historyText = await historyResponse.text();
+      let history = {};
+      let lines = historyText.split(/\r?\n/);
+      lines.forEach((line, index) => {
+        if (!line.trim()) return;
+        let entry;
+        try {
+          entry = JSON.parse(line);
+        } catch (error) {
+          if (index === lines.length - 1 && !historyText.endsWith('\n')) return;
+          throw new Error(`Ungültiger Eintrag in der Namenshistorie (Zeile ${index + 1}): ${error.message}`);
+        }
+        if (!Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
+            !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+            typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
+          throw new Error(`Ungültige Daten in der Namenshistorie (Zeile ${index + 1}).`);
+        }
+        if (!history[entry.id]) history[entry.id] = [];
+        history[entry.id].push(entry);
+      });
+      Object.values(history).forEach(entries => entries.sort((a, b) => a.ts - b.ts));
+      window.carNamesHistoryMap = history;
+    } catch (historyError) {
+      window.carNamesHistoryMap = {};
+      console.error("Fehler beim Laden der Namenshistorie:", historyError);
     }
     populateDriverQuickSelect();
   } catch (e) {

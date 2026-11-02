@@ -7,7 +7,7 @@ Die Offline-Statistik ist eine lokale, vollbildfähige Auswertung für Lap-Timer
 - Einstieg: `offline_stats/index.html`
 - Implementierung des Offline-Datenadapters, ZIP-Import/-Export und IndexedDB: `offline_stats/offline_stats.js`
 - Gemeinsame Statistikdarstellung: `data/stats.js`
-- Aktuelle Offline-App-Version: **0.8.0**
+- Aktuelle Offline-App-Version: **0.8.1**
 - Speicherung: IndexedDB `rc-lap-timer-offline-stats`
 
 Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-Löschen oder Flash-Reparaturen werden nicht als lokale Änderungen ausgeführt.
@@ -19,16 +19,16 @@ Unterstützte Eingaben:
 - LittleFS-ZIP-Backups des Lap Timers
 - Statistik-JSON-Backups der Versionen 3 und 4
 
-Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
+Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `names_history.jsonl`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. `names_history.jsonl` protokolliert zeitgestempelt, welcher Fahrer und welches Auto einer Transponder-ID zugeordnet waren; Session-Ergebnisse nutzen den Zeitstempel ihrer besten Runde. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
 
 Die Daten werden nach relativem Dateipfad in IndexedDB gespeichert und mit dem vorhandenen Bestand zusammengeführt:
 
 - Eine Statistikdatei am bereits gespeicherten Pfad wird aktualisiert.
 - Neue Sessiondateien werden ergänzt.
 - Sessions werden anhand ihres Dateipfads (ersatzweise ihrer ID) dedupliziert.
-- Streckenrekorde und Fahrernamen werden zusammengeführt.
+- Streckenrekorde, aktuelle Fahrernamen und Zuordnungshistorien werden zusammengeführt. Ältere Backups ohne Namenshistorie bleiben mit ihren gespeicherten Session-Namen nutzbar.
 
-Über **„Stats-ZIP herunterladen“** lässt sich die kumulierte Datenbank als ZIP mit denselben relativen Pfaden sichern. Dieses ZIP kann später wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien.
+Über **„Stats-ZIP herunterladen“** lässt sich die kumulierte Datenbank als ZIP mit denselben relativen Pfaden sichern. Dabei wird die Zuordnungshistorie als `names_history.json` exportiert; beim Import eines Geräte-Backups wird die originale `names_history.jsonl` eingelesen. Dieses ZIP kann später wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien.
 
 Die Datenbank bleibt zunächst im Browserprofil gespeichert. Browserdaten zu löschen oder ein anderes Browserprofil zu verwenden entfernt bzw. trennt diese lokale Datenbank; daher sollte das heruntergeladene Stats-ZIP als portables Backup aufbewahrt werden.
 

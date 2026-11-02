@@ -1,6 +1,7 @@
 window.offlineStatsMode = true;
 window.MAX_CARS = 15;
 window.carNamesMap = {};
+window.carNamesHistoryMap = {};
 window.allTracksList = [];
 window.activeTrackId = 'standard';
 window.activeTrackName = 'Standard';
@@ -11,7 +12,7 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '0.8.0';
+const OFFLINE_STATS_VERSION = '0.8.1';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
@@ -41,8 +42,56 @@ function normalizeStoredPath(path) {
 function isStatisticPath(path) {
   let normalized = normalizeStoredPath(path);
   if (!normalized || normalized.startsWith('__MACOSX/') || normalized.includes('/.')) return false;
-  if (['tracks.json', 'sessions.json', 'names.json', 'daily_best.json'].includes(normalized)) return true;
+  if (['tracks.json', 'sessions.json', 'names.json', 'names_history.json', 'names_history.jsonl', 'daily_best.json'].includes(normalized)) return true;
   return normalized.toLowerCase().endsWith('.json') && normalized.split('/').length >= 3;
+}
+
+function parseNameHistoryLines(text) {
+  let history = [];
+  let lines = String(text || '').split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (!line.trim()) return;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (error) {
+      if (index === lines.length - 1 && !String(text).endsWith('\n')) return;
+      throw new Error(`Ungültiger Eintrag in der Namenshistorie (Zeile ${index + 1}): ${error.message}`);
+    }
+    if (!Number.isInteger(entry.id) || entry.id < 1 || entry.id > window.MAX_CARS ||
+        !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+        typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
+      throw new Error(`Ungültige Daten in der Namenshistorie (Zeile ${index + 1}).`);
+    }
+    history.push(entry);
+  });
+  return history;
+}
+
+function validateNameHistory(history) {
+  if (!Array.isArray(history)) {
+    throw new Error('Namenshistorie enthält kein gültiges Ereignis-Array.');
+  }
+  history.forEach((entry, index) => {
+    if (!entry || !Number.isInteger(entry.id) || entry.id < 1 || entry.id > window.MAX_CARS ||
+        !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+        typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
+      throw new Error(`Ungültiger Eintrag in der Namenshistorie (Eintrag ${index + 1}).`);
+    }
+  });
+  return history;
+}
+
+function mergeNameHistory(existing, incoming) {
+  let merged = new Map();
+  [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
+    .forEach(entry => {
+      if (!entry || !Number.isInteger(entry.id) || entry.id < 1 || entry.id > window.MAX_CARS ||
+          !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+          typeof entry.driver !== 'string' || typeof entry.car !== 'string') return;
+      merged.set(`${entry.id}:${entry.ts}`, entry);
+    });
+  return Array.from(merged.values()).sort((a, b) => a.id - b.id || a.ts - b.ts);
 }
 
 function getOfflineTrackDocument(backup) {
@@ -95,6 +144,11 @@ window.loadCarNames = async function() {
     });
   }
   window.carNamesMap = names;
+  let byCar = {};
+  mergeNameHistory([], offlineBackup.namesHistory).forEach(entry => {
+    (byCar[entry.id] || (byCar[entry.id] = [])).push(entry);
+  });
+  window.carNamesHistoryMap = byCar;
 };
 
 window.loadTracks = async function() {
@@ -121,7 +175,16 @@ window.fetchSessionFileData = async function(filePath) {
   }
   let normalized = {
     ...data,
-    laps: Array.isArray(data.laps) ? data.laps.map(normalizeLap).filter(Boolean) : []
+    laps: Array.isArray(data.laps) ? data.laps.map(rawLap => {
+      let lap = normalizeLap(rawLap);
+      if (!lap) return null;
+      let historical = getHistoricalCarNames(lap.carId, lap.ts);
+      return historical ? {
+        ...lap,
+        driver: historical.driver,
+        car: historical.car
+      } : lap;
+    }).filter(Boolean) : []
   };
   sessionFileCache[filePath] = normalized;
   return normalized;
@@ -268,6 +331,10 @@ function mergeTrackDocuments(existing, incoming) {
 }
 
 function parseJsonEntry(path, bytes) {
+  if (path.toLowerCase() === 'names_history.jsonl') {
+    let content = parseNameHistoryLines(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    return { path, content, size: bytes.byteLength, modifiedAt: Date.now() };
+  }
   let content;
   try {
     content = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -300,6 +367,7 @@ function createStatisticsZip(fileMap, dataset) {
   let files = new Map(fileMap);
   files.set('tracks.json', { path: 'tracks.json', content: dataset.tracks });
   files.set('names.json', { path: 'names.json', content: dataset.names });
+  files.set('names_history.json', { path: 'names_history.json', content: dataset.namesHistory || [] });
   files.set('sessions.json', { path: 'sessions.json', content: { sessions: dataset.sessions } });
 
   let localEntries = [];
@@ -311,6 +379,7 @@ function createStatisticsZip(fileMap, dataset) {
   for (let [rawPath, entry] of files) {
     let path = normalizeStoredPath(rawPath);
     if (!path || !isStatisticPath(path)) continue;
+    if (path.toLowerCase() === 'names_history.jsonl') continue;
 
     let nameBytes = new TextEncoder().encode(path);
     let dataBytes = new TextEncoder().encode(JSON.stringify(entry.content));
@@ -489,6 +558,10 @@ function validateBackup(data) {
     { path: 'sessions.json', content: { sessions: data.sessions } }
   ];
   if (data.names) entries.push({ path: 'names.json', content: data.names });
+  let namesHistory = Array.isArray(data.namesHistory)
+    ? validateNameHistory(data.namesHistory)
+    : (typeof data.namesHistory === 'string' ? parseNameHistoryLines(data.namesHistory) : []);
+  if (namesHistory.length > 0) entries.push({ path: 'names_history.json', content: mergeNameHistory([], namesHistory) });
   Object.entries(data.sessionFiles).forEach(([name, content]) => {
     let path = normalizeStoredPath(name);
     if (path && isStatisticPath(path) && path.split('/').length >= 3) {
@@ -521,6 +594,8 @@ function payloadFromZipEntries(entries) {
   if (!names || typeof names !== 'object' || Array.isArray(names)) {
     throw new Error('names.json im ZIP enthält kein gültiges Fahrernamen-Objekt.');
   }
+  let namesHistory = byPath.get('names_history.json') || byPath.get('names_history.jsonl') || [];
+  validateNameHistory(namesHistory);
   let sessionFiles = {};
   entries.forEach(entry => {
     if (entry.path.split('/').length >= 3 && entry.path.toLowerCase().endsWith('.json')) {
@@ -528,7 +603,7 @@ function payloadFromZipEntries(entries) {
     }
   });
 
-  return { tracks: trackDocument, sessions, names, sessionFiles };
+  return { tracks: trackDocument, sessions, names, namesHistory, sessionFiles };
 }
 
 async function readImportFile(file) {
@@ -554,6 +629,9 @@ async function readImportFile(file) {
       tracks: trackDocument,
       sessions: backup.sessions,
       names: backup.names || {},
+      namesHistory: Array.isArray(backup.namesHistory)
+        ? validateNameHistory(backup.namesHistory)
+        : (typeof backup.namesHistory === 'string' ? parseNameHistoryLines(backup.namesHistory) : []),
       sessionFiles: backup.sessionFiles
     }
   };
@@ -567,10 +645,12 @@ function getDatasetFromSnapshot(snapshot, fileMap) {
   let stored = snapshot.state || {};
   let trackEntry = fileMap.get('tracks.json');
   let namesEntry = fileMap.get('names.json');
+  let namesHistoryEntry = fileMap.get('names_history.json');
   let sessionsEntry = fileMap.get('sessions.json');
   return {
     tracks: stored.tracks || (trackEntry && trackEntry.content) || null,
     names: stored.names || (namesEntry && namesEntry.content) || {},
+    namesHistory: stored.namesHistory || (namesHistoryEntry && namesHistoryEntry.content) || [],
     sessions: stored.sessions || (sessionsEntry && (sessionsEntry.content.sessions || sessionsEntry.content)) || []
   };
 }
@@ -587,6 +667,7 @@ function buildOfflineBackup(dataset, fileMap) {
     exportedAt: Math.floor(Date.now() / 1000),
     tracks: dataset.tracks,
     names: dataset.names,
+    namesHistory: dataset.namesHistory,
     sessions: dataset.sessions,
     sessionFiles
   };
@@ -615,13 +696,16 @@ async function importIntoLocalDatabase(payload, entries) {
     payload.tracks
   );
   let names = { ...current.names, ...payload.names };
+  let namesHistory = mergeNameHistory(current.namesHistory, payload.namesHistory);
   let sessions = mergeSessions(current.sessions, payload.sessions);
-  let dataset = { tracks, names, sessions };
+  let dataset = { tracks, names, namesHistory, sessions };
 
   let mergedEntries = [{
     path: 'tracks.json', content: tracks, size: JSON.stringify(tracks).length, modifiedAt: Date.now()
   }, {
     path: 'names.json', content: names, size: JSON.stringify(names).length, modifiedAt: Date.now()
+  }, {
+    path: 'names_history.json', content: namesHistory, size: JSON.stringify(namesHistory).length, modifiedAt: Date.now()
   }, {
     path: 'sessions.json', content: { sessions }, size: JSON.stringify(sessions).length, modifiedAt: Date.now()
   }];

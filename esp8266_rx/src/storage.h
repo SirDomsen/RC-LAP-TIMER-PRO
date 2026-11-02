@@ -66,7 +66,8 @@ struct PendingLap {
 
 void loadSettingsFromEEPROM();
 void loadNamesFromFS();
-void saveNamesToEEPROM(int id, const String& driver, const String& car);
+bool saveNamesToEEPROM(int id, const String& driver, const String& car);
+bool ensureNameHistoryBaseline();
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 

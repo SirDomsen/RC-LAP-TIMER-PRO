@@ -12,6 +12,23 @@
     "startTs": { "type": "integer", "description": "Startzeitpunkt der Session in Unix-Sekunden" },
     "laps": { "type": "array", "description": "Array von Runden-Telemetrie-Objekten" }
   },
+  "sessionResultKeys": {
+    "bestTs": {
+      "type": "integer",
+      "unit": "ms",
+      "description": "Zeitstempel der besten Runde; dient zur historischen Fahrer-/Auto-Zuordnung"
+    }
+  },
+  "nameHistoryFile": {
+    "path": "/names_history.jsonl",
+    "format": "JSON Lines",
+    "fields": {
+      "id": { "type": "integer", "range": [1, 15], "description": "Transponder-ID" },
+      "ts": { "type": "integer", "unit": "ms", "description": "Zeitpunkt, ab dem diese Zuordnung gilt" },
+      "driver": { "type": "string", "description": "Zu diesem Zeitpunkt zugeordneter Fahrername" },
+      "car": { "type": "string", "description": "Zu diesem Zeitpunkt zugeordneter Autoname" }
+    }
+  },
   "lapKeys": {
     "c": {
       "legacyKey": "carId",

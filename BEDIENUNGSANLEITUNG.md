@@ -31,6 +31,8 @@ Wenn der Lap Timer bereits mit einem Heim-WLAN oder Hotspot verbunden ist, müss
 
 Bei einer Heim-WLAN-Verbindung kann vorübergehend ein zusätzliches WLAN mit einem Namen wie `LT_WLANNAME-IPADRESSE` erscheinen. Die IP-Adresse am Ende des Namens ist die Adresse des Lap Timers. Dieses Hilfs-WLAN verschwindet nach dem ersten Aufruf der Webseite wieder.
 
+Bei einer Verbindung über einen Handy-Hotspot kann ebenfalls ein zusätzliches WLAN mit einem Namen wie `LT_HOTSPOTNAME-IPADRESSE` erscheinen. Die IP-Adresse am Ende des Namens ist die Adresse des Lap Timers. Falls das Hilfs-WLAN nicht angezeigt wird, suche den Lap Timer in der Hotspot-Übersicht deines Handys und verwende die dort angezeigte IP-Adresse. Öffne diese IP-Adresse im Browser.
+
 ### WLAN-Verbindung ändern
 
 Wenn du bereits mit dem Lap Timer verbunden bist:
@@ -60,7 +62,7 @@ Jeder Transponder hat eine eigene ID. Damit Zeiten beim richtigen Fahrer landen:
 3. Trage Fahrername und Auto ein.
 4. Wiederhole das für die weiteren Autos und wähle **Speichern & Schließen**.
 
-Die Zuordnung muss zur ID des Senders im Auto passen. Es können bis zu 15 IDs eingerichtet werden.
+Die Rundendaten werden unter der Transponder-ID gespeichert. Fahrername und Auto sind dieser ID zugeordnet. Verwende deshalb nicht dieselbe ID für mehrere Autos, sonst lassen sich ihre Zeiten in den Statistiken nicht auseinanderhalten. Es können bis zu 15 IDs eingerichtet werden.
 
 ### Strecke auswählen oder anlegen
 
@@ -121,7 +123,7 @@ Für eine gut lesbare Anzeige auf einem Handy gibt es **Dashboard**. Es zeigt di
 - In der Fahreransicht kannst du auswählen, für welches Auto Zeiten angesagt werden. Die Auswahl gilt nur für dieses Handy.
 - In den **Einstellungen** des Rennleiters lässt sich auswählen, welche Autos auf diesem Gerät angesagt werden.
 - Falls ein iPhone oder iPad zunächst stumm bleibt, tippe auf **iOS Ton**, um die Audioausgabe freizugeben.
-- Der Rennleiter kann über **Arcade Audio** zusätzlich Töne und Musik des Lautsprechers an der Basisstation starten oder stoppen.
+- Der Rennleiter kann über **Arcade Audio** zusätzlich Töne und Musik des Lautsprechers an der Basisstation starten oder stoppen. Eine kleine Hommage an die Arcade-Zeit der 1980er Jahre!
 
 ## 6. Statistiken
 
@@ -139,7 +141,7 @@ Wenn eine Warnung zum Speicherplatz erscheint, lösche keine Strecken oder Stati
 
 Ein **Geist** ist eine gespeicherte Rundenzeit, mit der deine aktuelle Runde verglichen wird. Es fährt dabei kein zusätzliches Auto.
 
-1. Öffne **Ghosthunt** in der Fahreransicht oder **Ghost Battle** in der Rennleiteransicht. Das Ghost-Battle ist die Mehrspielervariante vom Ghosthunt
+1. Öffne **Ghosthunt** in der Fahreransicht oder **Ghost Battle** in der Rennleiteransicht. Ghost Battle ist die Mehrspielervariante von Ghosthunt.
 2. Wähle das Vergleichsziel: zum Beispiel Streckenrekord, heutige Bestzeit, eigene Bestzeit, führendes Auto oder eine selbst eingegebene Zielzeit.
 3. Starte den Vergleich. Die Anzeige zeigt deine aktuelle Runde und den Zeitunterschied zum Ziel, auch an den Sektorstationen.
 
@@ -203,11 +205,15 @@ Ein Firmware-Update ändert das Programm der Basisstation. Die Firmware-Datei en
 
 Verwende diesen Weg nur mit einer passenden Firmware-Datei. Wenn du nicht sicher bist, welche Datei für dein Gerät vorgesehen ist, frage vor dem Update die Person, die das Gerät betreut.
 
+### Sektorstationen aktualisieren
+
+Der **SZ OTA-Wartungsmodus** wird benötigt, um die Software der Sektorstationen per Funk zu aktualisieren; im Handy-Hotspot-Modus funktioniert er nicht. Wurde er versehentlich gestartet, schalte die betroffenen Sektorstationen aus und wieder ein, damit sie normal starten.
+
 ### Vollständiges Backup erstellen oder einspielen
 
 Über **Backup (.zip)** im Dateispeicher lädst du eine ZIP-Sicherung der Dateien auf der Basisstation herunter. Bewahre sie auf deinem Computer oder einem anderen sicheren Speicherort auf. Teile sie nicht öffentlich, denn die Sicherung kann auch WLAN-Zugangsdaten und andere Geräteeinstellungen enthalten.
 
-Zum Wiederherstellen wählst du **Backup (.zip) einspielen**, suchst die gespeicherte ZIP-Datei aus und prüfst die angezeigte Bestätigung. Vorhandene Dateien gleichen Namens werden überschrieben. Brich ab, wenn du nicht sicher bist, ob das Archiv zum Gerät passt. Achtung: Falls die Firmware-Dateien zwischenzeitlich aktualisiert wurden, werden sie  durch das Einspielen des Komplettbackups überschrieben! Falls nur die Statistiken wiederhergestellt werden sollen, lade die gewünschten Dateien aus der entpackten .zip separat wieder hoch
+Zum Wiederherstellen wählst du **Backup (.zip) einspielen**, suchst die gespeicherte ZIP-Datei aus und prüfst die angezeigte Bestätigung. Vorhandene Dateien gleichen Namens werden überschrieben. Das Backup enthält auch die Dateien der Webseiten und der Bedienoberfläche. Beim Einspielen werden diese durch die Versionen aus dem Backup ersetzt; ein älteres Backup kann also einen neueren Stand der Bedienoberfläche zurücksetzen. Brich ab, wenn du nicht sicher bist, ob das Archiv zum Gerät passt. Falls nur die Statistiken wiederhergestellt werden sollen, lade die gewünschten Dateien aus der entpackten ZIP-Datei separat wieder hoch.
 
 Diese ZIP-Datei ist ein vollständiges Dateisystem-Backup. Die Offline-Statistik kann sie ebenfalls als Quelle für Statistikdaten verwenden; sie übernimmt dabei nur Statistikdateien und ändert die Basisstation nicht. Siehe [Abschnitt 10](#10-offline-statistiken).
 

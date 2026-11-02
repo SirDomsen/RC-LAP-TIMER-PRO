@@ -259,6 +259,7 @@ async function saveConfig() {
 
     await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}&ghostAudio=${gAudioVal}`, { method: 'POST' });
 
+    let namesChanged = false;
     for (let i = 1; i <= MAX_CARS; i++) {
       let driverElem = document.getElementById('cfg_driver_' + i);
       let carElem = document.getElementById('cfg_car_' + i);
@@ -270,13 +271,23 @@ async function saveConfig() {
         let oldCar = carNamesMap[i]?.car;
         
         if (driverVal !== oldDriver || carVal !== oldCar) {
-          carNamesMap[i] = { driver: driverVal, car: carVal }; 
-          await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
+          let response = await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
+          if (!response.ok) throw new Error(`Zuordnung für ID ${i} konnte nicht gespeichert werden (HTTP ${response.status}).`);
+          carNamesMap[i] = { driver: driverVal, car: carVal };
+          namesChanged = true;
         }
       }
     }
+    if (namesChanged && typeof loadCarNames === 'function') await loadCarNames();
   } catch (err) { 
     console.error("Fehler beim Speichern der Konfiguration:", err); 
+    if (typeof showAlert === 'function') {
+      await showAlert({
+        title: "❌ SPEICHERFEHLER",
+        theme: "danger",
+        message: "Die Änderungen an den Fahrer-/Auto-Zuordnungen konnten nicht vollständig gespeichert werden. Bitte prüfe die Verbindung und kontrolliere die Zuordnungen erneut."
+      });
+    }
   } finally {
     closeConfigModal();
     if (typeof applySectorColumnVisibility === 'function') applySectorColumnVisibility();

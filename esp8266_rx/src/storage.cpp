@@ -72,6 +72,7 @@ static uint32_t lastIndexFlushMs = 0;
 
 static uint16_t sessionCarLaps[MAX_CARS + 1] = {0};
 static uint32_t sessionCarBest[MAX_CARS + 1] = {0};
+static uint64_t sessionCarBestTs[MAX_CARS + 1] = {0};
 static uint16_t sessionCarValidLaps[MAX_CARS + 1] = {0};
 static uint64_t sessionCarTimeSum[MAX_CARS + 1] = {0};
 static uint32_t sessionCarAvg[MAX_CARS + 1] = {0};
@@ -1267,7 +1268,7 @@ void loadNamesFromFS() {
   }
 }
 
-void saveAllNamesToFS() {
+bool saveAllNamesToFS() {
   JsonDocument doc;
   for (int i = 1; i <= MAX_CARS; i++) {
     doc[String(i)]["driver"] = driverNames[i];
@@ -1275,10 +1276,73 @@ void saveAllNamesToFS() {
   }
 
   File f = LittleFS.open("/names.json", "w");
+  if (!f) return false;
+  size_t written = serializeJson(doc, f);
+  f.close();
+  return written > 0;
+}
+
+static bool appendNameHistoryEntry(uint8_t id, uint64_t timestampMs, const String& driver, const String& car) {
+  bool needsSeparator = false;
+  File existing = LittleFS.open("/names_history.jsonl", "r");
+  if (existing) {
+    size_t size = existing.size();
+    if (size > 0 && existing.seek(size - 1, SeekSet)) {
+      needsSeparator = existing.read() != '\n';
+    }
+    existing.close();
+  }
+
+  File f = LittleFS.open("/names_history.jsonl", "a");
+  if (!f) return false;
+  if (needsSeparator && f.println() == 0) {
+    f.close();
+    return false;
+  }
+
+  JsonDocument doc;
+  doc["id"] = id;
+  doc["ts"] = timestampMs;
+  doc["driver"] = driver;
+  doc["car"] = car;
+  size_t written = serializeJson(doc, f);
+  bool success = written > 0 && f.println() > 0;
+  f.close();
+  return success;
+}
+
+bool ensureNameHistoryBaseline() {
+  if (baseUnixTimestampSec == 0) return false;
+  static bool baselineComplete = false;
+  if (baselineComplete) return true;
+
+  bool hasEntry[MAX_CARS + 1] = {false};
+  uint8_t foundCount = 0;
+  File f = LittleFS.open("/names_history.jsonl", "r");
   if (f) {
-    serializeJson(doc, f);
+    while (f.available()) {
+      String line = f.readStringUntil('\n');
+      JsonDocument doc;
+      if (deserializeJson(doc, line)) continue;
+      uint8_t id = doc["id"] | 0;
+      if (id >= 1 && id <= MAX_CARS && !hasEntry[id]) {
+        hasEntry[id] = true;
+        foundCount++;
+        if (foundCount == MAX_CARS) break;
+      }
+    }
     f.close();
   }
+
+  uint64_t timestampMs = getCurrentTimestampMs();
+  for (uint8_t id = 1; id <= MAX_CARS; id++) {
+    if (!hasEntry[id] && !appendNameHistoryEntry(id, timestampMs, driverNames[id], carNames[id])) {
+      Serial.printf("[Names] Baseline für ID %u konnte nicht gespeichert werden.\n", id);
+      return false;
+    }
+  }
+  baselineComplete = true;
+  return true;
 }
 
 void loadSettingsFromEEPROM() {
@@ -1327,12 +1391,33 @@ void loadSettingsFromEEPROM() {
   }
 }
 
-void saveNamesToEEPROM(int id, const String& driver, const String& car) {
-  if (id >= 1 && id <= MAX_CARS) {
-    driverNames[id] = driver;
-    carNames[id] = car;
-    saveAllNamesToFS();
+bool saveNamesToEEPROM(int id, const String& driver, const String& car) {
+  if (id < 1 || id > MAX_CARS) return false;
+
+  String previousDriver = driverNames[id];
+  String previousCar = carNames[id];
+  bool changed = previousDriver != driver || previousCar != car;
+
+  if (changed && baseUnixTimestampSec > 0 && !ensureNameHistoryBaseline()) return false;
+
+  driverNames[id] = driver;
+  carNames[id] = car;
+  if (!saveAllNamesToFS()) {
+    driverNames[id] = previousDriver;
+    carNames[id] = previousCar;
+    return false;
   }
+
+  if (changed && baseUnixTimestampSec > 0 &&
+      !appendNameHistoryEntry(id, getCurrentTimestampMs(), driver, car)) {
+    driverNames[id] = previousDriver;
+    carNames[id] = previousCar;
+    if (!saveAllNamesToFS()) {
+      Serial.println("[Names] Vorherige Zuordnung konnte nach Schreibfehler nicht wiederhergestellt werden.");
+    }
+    return false;
+  }
+  return true;
 }
 
 void saveDeadtimeToEEPROM(uint16_t ms) {
@@ -1361,7 +1446,7 @@ void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool 
 
 // --- SESSION & RUNDEN SPEICHERUNG ---
 
-static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[], uint32_t carAvg[] = nullptr) {
+static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[], uint32_t carAvg[] = nullptr, uint64_t carBestTs[] = nullptr) {
   uint8_t activeIds[MAX_CARS + 1];
   uint8_t count = 0;
   for (uint8_t c = 1; c <= MAX_CARS; c++) {
@@ -1404,7 +1489,10 @@ static String buildSessionEntryJson(const String& sId, const String& sFile, cons
     uint8_t c = activeIds[idx];
     if (idx > 0) out += ",";
     uint32_t aLap = (carAvg != nullptr) ? carAvg[c] : 0;
-    out += "{\"pos\":" + String(idx + 1) + ",\"id\":" + String(c) + ",\"driver\":\"" + escapeJsonStr(driverNames[c]) + "\",\"car\":\"" + escapeJsonStr(carNames[c]) + "\",\"laps\":" + String(carLaps[c]) + ",\"bestLap\":" + String(carBest[c]) + ",\"avgLap\":" + String(aLap) + "}";
+    uint64_t bestTs = (carBestTs != nullptr) ? carBestTs[c] : 0;
+    char bestTsText[24];
+    snprintf(bestTsText, sizeof(bestTsText), "%llu", (unsigned long long)bestTs);
+    out += "{\"pos\":" + String(idx + 1) + ",\"id\":" + String(c) + ",\"driver\":\"" + escapeJsonStr(driverNames[c]) + "\",\"car\":\"" + escapeJsonStr(carNames[c]) + "\",\"laps\":" + String(carLaps[c]) + ",\"bestLap\":" + String(carBest[c]) + ",\"bestTs\":" + bestTsText + ",\"avgLap\":" + String(aLap) + "}";
   }
   out += "]}";
   return out;
@@ -1426,7 +1514,8 @@ void flushCurrentSessionToIndex() {
     sessionLastEndSec,
     sessionCarLaps,
     sessionCarBest,
-    sessionCarAvg
+    sessionCarAvg,
+    sessionCarBestTs
   );
 
   const char* indexPath = "/sessions.json";
@@ -1527,6 +1616,7 @@ void startNewSessionFrame(uint8_t mode) {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     sessionCarLaps[i] = 0;
     sessionCarBest[i] = 0;
+    sessionCarBestTs[i] = 0;
     sessionCarValidLaps[i] = 0;
     sessionCarTimeSum[i] = 0;
     sessionCarAvg[i] = 0;
@@ -1620,6 +1710,7 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
   if (!isOutLap && lapTimeMs > 0) {
     if (sessionCarBest[carId] == 0 || lapTimeMs < sessionCarBest[carId]) {
       sessionCarBest[carId] = lapTimeMs;
+      sessionCarBestTs[carId] = timestampMs;
     }
     sessionCarValidLaps[carId]++;
     sessionCarTimeSum[carId] += lapTimeMs;
@@ -1830,6 +1921,7 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
   // Ergebnisse aus verbleibenden Runden neu berechnen
   uint16_t calcLaps[MAX_CARS + 1] = {0};
   uint32_t calcBest[MAX_CARS + 1] = {0};
+  uint64_t calcBestTs[MAX_CARS + 1] = {0};
   uint64_t maxTsSec = doc["startTs"] | 0;
 
   for (JsonObject l : laps) {
@@ -1840,6 +1932,7 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
       calcLaps[c]++;
       if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) {
         calcBest[c] = tMs;
+        calcBestTs[c] = tsMs;
       }
       if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
     }
@@ -1855,6 +1948,7 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
     for (uint8_t c = 1; c <= MAX_CARS; c++) {
       sessionCarLaps[c] = calcLaps[c];
       sessionCarBest[c] = calcBest[c];
+      sessionCarBestTs[c] = calcBestTs[c];
     }
   }
 
@@ -1867,7 +1961,9 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
     doc["startTs"] | 0,
     maxTsSec,
     calcLaps,
-    calcBest
+    calcBest,
+    nullptr,
+    calcBestTs
   );
 
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
@@ -1953,6 +2049,7 @@ void deleteDriverHistory(uint8_t carId) {
     } else {
       uint16_t calcLaps[MAX_CARS + 1] = {0};
       uint32_t calcBest[MAX_CARS + 1] = {0};
+      uint64_t calcBestTs[MAX_CARS + 1] = {0};
       uint64_t maxTsSec = doc["startTs"] | 0;
       for (JsonObject l : laps) {
         uint8_t c = l["c"] | (l["carId"] | 0);
@@ -1960,7 +2057,10 @@ void deleteDriverHistory(uint8_t carId) {
         uint64_t tsMs = l["s"] | (l["ts"] | 0);
         if (c >= 1 && c <= MAX_CARS) {
           calcLaps[c]++;
-          if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) calcBest[c] = tMs;
+          if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) {
+            calcBest[c] = tMs;
+            calcBestTs[c] = tsMs;
+          }
           if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
         }
       }
@@ -1969,7 +2069,7 @@ void deleteDriverHistory(uint8_t carId) {
 
       String updatedEntry = buildSessionEntryJson(
         sId, sFile, doc["trackId"] | activeTrackId, doc["trackName"] | activeTrackName,
-        doc["mode"] | 0, doc["startTs"] | 0, maxTsSec, calcLaps, calcBest
+        doc["mode"] | 0, doc["startTs"] | 0, maxTsSec, calcLaps, calcBest, nullptr, calcBestTs
       );
       filterSessionsIndexFile("", "", sId, updatedEntry);
     }
