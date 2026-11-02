@@ -11,7 +11,7 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '0.7.0';
+const OFFLINE_STATS_VERSION = '0.8.0';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
@@ -20,7 +20,6 @@ const MAX_TOTAL_STAT_SIZE = 512 * 1024 * 1024;
 
 let offlineDb = null;
 let offlineBackup = null;
-let targetDirectoryHandle = null;
 let offlineInitialization = null;
 
 function setOfflineStatus(message, state = 'info') {
@@ -276,6 +275,112 @@ function parseJsonEntry(path, bytes) {
     throw new Error(`Ungültige JSON-Datei "${path}": ${error.message}`);
   }
   return { path, content, size: bytes.byteLength, modifiedAt: Date.now() };
+}
+
+function getCrc32(bytes) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function getDosTimestamp(date) {
+  let year = Math.max(1980, date.getFullYear());
+  return {
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1)
+  };
+}
+
+function createStatisticsZip(fileMap, dataset) {
+  let files = new Map(fileMap);
+  files.set('tracks.json', { path: 'tracks.json', content: dataset.tracks });
+  files.set('names.json', { path: 'names.json', content: dataset.names });
+  files.set('sessions.json', { path: 'sessions.json', content: { sessions: dataset.sessions } });
+
+  let localEntries = [];
+  let centralEntries = [];
+  let offset = 0;
+  let totalSize = 0;
+  let timestamp = getDosTimestamp(new Date());
+
+  for (let [rawPath, entry] of files) {
+    let path = normalizeStoredPath(rawPath);
+    if (!path || !isStatisticPath(path)) continue;
+
+    let nameBytes = new TextEncoder().encode(path);
+    let dataBytes = new TextEncoder().encode(JSON.stringify(entry.content));
+    if (nameBytes.length > 0xffff || dataBytes.length > MAX_STAT_FILE_SIZE) {
+      throw new Error(`Datei kann nicht in das ZIP geschrieben werden: ${path}`);
+    }
+    totalSize += dataBytes.length;
+    if (totalSize > MAX_TOTAL_STAT_SIZE || localEntries.length / 2 >= MAX_ZIP_ENTRIES) {
+      throw new Error('Die kumulierte Statistikdatenbank überschreitet die ZIP-Grenzwerte.');
+    }
+
+    let crc = getCrc32(dataBytes);
+    let localHeader = new Uint8Array(30 + nameBytes.length);
+    let localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, timestamp.time, true);
+    localView.setUint16(12, timestamp.date, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, dataBytes.length, true);
+    localView.setUint32(22, dataBytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localView.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+    localEntries.push(localHeader, dataBytes);
+
+    let centralHeader = new Uint8Array(46 + nameBytes.length);
+    let centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, timestamp.time, true);
+    centralView.setUint16(14, timestamp.date, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, dataBytes.length, true);
+    centralView.setUint32(24, dataBytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+    centralEntries.push(centralHeader);
+
+    offset += localHeader.length + dataBytes.length;
+  }
+
+  let entryCount = localEntries.length / 2;
+  if (entryCount > 0xffff || offset > 0xffffffff) {
+    throw new Error('Die kumulierte Statistikdatenbank ist zu groß für ein ZIP-Archiv.');
+  }
+  let centralDirectorySize = centralEntries.reduce((size, entry) => size + entry.length, 0);
+  let endRecord = new Uint8Array(22);
+  let endView = new DataView(endRecord.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(4, 0, true);
+  endView.setUint16(6, 0, true);
+  endView.setUint16(8, entryCount, true);
+  endView.setUint16(10, entryCount, true);
+  endView.setUint32(12, centralDirectorySize, true);
+  endView.setUint32(16, offset, true);
+  endView.setUint16(20, 0, true);
+
+  return new Blob([...localEntries, ...centralEntries, endRecord], { type: 'application/zip' });
 }
 
 async function readZipArchive(buffer) {
@@ -540,41 +645,6 @@ async function importIntoLocalDatabase(payload, entries) {
   };
 }
 
-async function writeFileToDirectory(rootHandle, path, content) {
-  let parts = normalizeStoredPath(path)?.split('/');
-  if (!parts || !parts.length) throw new Error(`Ungültiger Ausgabepfad: ${path}`);
-
-  let directory = rootHandle;
-  for (let i = 0; i < parts.length - 1; i++) {
-    directory = await directory.getDirectoryHandle(parts[i], { create: true });
-  }
-  let fileHandle = await directory.getFileHandle(parts[parts.length - 1], { create: true });
-  let writable = await fileHandle.createWritable();
-  try {
-    await writable.write(JSON.stringify(content));
-    await writable.close();
-  } catch (error) {
-    await writable.abort();
-    throw error;
-  }
-}
-
-async function exportDatabaseToTargetFolder(fileMap, dataset) {
-  if (!targetDirectoryHandle) return false;
-  let permission = await targetDirectoryHandle.queryPermission({ mode: 'readwrite' });
-  if (permission !== 'granted') return false;
-
-  let outputFiles = new Map(fileMap);
-  outputFiles.set('tracks.json', { path: 'tracks.json', content: dataset.tracks });
-  outputFiles.set('names.json', { path: 'names.json', content: dataset.names });
-  outputFiles.set('sessions.json', { path: 'sessions.json', content: { sessions: dataset.sessions } });
-
-  for (let [path, entry] of outputFiles) {
-    await writeFileToDirectory(targetDirectoryHandle, path, entry.content);
-  }
-  return true;
-}
-
 async function refreshOfflineViews(dataset, fileMap) {
   offlineBackup = buildOfflineBackup(dataset, fileMap);
   sessionFileCache = {};
@@ -583,53 +653,6 @@ async function refreshOfflineViews(dataset, fileMap) {
   document.getElementById('offlineWelcome').hidden = true;
   document.getElementById('statsOverviewModal').style.display = 'block';
   await openStatsOverviewModal();
-}
-
-async function updateTargetFolderLabel() {
-  let label = document.getElementById('targetFolderName');
-  if (!label) return;
-  if (targetDirectoryHandle) {
-    label.textContent = targetDirectoryHandle.name;
-    label.title = targetDirectoryHandle.name;
-  } else {
-    label.textContent = 'Kein Zielordner gewählt';
-    label.removeAttribute('title');
-  }
-}
-
-async function chooseTargetFolder() {
-  if (typeof window.showDirectoryPicker !== 'function') {
-    setOfflineStatus('Dieser Browser unterstützt keinen direkten Ordnerzugriff. Die IndexedDB bleibt weiterhin verfügbar.', 'error');
-    return;
-  }
-
-  try {
-    targetDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    let permission = await targetDirectoryHandle.requestPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') {
-      targetDirectoryHandle = null;
-      await updateTargetFolderLabel();
-      throw new Error('Schreibzugriff auf den ausgewählten Ordner wurde nicht erteilt.');
-    }
-
-    if (!await offlineInitialization) {
-      targetDirectoryHandle = null;
-      await updateTargetFolderLabel();
-      return;
-    }
-
-    let transaction = offlineDb.transaction('settings', 'readwrite');
-    transaction.objectStore('settings').put({ key: 'targetDirectory', handle: targetDirectoryHandle });
-    await new Promise((resolve, reject) => {
-      transaction.oncomplete = resolve;
-      transaction.onerror = () => reject(transaction.error || new Error('Ordnerauswahl konnte nicht gespeichert werden.'));
-      transaction.onabort = () => reject(transaction.error || new Error('Speichern der Ordnerauswahl wurde abgebrochen.'));
-    });
-    await updateTargetFolderLabel();
-    setOfflineStatus(`Ausgabeordner „${targetDirectoryHandle.name}“ ausgewählt.`, 'success');
-  } catch (error) {
-    if (error.name !== 'AbortError') setOfflineStatus(error.message || 'Der Ausgabeordner konnte nicht ausgewählt werden.', 'error');
-  }
 }
 
 async function loadOfflineFile(file) {
@@ -641,30 +664,58 @@ async function loadOfflineFile(file) {
     let { payload, entries } = await readImportFile(file);
     let imported = await importIntoLocalDatabase(payload, entries);
     await refreshOfflineViews(imported.dataset, imported.fileMap);
-
-    let folderWritten = false;
-    let folderError = null;
-    if (targetDirectoryHandle) {
-      try {
-        folderWritten = await exportDatabaseToTargetFolder(imported.fileMap, imported.dataset);
-      } catch (error) {
-        folderError = error;
-      }
-    }
+    document.getElementById('exportDatabaseButton').disabled = false;
 
     let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
     document.getElementById('offlineBackupSummary').textContent = summary;
     let status = `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
-    if (folderWritten) status += ` In „${targetDirectoryHandle.name}“ gespiegelt.`;
-    else if (folderError) status += ` Ordnerexport fehlgeschlagen: ${folderError.message}`;
-    else if (targetDirectoryHandle) status += ' Ordnerzugriff fehlt; bitte den Zielordner erneut auswählen.';
-    else status += ' Nur im Browser gespeichert – noch keinen Ausgabeordner gewählt.';
+    status += ' Die lokale Datenbank kannst du über „Stats-ZIP herunterladen“ sichern.';
     if (imported.missingSessionFiles) {
       status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
     }
-    setOfflineStatus(status, folderError || imported.missingSessionFiles ? 'error' : 'success');
+    setOfflineStatus(status, imported.missingSessionFiles ? 'error' : 'success');
   } catch (error) {
     setOfflineStatus(error.message || 'Das Backup konnte nicht importiert werden.', 'error');
+  }
+}
+
+function exportStatisticsDatabase(fileMap, dataset) {
+  let archive = createStatisticsZip(fileMap, dataset);
+  let url = URL.createObjectURL(archive);
+  let link = document.createElement('a');
+  let now = new Date();
+  let pad = value => String(value).padStart(2, '0');
+  let fileName = `rctl_stats_database_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}.zip`;
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { fileName, size: archive.size };
+}
+
+async function downloadStatisticsDatabase() {
+  let button = document.getElementById('exportDatabaseButton');
+  if (!offlineDb || !await offlineInitialization) {
+    setOfflineStatus('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'error');
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    let snapshot = await readDatabaseSnapshot();
+    let fileMap = getStoredFileMap(snapshot);
+    let dataset = getDatasetFromSnapshot(snapshot, fileMap);
+    if (!dataset.tracks) throw new Error('Es sind noch keine Statistikdaten zum Exportieren vorhanden.');
+    let result = exportStatisticsDatabase(fileMap, dataset);
+    setOfflineStatus(
+      `Kumuliertes Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).`,
+      'success'
+    );
+  } catch (error) {
+    setOfflineStatus(error.message || 'Statistik-ZIP konnte nicht erstellt werden.', 'error');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -681,6 +732,8 @@ async function restoreLocalDatabase() {
     `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`,
     'success'
   );
+  let exportButton = document.getElementById('exportDatabaseButton');
+  if (exportButton) exportButton.disabled = false;
 }
 
 async function toggleOfflineFullscreen() {
@@ -706,21 +759,13 @@ document.getElementById('backupFileInput').addEventListener('change', async even
   await loadOfflineFile(event.target.files[0]);
   event.target.value = '';
 });
-document.getElementById('chooseFolderButton').addEventListener('click', chooseTargetFolder);
+document.getElementById('exportDatabaseButton').addEventListener('click', downloadStatisticsDatabase);
 document.getElementById('fullscreenButton').addEventListener('click', toggleOfflineFullscreen);
 document.addEventListener('fullscreenchange', updateFullscreenButton);
 
 offlineInitialization = (async function initializeOfflineStatistics() {
   try {
     offlineDb = await openOfflineDatabase();
-    let settings = await new Promise((resolve, reject) => {
-      let transaction = offlineDb.transaction('settings', 'readonly');
-      let request = transaction.objectStore('settings').get('targetDirectory');
-      request.onsuccess = () => resolve(request.result?.handle || null);
-      request.onerror = () => reject(request.error || new Error('Lokale Einstellungen konnten nicht gelesen werden.'));
-    });
-    targetDirectoryHandle = settings;
-    await updateTargetFolderLabel();
     await restoreLocalDatabase();
     return true;
   } catch (error) {

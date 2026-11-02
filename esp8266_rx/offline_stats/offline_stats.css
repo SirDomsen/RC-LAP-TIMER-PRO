@@ -43,15 +43,6 @@ body.offline-app {
   white-space: nowrap;
 }
 
-.offline-folder-name {
-  max-width: 180px;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 #backupFileInput {
   position: absolute;
   width: 1px;
