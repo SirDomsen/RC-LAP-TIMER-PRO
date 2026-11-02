@@ -830,11 +830,15 @@ function renderSessionsByMode(mode, containerId) {
 
   sessions.sort((a, b) => (b.endTs || b.startTs || 0) - (a.endTs || a.startTs || 0));
 
+  let rebuildButtonHtml = window.offlineStatsMode
+    ? ''
+    : '<button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">🔄 Index aus Dateisystem neu aufbauen</button>';
+
   if (sessions.length === 0) {
     container.innerHTML = `
       <div style="text-align:center; padding:30px 15px; color:var(--text-muted);">
         <p style="font-size:14px; margin-bottom:12px;">Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.</p>
-        <button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">🔄 Index aus Dateisystem neu aufbauen</button>
+        ${rebuildButtonHtml}
       </div>`;
     return;
   }
@@ -1874,32 +1878,33 @@ async function downloadStatsBackup() {
   }
 
   let backupData = {
-    version: 3,
+    version: 4,
     exportedAt: Math.floor(Date.now() / 1000),
     tracks: [],
+    names: {},
     sessions: [],
     sessionFiles: {}
   };
 
   try {
     let tRes = await fetch('/api/tracks');
-    if (tRes.ok) {
-      let tData = await tRes.json();
-      backupData.tracks = tData;
-    }
+    if (!tRes.ok) throw new Error("Streckendaten konnten nicht geladen werden (HTTP " + tRes.status + ").");
+    backupData.tracks = await tRes.json();
 
     let sRes = await fetch('/api/sessions');
-    if (sRes.ok) {
-      let sData = await sRes.json();
-      backupData.sessions = sData.sessions || [];
-    }
+    if (!sRes.ok) throw new Error("Sessions konnten nicht geladen werden (HTTP " + sRes.status + ").");
+    let sData = await sRes.json();
+    backupData.sessions = sData.sessions || [];
+
+    let nRes = await fetch('/api/names');
+    if (!nRes.ok) throw new Error("Fahrernamen konnten nicht geladen werden (HTTP " + nRes.status + ").");
+    backupData.names = await nRes.json();
 
     for (let s of backupData.sessions) {
       if (s.file) {
-        try {
-          let fData = await fetchSessionFileData(s.file);
-          if (fData) backupData.sessionFiles[s.file] = fData;
-        } catch (e) {}
+        let fData = await fetchSessionFileData(s.file);
+        if (!fData) throw new Error("Session-Datei fehlt im Backup: " + s.file);
+        backupData.sessionFiles[s.file] = fData;
       }
     }
 
@@ -1954,27 +1959,28 @@ async function handleRestoreBackup(event) {
     let text = await file.text();
     let parsed = JSON.parse(text);
 
-    if (parsed.version === 3 && parsed.sessionFiles) {
-      // Upload /tracks.json
-      if (parsed.tracks) {
-        let tBlob = new Blob([JSON.stringify(parsed.tracks)], { type: 'application/json' });
-        let fd = new FormData();
-        fd.append('data', tBlob, '/tracks.json');
-        await fetch('/api/upload', { method: 'POST', body: fd });
+    if ((parsed.version === 3 || parsed.version === 4) && parsed.sessionFiles) {
+      async function uploadBackupJson(path, data) {
+        let blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+        let formData = new FormData();
+        formData.append('data', blob, path);
+        let response = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(path + " konnte nicht wiederhergestellt werden (HTTP " + response.status + ").");
       }
-      // Upload each session file
+
+      if (parsed.tracks) {
+        await uploadBackupJson('/tracks.json', parsed.tracks);
+      }
+
+      if (parsed.names) {
+        await uploadBackupJson('/names.json', parsed.names);
+      }
+
       let fileKeys = Object.keys(parsed.sessionFiles);
       for (let fPath of fileKeys) {
-        let sBlob = new Blob([JSON.stringify(parsed.sessionFiles[fPath])], { type: 'application/json' });
-        let fd = new FormData();
-        fd.append('data', sBlob, fPath);
-        await fetch('/api/upload', { method: 'POST', body: fd });
+        await uploadBackupJson(fPath, parsed.sessionFiles[fPath]);
       }
-      // Upload /sessions.json
-      let idxBlob = new Blob([JSON.stringify({ sessions: parsed.sessions || [] })], { type: 'application/json' });
-      let fdIdx = new FormData();
-      fdIdx.append('data', idxBlob, '/sessions.json');
-      await fetch('/api/upload', { method: 'POST', body: fdIdx });
+      await uploadBackupJson('/sessions.json', { sessions: parsed.sessions || [] });
 
       await showAlert({
         title: "✅ ERFOLG",

@@ -1,0 +1,240 @@
+body.offline-app {
+  display: block;
+  min-height: 100vh;
+  padding: 0;
+  text-align: left;
+}
+
+.offline-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 18px;
+  align-items: center;
+  padding: 12px clamp(12px, 3vw, 32px);
+  background: rgba(10, 12, 16, 0.96);
+  border-bottom: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+}
+
+.offline-toolbar h1 {
+  justify-content: flex-start;
+  font-size: clamp(18px, 3vw, 25px);
+  letter-spacing: 1px;
+}
+
+.offline-toolbar p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.offline-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.offline-toolbar-actions .btn,
+.offline-toolbar-actions label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.offline-folder-name {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#backupFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+#backupFileInput:focus-visible + .btn {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 3px;
+}
+
+.offline-status {
+  grid-column: 1 / -1;
+  min-height: 17px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.offline-status[data-state="error"] {
+  color: var(--neon-red);
+}
+
+.offline-status[data-state="success"] {
+  color: var(--neon-green);
+}
+
+.offline-welcome {
+  max-width: 720px;
+  margin: 9vh auto;
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.offline-welcome[hidden] {
+  display: none;
+}
+
+.offline-welcome-icon {
+  font-size: 48px;
+}
+
+.offline-welcome h2 {
+  color: var(--neon-cyan);
+  font-family: var(--font-display);
+  font-size: clamp(18px, 4vw, 25px);
+}
+
+.offline-welcome p {
+  color: var(--text-muted);
+}
+
+#statsOverviewModal.modal {
+  position: static;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  backdrop-filter: none;
+}
+
+#statsOverviewModal .offline-stats-content {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 16px clamp(10px, 2vw, 24px) 28px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.offline-stats-heading,
+.offline-profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.offline-stats-heading h2,
+.offline-profile-heading h2 {
+  margin: 0;
+  color: var(--neon-green);
+  font-family: var(--font-display);
+  font-size: clamp(16px, 2.5vw, 22px);
+}
+
+.offline-stats-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.offline-statbar {
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.offline-track-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.offline-track-filter label {
+  color: var(--neon-cyan);
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.offline-best-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.offline-best-times strong {
+  color: var(--neon-green);
+}
+
+.offline-tabs {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.offline-tabs .tab-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#statsModal.modal {
+  z-index: 30;
+}
+
+#statsModal .modal-content {
+  max-width: 1200px;
+  max-height: 96vh;
+}
+
+.offline-profile-heading .btn {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.offline-profile-heading h2 {
+  text-align: center;
+}
+
+@media (max-width: 680px) {
+  .offline-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .offline-toolbar-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .offline-stats-heading,
+  .offline-profile-heading {
+    align-items: flex-start;
+  }
+
+  .offline-profile-heading {
+    flex-wrap: wrap;
+  }
+
+  .offline-profile-heading h2 {
+    order: -1;
+    width: 100%;
+    text-align: left;
+  }
+}

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0c10">
+  <title>RC Lap Timer Pro – Offline-Statistik 0.7.0</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
+  <link rel="stylesheet" href="../data/style.css?v=4.5.10">
+  <link rel="stylesheet" href="offline_stats.css?v=0.7.0">
+</head>
+<body class="offline-app">
+  <header class="offline-toolbar">
+    <div>
+      <h1>🏁 RC LAP TIMER</h1>
+      <p>Offline-Statistikauswertung <strong>v0.7.0</strong> · Daten bleiben auf diesem Gerät</p>
+    </div>
+    <div class="offline-toolbar-actions">
+      <button class="btn" id="chooseFolderButton" type="button">📁 Zielordner wählen</button>
+      <span id="targetFolderName" class="offline-folder-name">Kein Zielordner gewählt</span>
+      <label class="btn btn-purple" for="backupFileInput">📦 ZIP/JSON importieren</label>
+      <input id="backupFileInput" type="file" accept=".zip,.json,application/zip,application/json">
+      <button class="btn" id="fullscreenButton" type="button">⛶ Vollbild</button>
+    </div>
+    <div class="offline-status" id="offlineStatus" role="status" aria-live="polite">
+      Wähle ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup aus.
+    </div>
+  </header>
+
+  <main>
+    <div id="offlineWelcome" class="offline-welcome">
+      <div class="offline-welcome-icon">📊</div>
+      <h2>Deine Rennstatistik – ganz ohne ESP-Verbindung</h2>
+      <p>Importiere ein ZIP-Dateisystem-Backup des Lap Timers oder ein Statistik-JSON-Backup. Die Datenbank wächst lokal mit jedem Import.</p>
+      <label class="btn btn-purple" for="backupFileInput">ZIP/JSON auswählen</label>
+    </div>
+
+    <div id="statsOverviewModal" class="modal">
+      <div class="modal-content offline-stats-content">
+        <div class="offline-stats-heading">
+          <h2>📊 STATISTIKEN &amp; RENN-HISTORIE</h2>
+          <span id="offlineBackupSummary"></span>
+        </div>
+
+        <div id="statsStorageWarningBanner" class="storage-warning-banner" style="display:none;"></div>
+
+        <div class="backup-bar offline-statbar">
+          <div class="offline-track-filter">
+            <label for="statsTrackFilterSelect">📍 STRECKE:</label>
+            <select id="statsTrackFilterSelect" class="track-select-dropdown" onchange="onStatsTrackFilterChange(this.value)">
+              <option value="all">🌍 Alle Strecken</option>
+            </select>
+          </div>
+          <div id="statsDailyBestDisplay" class="offline-best-times">
+            <div>🏆 Streckenrekord: <strong id="statsAllTimeBestVal">--:--</strong></div>
+            <div>⏱️ Tagesbestzeit: <strong id="statsDailyBestVal">--:--</strong></div>
+          </div>
+        </div>
+
+        <nav class="tab-container offline-tabs" aria-label="Statistikbereiche">
+          <button class="tab-btn" id="tabRecordsBtn" onclick="switchStatsTab('records')">🏆 Rekorde</button>
+          <button class="tab-btn active" id="tabDriversBtn" onclick="switchStatsTab('drivers')">👤 Fahrer</button>
+          <button class="tab-btn" id="tabTrainingBtn" onclick="switchStatsTab('training')">🏁 Freies Training</button>
+          <button class="tab-btn" id="tabQualiBtn" onclick="switchStatsTab('quali')">⏱️ Qualifying</button>
+          <button class="tab-btn" id="tabRace_lapsBtn" onclick="switchStatsTab('race_laps')">🏎️ Rennen (Runden)</button>
+          <button class="tab-btn" id="tabRace_timeBtn" onclick="switchStatsTab('race_time')">⏳ Rennen (Zeit)</button>
+          <button class="tab-btn" id="tabDragBtn" onclick="switchStatsTab('drag')">⚡ Dragrace</button>
+          <button class="tab-btn" id="tabGhostBtn" onclick="switchStatsTab('ghost')">👻 Ghost Battle</button>
+        </nav>
+
+        <section class="modal-body" id="statsTabRecords" style="display:none;"></section>
+        <section class="modal-body" id="statsTabDrivers"></section>
+        <section class="modal-body" id="statsTabTraining" style="display:none;"></section>
+        <section class="modal-body" id="statsTabQuali" style="display:none;"></section>
+        <section class="modal-body" id="statsTabRace_laps" style="display:none;"></section>
+        <section class="modal-body" id="statsTabRace_time" style="display:none;"></section>
+        <section class="modal-body" id="statsTabDrag" style="display:none;"></section>
+        <section class="modal-body" id="statsTabGhost" style="display:none;"></section>
+      </div>
+    </div>
+
+    <div id="statsModal" class="modal">
+      <div class="modal-content">
+        <div class="offline-profile-heading">
+          <button class="btn" onclick="backToStatsOverview()">← Zur Statistik</button>
+          <h2 id="statsModalTitle">Fahrer-Profil</h2>
+          <button class="btn btn-purple" onclick="backToStatsOverview()">Zurück</button>
+        </div>
+        <div class="modal-body" id="driverProfileContent"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="../data/stats.js?v=4.5.10"></script>
+  <script src="offline_stats.js?v=0.7.0"></script>
+</body>
+</html>
