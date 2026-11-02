@@ -12,7 +12,7 @@
   * **2,5s Basis-Lease:** Bleibt das Stratum-0-Beacon für >2,5 s aus, fällt die Station vollautomatisch auf **Broadcast** zurück. Relais-Stationen fangen die Pakete auf und leiten sie weiter.
   * **Sofortiger Hardware-ACK Failover:** Schlägt ein Unicast-Sendeversuch fehl (`sendStatus != 0`), wird das Sektorpaket sofort im nächsten Loop als Broadcast hinterhergeschickt.
 * **Heartbeat:** 3-Byte `AlivePacket` (`stationId`, `batteryLow`, `isUnicast`) exakt alle 3 Sekunden.
-* **Transponder:** IR-Erkennung mit 40 ms LED-Puls und Weiterleitung via Unicast/Broadcast (TTL = 3).
+* **Transponder:** IR-Erkennung mit 40 ms LED-Puls und Weiterleitung via Unicast/Broadcast (TTL = 3). 
 
 ### Wartungsmodus & OTA (4-Stufen-Failsafe, 100% DHCP)
 1. **Stufe 1 (Basis-Vorgabe):** Übernahme von SSID/Passwort direkt aus dem `OtaTriggerPacket` (reines DHCP, keine Subnetz-Kollisionen).
