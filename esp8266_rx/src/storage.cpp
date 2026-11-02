@@ -1318,8 +1318,14 @@ bool ensureNameHistoryBaseline() {
 
   bool hasEntry[MAX_CARS + 1] = {false};
   uint8_t foundCount = 0;
+  bool needsSeparator = false;
   File f = LittleFS.open("/names_history.jsonl", "r");
   if (f) {
+    size_t size = f.size();
+    if (size > 0 && f.seek(size - 1, SeekSet)) {
+      needsSeparator = f.read() != '\n';
+    }
+    f.seek(0, SeekSet);
     while (f.available()) {
       String line = f.readStringUntil('\n');
       JsonDocument doc;
@@ -1335,12 +1341,39 @@ bool ensureNameHistoryBaseline() {
   }
 
   uint64_t timestampMs = getCurrentTimestampMs();
+  bool hasMissingEntries = false;
   for (uint8_t id = 1; id <= MAX_CARS; id++) {
-    if (!hasEntry[id] && !appendNameHistoryEntry(id, timestampMs, driverNames[id], carNames[id])) {
-      Serial.printf("[Names] Baseline für ID %u konnte nicht gespeichert werden.\n", id);
-      return false;
+    if (!hasEntry[id]) {
+      hasMissingEntries = true;
+      break;
     }
   }
+
+  if (hasMissingEntries) {
+    File output = LittleFS.open("/names_history.jsonl", "a");
+    if (!output) return false;
+    if (needsSeparator && output.println() == 0) {
+      output.close();
+      return false;
+    }
+
+    JsonDocument doc;
+    for (uint8_t id = 1; id <= MAX_CARS; id++) {
+      if (hasEntry[id]) continue;
+      doc["id"] = id;
+      doc["ts"] = timestampMs;
+      doc["driver"] = driverNames[id];
+      doc["car"] = carNames[id];
+      size_t written = serializeJson(doc, output);
+      if (written == 0 || output.println() == 0) {
+        Serial.printf("[Names] Baseline für ID %u konnte nicht gespeichert werden.\n", id);
+        output.close();
+        return false;
+      }
+    }
+    output.close();
+  }
+
   baselineComplete = true;
   return true;
 }
