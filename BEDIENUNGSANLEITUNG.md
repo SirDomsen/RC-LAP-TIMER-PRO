@@ -27,7 +27,7 @@ Wenn der Lap Timer kein Heim-WLAN oder keinen Handy-Hotspot nutzt:
 
 ### Über Heim-WLAN oder Handy-Hotspot verbinden
 
-Wenn der Lap Timer bereits mit einem Heim-WLAN oder Hotspot verbunden ist, müssen Handy und Lap Timer im selben Netzwerk sein. Öffne dann die vom Betreiber mitgeteilte Adresse.
+Wenn der Lap Timer bereits mit einem Heim-WLAN oder Hotspot verbunden ist, müssen Handy und Lap Timer im selben Netzwerk sein.
 
 Bei einer Heim-WLAN-Verbindung kann vorübergehend ein zusätzliches WLAN mit einem Namen wie `LT_WLANNAME-IPADRESSE` erscheinen. Die IP-Adresse am Ende des Namens ist die Adresse des Lap Timers. Dieses Hilfs-WLAN verschwindet nach dem ersten Aufruf der Webseite wieder.
 
@@ -56,11 +56,11 @@ Mit **Zu AP-Modus** kehrst du zum direkten WLAN des Lap Timers zurück. Name, Pa
 Jeder Transponder hat eine eigene ID. Damit Zeiten beim richtigen Fahrer landen:
 
 1. Öffne als Rennleiter **Einstellungen**.
-2. Suche die Zeile mit der ID des Transponders.
+2. Suche die Zeile mit der ID des Transponders. Falls du die ID nicht kennst, schalte den Sender ein und richte ihn auf den Lap Timer. Die erkannte ID erscheint in der Leiste am unteren Rand.
 3. Trage Fahrername und Auto ein.
 4. Wiederhole das für die weiteren Autos und wähle **Speichern & Schließen**.
 
-Die Zuordnung muss zur ID des Senders im Auto passen. Eine ID sollte nicht gleichzeitig für zwei Autos verwendet werden. Es können bis zu 15 IDs eingerichtet werden.
+Die Zuordnung muss zur ID des Senders im Auto passen. Es können bis zu 15 IDs eingerichtet werden.
 
 ### Strecke auswählen oder anlegen
 
@@ -77,7 +77,9 @@ In den **Einstellungen** kann der Rennleiter angeben, welche Sektorstationen ver
 
 ## 4. Training oder Rennen starten
 
-Die Rennleitung startet einen Durchgang über die Schaltflächen in der Rennleiteransicht. Ein Start setzt die aktuelle Live-Anzeige für den neuen Durchgang zurück; gespeicherte Statistiken bleiben davon getrennt.
+Die Rennleitung startet einen Durchgang über die Schaltflächen in der Rennleiteransicht. Das freie Training ist voreingestellt und läuft direkt nach dem Einschalten des Lap Timers.
+
+Ein Start setzt die aktuelle Live-Anzeige für den neuen Durchgang zurück. Bereits gespeicherte Statistiken bleiben erhalten.
 
 | Auswahl | Was passiert |
 |---|---|
@@ -85,7 +87,7 @@ Die Rennleitung startet einen Durchgang über die Schaltflächen in der Rennleit
 | **Qualifying** | Stelle die Dauer in Minuten ein und wähle **Start Quali**. Die schnellsten Zeiten zeigen, wer die beste Startposition erreicht hat. |
 | **Rennen (Runden)** | Stelle die Rundenzahl ein und wähle **Start Runden**. Vor dem Start läuft ein gemeinsamer Countdown. |
 | **Rennen (Zeit)** | Stelle die Dauer in Minuten ein und wähle **Start Zeit**. Vor dem Start läuft ein gemeinsamer Countdown. |
-| **Dragrace** | Wähle **Start Dragrace**. Die Zeitmessung beginnt beim Überfahren der Basisstation; weitere Messpunkte hängen von der eingerichteten Strecke ab. |
+| **Dragrace** | Wähle **Start Dragrace**. Die Zeitmessung beginnt beim Überfahren der Basisstation. Für das Ziel ist mindestens eine Sektorstation erforderlich; die letzte Sektorstation bildet die Ziellinie. |
 | **Ghost Battle** | Wähle einen gespeicherten Zeitvergleich als Ziel und starte den Vergleich für die Fahrer. Details dazu stehen unter [Ghosthunt und Ghost Battle](#7-ghosthunt-und-ghost-battle). |
 
 **Durchgang Stoppen** beendet den aktuellen Durchgang und wechselt zurück zum freien Training.
@@ -129,7 +131,7 @@ Für eine gut lesbare Anzeige auf einem Handy gibt es **Dashboard**. Es zeigt di
 - **Tagesbestzeit** ist die beste Zeit des aktuellen Tages.
 - Die Top-5-Ansicht zeigt die vorderen Rekorde und Tagesbestzeiten.
 
-Die Statistiken werden auf dem Lap Timer gespeichert. Im aktuell sichtbaren Statistikfenster gibt es keine Schaltflächen zum Herunterladen oder Wiederherstellen eines Statistik-Backups. Wenn du eine Sicherung benötigst, kläre mit der Person, die das Gerät betreut, welche Sicherungsmöglichkeit für deine Version vorgesehen ist.
+Die Statistiken werden auf dem Lap Timer gespeichert. Ein vollständiges Backup erstellst du über die **Systempflege** (siehe [Abschnitt 9](#9-systempflege)).
 
 Wenn eine Warnung zum Speicherplatz erscheint, lösche keine Strecken oder Statistiken, die du behalten möchtest. Das Löschen einer Strecke entfernt auch ihre gespeicherten Durchgänge.
 
@@ -137,7 +139,7 @@ Wenn eine Warnung zum Speicherplatz erscheint, lösche keine Strecken oder Stati
 
 Ein **Geist** ist eine gespeicherte Rundenzeit, mit der deine aktuelle Runde verglichen wird. Es fährt dabei kein zusätzliches Auto.
 
-1. Öffne **Ghosthunt** in der Fahreransicht oder **Ghost Battle** in der Rennleiteransicht.
+1. Öffne **Ghosthunt** in der Fahreransicht oder **Ghost Battle** in der Rennleiteransicht. Das Ghost-Battle ist die Mehrspielervariante vom Ghosthunt
 2. Wähle das Vergleichsziel: zum Beispiel Streckenrekord, heutige Bestzeit, eigene Bestzeit, führendes Auto oder eine selbst eingegebene Zielzeit.
 3. Starte den Vergleich. Die Anzeige zeigt deine aktuelle Runde und den Zeitunterschied zum Ziel, auch an den Sektorstationen.
 
@@ -156,6 +158,13 @@ Die Fahreransicht startet einen persönlichen Ghosthunt auf diesem Gerät. Die R
 
 Prüfe, ob die betreffende Sektorstation eingeschaltet, erreichbar und in den Einstellungen aktiviert ist. Ohne funktionierende Station wird dieser Zwischenpunkt nicht gemessen.
 
+Der Status der Sektorstationen wird oben angezeigt:
+
+- **Rot:** Station nicht erreichbar.
+- **Grün:** Station erreichbar; sie sendet im allgemeinen Funkmodus.
+- **Lila:** Station nutzt die direkte Funkverbindung zur Basis.
+- **Orange:** Akku der Station ist schwach.
+
 ### Das Handy findet die Webseite nicht
 
 Verbinde das Handy mit demselben WLAN wie den Lap Timer. Im Direkt-WLAN des Lap Timers muss das Handy trotz einer Meldung „Kein Internet“ verbunden bleiben. Nutze den angezeigten QR-Code oder prüfe, ob sich die IP-Adresse geändert hat.
@@ -164,6 +173,53 @@ Verbinde das Handy mit demselben WLAN wie den Lap Timer. Im Direkt-WLAN des Lap 
 
 Prüfe **Ton: AN/AUS**, die Auswahl des angesagten Autos und – bei iPhone oder iPad – die Schaltfläche **iOS Ton**. Die Sprachausgabe läuft auf dem jeweiligen Handy und kann dort unabhängig von anderen Geräten ausgeschaltet sein.
 
----
+## 9. Systempflege
 
-**Hinweis:** Die Menüpunkte für Firmware-Updates und Debug sind für Wartung und Fehlersuche gedacht und gehören nicht zur normalen Bedienung.
+Die Systempflege ist für Wartung und Datensicherung gedacht.
+
+> **Wichtig:** Updates können die Zeitmessung unterbrechen. Beende deshalb zuerst den laufenden Durchgang. Spiele nur Dateien ein, die für dein Gerät und deine Version vorgesehen sind. Wenn du nicht sicher bist, welche Datei du brauchst, frage die Person, die das Gerät betreut.
+
+### Weboberfläche aktualisieren
+
+Die Weboberfläche besteht aus den Webseiten und den dazugehörigen Dateien. Ein Update dafür ist getrennt vom Firmware-Update.
+
+1. Öffne in der Rennleiteransicht **Web-Update**.
+2. Erstelle zuerst über **Backup (.zip)** eine Sicherung des Dateispeichers und speichere die ZIP-Datei sicher auf deinem Computer.
+3. Wähle im Bereich **Dateien hochladen** die bereitgestellten Webdateien aus. Verwende ein ZIP-Archiv nur, wenn es ausdrücklich als Update-Paket vorgesehen ist.
+4. Du kannst einzelne Dateien oder einen ganzen Ordner auswählen. Die automatische Komprimierung für Webdateien ist bereits eingeschaltet.
+5. Starte den Upload und warte, bis die Erfolgsmeldung erscheint.
+
+Nach dem Upload kannst du zur Rennleiteransicht zurückkehren und die Webseite neu laden. Wenn du ein ZIP-Backup einspielst, prüft die Seite den Inhalt und fragt vor dem Wiederherstellen nach. Dateien mit gleichem Namen werden überschrieben. Spiele daher nur ein passendes Backup ein und sichere vorher den aktuellen Stand.
+
+### Firmware aktualisieren (`.bin`)
+
+Ein Firmware-Update ändert das Programm der Basisstation. Die Firmware-Datei endet auf `.bin`. Sie muss ausdrücklich für das verwendete Basisstationsmodell und die passende Firmware-Version erstellt worden sein.
+
+1. Öffne **Web-Update** und scrolle zum Bereich **Firmware OTA Update (.bin)**.
+2. Wähle die passende `.bin`-Datei aus.
+3. Prüfe den Dateinamen und wähle **Firmware jetzt flashen**.
+4. Bestätige den Hinweis. Trenne während der Übertragung weder WLAN noch Stromversorgung und schließe die Seite nicht.
+5. Nach erfolgreicher Übertragung startet die Basisstation automatisch neu. Die Webseite wird dabei kurzzeitig getrennt.
+
+Verwende diesen Weg nur mit einer passenden Firmware-Datei. Wenn du nicht sicher bist, welche Datei für dein Gerät vorgesehen ist, frage vor dem Update die Person, die das Gerät betreut.
+
+### Vollständiges Backup erstellen oder einspielen
+
+Über **Backup (.zip)** im Dateispeicher lädst du eine ZIP-Sicherung der Dateien auf der Basisstation herunter. Bewahre sie auf deinem Computer oder einem anderen sicheren Speicherort auf. Teile sie nicht öffentlich, denn die Sicherung kann auch WLAN-Zugangsdaten und andere Geräteeinstellungen enthalten.
+
+Zum Wiederherstellen wählst du **Backup (.zip) einspielen**, suchst die gespeicherte ZIP-Datei aus und prüfst die angezeigte Bestätigung. Vorhandene Dateien gleichen Namens werden überschrieben. Brich ab, wenn du nicht sicher bist, ob das Archiv zum Gerät passt. Achtung: Falls die Firmware-Dateien zwischenzeitlich aktualisiert wurden, werden sie  durch das Einspielen des Komplettbackups überschrieben! Falls nur die Statistiken wiederhergestellt werden sollen, lade die gewünschten Dateien aus der entpackten .zip separat wieder hoch
+
+Diese ZIP-Datei ist ein vollständiges Dateisystem-Backup. Die Offline-Statistik kann sie ebenfalls als Quelle für Statistikdaten verwenden; sie übernimmt dabei nur Statistikdateien und ändert die Basisstation nicht. Siehe [Abschnitt 10](#10-offline-statistiken).
+
+## 10. Offline-Statistiken
+
+Mit der Offline-Statistik kannst du gespeicherte Ergebnisse ansehen, ohne mit dem Lap Timer verbunden zu sein. Öffne dafür die Datei [offline_stats/index.html](esp8266_rx/offline_stats/index.html) aus dem Projektordner in einem Browser.
+
+1. Wähle **ZIP/JSON auswählen**.
+2. Lade ein zuvor erstelltes vollständiges Lap-Timer-Backup (`.zip`) oder ein unterstütztes Statistik-Backup (`.json`).
+3. Die Statistik wird im Browser angezeigt. Die Offline-Ansicht verändert keine Daten auf der Basisstation.
+4. Über **Stats-ZIP herunterladen** sicherst du die zusammengeführten Statistikdaten. Dieses Statistik-Backup kannst du später wieder importieren oder in einem anderen Browser öffnen.
+
+Die Offline-Statistik speichert ihre Daten im Browserprofil auf diesem Gerät. Sie bleiben nicht automatisch erhalten, wenn du Browserdaten löschst oder ein anderes Browserprofil verwendest. Bewahre deshalb das heruntergeladene **Stats-ZIP** als Sicherung auf.
+
+Das **Stats-ZIP** enthält nur Statistikdaten. Es ist nicht dasselbe wie das vollständige **Backup (.zip)** aus der Systempflege und eignet sich nicht zum Aktualisieren der Firmware oder der Weboberfläche.
