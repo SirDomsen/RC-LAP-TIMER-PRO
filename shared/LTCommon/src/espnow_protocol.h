@@ -58,4 +58,13 @@ struct __attribute__((packed)) WifiSwitchPacket {
   uint8_t mode;
 };
 
+static_assert(sizeof(SectorPacket) == 9, "SectorPacket wire layout changed");
+static_assert(sizeof(BeaconSyncPacket) == 10, "BeaconSyncPacket wire layout changed");
+static_assert(sizeof(AlivePacket) == 3, "AlivePacket wire layout changed");
+static_assert(sizeof(OtaTriggerPacket) == 101, "OtaTriggerPacket wire layout changed");
+static_assert(sizeof(OtaAckPacket) == 5, "OtaAckPacket wire layout changed");
+static_assert(sizeof(HotspotSyncPacket) == 100, "HotspotSyncPacket wire layout changed");
+static_assert(sizeof(HotspotAckPacket) == 5, "HotspotAckPacket wire layout changed");
+static_assert(sizeof(WifiSwitchPacket) == 5, "WifiSwitchPacket wire layout changed");
+
 #endif

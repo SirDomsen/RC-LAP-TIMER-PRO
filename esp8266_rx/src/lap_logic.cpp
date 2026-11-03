@@ -1,6 +1,7 @@
 #include "lap_logic.h"
 #include <ir_decoder.h>
 #include <ir_protocol.h>
+#include <race_rules.h>
 #include "storage.h"
 #include "web_server.h"
 #include "buzzer.h"
@@ -332,29 +333,12 @@ void resetAllLaps(bool isHardReset) {
 }
 
 uint8_t getCurrentPosition(uint8_t carId) {
-  uint8_t pos = 1;
-  for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (i == carId) continue;
-    if (currentMode == MODE_DRAGRACE || currentMode == MODE_QUALIFYING || currentMode == MODE_GHOST_HUNT) {
-      if (bestLapDuration[i] > 0 && (bestLapDuration[carId] == 0 || bestLapDuration[i] < bestLapDuration[carId])) {
-        pos++;
-      }
-    } else {
-      if (lapCounter[i] > lapCounter[carId]) {
-        pos++;
-      } else if (lapCounter[i] == lapCounter[carId] && lastCrossTime[i] < lastCrossTime[carId] && lapCounter[i] > 0) {
-        pos++;
-      }
-    }
-  }
-  return pos;
-}
-
-uint8_t getActiveTargetSector() {
-  if (useSz3) return 3;
-  if (useSz2) return 2;
-  if (useSz1) return 1;
-  return 0;
+  const bool rankByBestLap =
+      currentMode == MODE_DRAGRACE ||
+      currentMode == MODE_QUALIFYING ||
+      currentMode == MODE_GHOST_HUNT;
+  return RaceRules::getPosition(
+      carId, MAX_CARS, rankByBestLap, bestLapDuration, lapCounter, lastCrossTime);
 }
 
 bool areAllActiveCarsFinished() {
@@ -455,7 +439,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
   // --- DRAGRACE LOGIK ---
   if (currentMode == MODE_DRAGRACE) {
-    uint8_t targetSector = getActiveTargetSector();
+    uint8_t targetSector = RaceRules::getActiveTargetSector(useSz1, useSz2, useSz3);
     if (targetSector == 0) return;
 
     if (stationId == targetSector) {
@@ -838,7 +822,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
       currentLapIsOutLap = true;
     }
 
-    uint8_t finalSectorNum = useSz3 ? 4 : (useSz2 ? 3 : (useSz1 ? 2 : 0));
+    uint8_t finalSectorNum = RaceRules::getFinalSectorNumber(useSz1, useSz2, useSz3);
 
     if (finalSectorNum > 0 && lastSectorTimeMs[carId] > (lastCrossTime[carId] / 1000UL)) {
       uint32_t lastSplit = 0;
