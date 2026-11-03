@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.6.14"
+#define FIRMWARE_VERSION  "v4.6.15"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif
@@ -32,23 +32,9 @@
   #define LED_SIGNAL  2           // GPIO2 für die blaue Onboard-LED (Active LOW)
   #define LED_ONBOARD 2           // GPIO2
 #elif defined(ESP32)
-  // ESP32-S3 Basisstation (z.B. N16R8)
-  #define IR_PIN      4           // GPIO4  - TSOP4838 Data Pin
-  #define LED_READY   5           // GPIO5  - Grüne Ready-LED
-  #define LED_SIGNAL  6           // GPIO6  - Gelbe Signal-LED
-  #define SPEAKER_PIN 7           // GPIO7  - Arcade Sound / BC337 Transistor Speaker
-  #ifdef LED_BUILTIN
-    #define LED_ONBOARD LED_BUILTIN
-  #else
-    #define LED_ONBOARD 2         // Fallback falls kein LED_BUILTIN definiert
-  #endif
+  #include <hardware_config.h>
 #else
-  // ESP8266 Basisstation (NodeMCU V2/V3)
-  #define IR_PIN      D2          // GPIO4  - TSOP4838 Data Pin 
-  #define LED_READY   D5          // GPIO14 - Grüne Ready-LED 
-  #define LED_SIGNAL  D6          // GPIO12 - Gelbe Signal-LED 
-  #define LED_ONBOARD LED_BUILTIN // GPIO2  - Interne ESP Status LED (Active LOW) 
-  #define SPEAKER_PIN D1          // GPIO5  - Arcade Sound / BC337 Transistor Speaker
+  #include "platform/esp8266/hardware_config.h"
 #endif
 
 // --- Renn- & EEPROM Parameter ---

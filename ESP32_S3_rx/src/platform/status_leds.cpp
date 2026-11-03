@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "../../../esp8266_rx/src/config.h"
+#include "hardware_config.h"
 #include <status_leds.h>
 
 namespace {
