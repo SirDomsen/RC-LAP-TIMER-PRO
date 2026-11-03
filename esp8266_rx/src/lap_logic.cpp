@@ -72,7 +72,6 @@ uint32_t modeEndTimeMs = 0;
 uint16_t durationMinutes = 0;
 
 uint8_t recentIDs[5] = {0, 0, 0, 0, 0};
-bool requireTwoFrames = true;
 
 uint32_t lastSeenMs[MAX_CARS + 1] = {0};
 bool readyForNextLap[MAX_CARS + 1] = {false};
@@ -124,12 +123,6 @@ const uint16_t CLEARANCE_TIMEOUT_MS = 1000;
 
 static uint32_t readyLedOffTime = 0;
 static bool readyLedBlinking = false;
-
-static uint8_t  lastPendingId = 0;
-static uint32_t firstDetectTimeMicros = 0;
-static uint8_t  detectionCount = 0;
-
-#define VALIDATION_WINDOW_MICROS 85000 
 
 void loadDailyBest() {
   loadTracksFromFS();
@@ -326,8 +319,7 @@ void resetAllLaps(bool isHardReset) {
   }
 
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
-  lastPendingId = 0;
-  detectionCount = 0;
+  IrDecoder::resetFrameFilter();
   readyLedBlinking = false;
   broadcastWebSocket("{\"type\":\"reset\"}");
 }
@@ -991,39 +983,16 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 }
 void processLapLogic() {
-  if (!newCodeAvailable) return;
-
-  uint16_t code = receivedCode & 0xFFF;
-  uint32_t exactSignalTime = irTriggerTimeMicros;
-  newCodeAvailable = false;
-
   uint8_t carId = 0;
-  if (IrProtocol::decodeFrame(code, carId) && carId <= MAX_CARS) {
-    lastSeenMs[carId] = millis();
-    bool confirmPassed = false;
+  uint32_t exactSignalTime = 0;
+  bool confirmed = false;
+  if (!IrDecoder::consumeFrame(MAX_CARS, carId, exactSignalTime, confirmed) || carId > MAX_CARS) return;
 
-    if (requireTwoFrames) {
-      if (carId == lastPendingId && (exactSignalTime - firstDetectTimeMicros < VALIDATION_WINDOW_MICROS)) {
-        detectionCount++;
-      } else {
-        lastPendingId = carId;
-        firstDetectTimeMicros = exactSignalTime;
-        detectionCount = 1;
-      }
+  lastSeenMs[carId] = millis();
+  if (!confirmed) return;
 
-      if (detectionCount >= 2) {
-        detectionCount = 0;
-        confirmPassed = true;
-      }
-    } else {
-      confirmPassed = true;
-    }
-
-    if (confirmPassed) {
-      addRecentID(carId);
-      processValidLap(carId, exactSignalTime);
-    }
-  }
+  addRecentID(carId);
+  processValidLap(carId, exactSignalTime);
 }
 
 void updateLapLogicTasks() {

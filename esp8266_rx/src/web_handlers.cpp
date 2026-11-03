@@ -4,6 +4,7 @@
 #include "esp_now_base.h"
 #include "web_server.h"
 #include "buzzer.h"
+#include <ir_decoder.h>
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
@@ -285,7 +286,7 @@ void handleGetFilter(AsyncWebServerRequest *request) {
   String json;
   json.reserve(32);
   json = "{\"enabled\":";
-  json += (requireTwoFrames ? "true" : "false");
+  json += (IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
   json += "}";
   request->send(200, "application/json", json);
 }
@@ -322,7 +323,7 @@ void handleGetVersion(AsyncWebServerRequest *request) {
 void handlePostSetFilter(AsyncWebServerRequest *request) {
   if (request->hasParam("enable")) {
     bool enable = (request->getParam("enable")->value() == "1");
-    requireTwoFrames = enable;
+    IrDecoder::setTwoFrameFilterEnabled(enable);
     saveFilterToEEPROM(enable);
   }
   request->send(200, "text/plain", "OK");
@@ -673,7 +674,7 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
   response->print("},");
 
   response->printf("\"deadtime\":{\"ms\":%u},", minLapTimeMs);
-  response->printf("\"filter\":{\"enabled\":%s},", requireTwoFrames ? "true" : "false");
+  response->printf("\"filter\":{\"enabled\":%s},", IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
 
   response->print("\"sector\":{");
   response->printf("\"useSz1\":%s,", useSz1 ? "true" : "false");

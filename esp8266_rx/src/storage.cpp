@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "lap_logic.h"
 #include "web_server.h"
+#include <ir_decoder.h>
 #include <EEPROM.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -1399,7 +1400,7 @@ void loadSettingsFromEEPROM() {
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;
-    requireTwoFrames = true;
+    IrDecoder::setTwoFrameFilterEnabled(true);
     useSz1 = true;
     useSz2 = true;
     useSz3 = true;
@@ -1414,7 +1415,7 @@ void loadSettingsFromEEPROM() {
       minLapTimeMs = DEFAULT_MIN_LAP_MS;
     }
 
-    requireTwoFrames = (EEPROM.read(303) != 0);
+    IrDecoder::setTwoFrameFilterEnabled(EEPROM.read(303) != 0);
     useSz1 = (EEPROM.read(304) != 0);
     useSz2 = (EEPROM.read(305) != 0);
     useSz3 = (EEPROM.read(306) != 0);

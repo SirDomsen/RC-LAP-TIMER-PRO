@@ -15,6 +15,12 @@ volatile uint32_t irTriggerTimeMicros = 0;
 
 namespace {
 uint8_t signalLedPin = 0;
+bool twoFrameFilterEnabled = true;
+uint8_t lastPendingId = 0;
+uint32_t firstDetectTimeMicros = 0;
+uint8_t detectionCount = 0;
+
+constexpr uint32_t kValidationWindowMicros = 85000;
 
 void IRAM_ATTR handleIRInterrupt() {
   if (!IrDecoder::processEdge(micros())) {
@@ -71,4 +77,50 @@ bool IRAM_ATTR IrDecoder::processEdge(uint32_t nowMicros) {
   bitIndex = 0;
   irBuffer = 0;
   return false;
+}
+
+bool IrDecoder::consumeFrame(uint8_t maxCarId, uint8_t& carId, uint32_t& signalTimeMicros, bool& confirmed) {
+  if (!newCodeAvailable) return false;
+
+  const uint32_t rawCode = receivedCode;
+  const uint32_t exactSignalTime = irTriggerTimeMicros;
+  newCodeAvailable = false;
+
+  uint8_t decodedCarId = 0;
+  if (!IrProtocol::decodeFrame(rawCode, decodedCarId)) return false;
+
+  confirmed = true;
+  if (decodedCarId <= maxCarId && twoFrameFilterEnabled) {
+    if (decodedCarId == lastPendingId &&
+        (exactSignalTime - firstDetectTimeMicros < kValidationWindowMicros)) {
+      detectionCount++;
+    } else {
+      lastPendingId = decodedCarId;
+      firstDetectTimeMicros = exactSignalTime;
+      detectionCount = 1;
+    }
+
+    confirmed = detectionCount >= 2;
+    if (confirmed) detectionCount = 0;
+  } else if (decodedCarId > maxCarId) {
+    confirmed = false;
+  }
+
+  carId = decodedCarId;
+  signalTimeMicros = exactSignalTime;
+  return true;
+}
+
+void IrDecoder::resetFrameFilter() {
+  lastPendingId = 0;
+  firstDetectTimeMicros = 0;
+  detectionCount = 0;
+}
+
+void IrDecoder::setTwoFrameFilterEnabled(bool enabled) {
+  twoFrameFilterEnabled = enabled;
+}
+
+bool IrDecoder::isTwoFrameFilterEnabled() {
+  return twoFrameFilterEnabled;
 }

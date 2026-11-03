@@ -72,7 +72,6 @@ extern uint16_t lapCounter[MAX_CARS + 1];
 extern uint16_t targetRounds;
 extern uint8_t recentIDs[5];
 extern uint16_t minLapTimeMs; 
-extern bool requireTwoFrames;
 
 extern uint32_t lastSeenMs[MAX_CARS + 1];
 extern bool readyForNextLap[MAX_CARS + 1];

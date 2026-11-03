@@ -11,6 +11,10 @@ void initIRDecoder(uint8_t irPin, uint8_t signalLedPin);
 
 namespace IrDecoder {
 bool IRAM_ATTR processEdge(uint32_t nowMicros);
+bool consumeFrame(uint8_t maxCarId, uint8_t& carId, uint32_t& signalTimeMicros, bool& confirmed);
+void resetFrameFilter();
+void setTwoFrameFilterEnabled(bool enabled);
+bool isTwoFrameFilterEnabled();
 }
 
 #endif
