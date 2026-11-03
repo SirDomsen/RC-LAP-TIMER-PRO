@@ -3340,7 +3340,24 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   }
 }
 
+function ensureStylesheetLoaded() {
+  let link = document.querySelector('link[rel="stylesheet"]');
+  if (!link) return;
+  let loaded = false;
+  try {
+    loaded = !!(link.sheet && link.sheet.cssRules && link.sheet.cssRules.length > 0);
+  } catch (e) {
+    loaded = true;
+  }
+  if (!loaded) {
+    let b = link.href.split('&r=')[0];
+    link.href = b + (b.includes('?') ? '&' : '?') + 'r=' + Date.now();
+  }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
+  ensureStylesheetLoaded();
+  setTimeout(ensureStylesheetLoaded, 1200);
   window.sessionStartTs = Math.floor(Date.now() / 1000);
 
   // Rolle verbindlich anhand der aufgerufenen Seite festlegen
