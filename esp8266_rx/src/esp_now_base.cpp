@@ -1,20 +1,6 @@
 #include "esp_now_base.h"
 #include "lap_logic.h"
-
-#if defined(ESP8266)
-#include <ESP8266WiFi.h>
-extern "C" {
-  #include <espnow.h>
-}
-#elif defined(ESP32)
-#include <WiFi.h>
-#include <esp_now.h>
-#include <esp_idf_version.h>
-#endif
-
-#ifndef u8
-typedef uint8_t u8;
-#endif
+#include <esp_now_transport.h>
 
 static unsigned long sz1LastSeen = 0;
 static unsigned long sz2LastSeen = 0;
@@ -118,13 +104,7 @@ bool isDuplicateEvent(uint32_t eventId) {
   return false;
 }
 
-static void processIncomingEspNow(const uint8_t *mac, const uint8_t *incomingData, int len) {
-#if defined(ESP32)
-  if (mac) {
-    Serial.printf("[ESP-NOW RX] Paket: %d Bytes von %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  len, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  }
-#endif
+static void processIncomingEspNow(const uint8_t*, const uint8_t *incomingData, int len) {
   // 1a. Hotspot ACK abfangen
   if (len == sizeof(HotspotAckPacket)) {
     HotspotAckPacket ack;
@@ -182,67 +162,18 @@ static void processIncomingEspNow(const uint8_t *mac, const uint8_t *incomingDat
   }
 }
 
-#if defined(ESP8266)
-void onESPNowDataRecv(u8 *mac, u8 *incomingData, u8 len) {
-  processIncomingEspNow(mac, incomingData, len);
-}
-#elif defined(ESP32)
-  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
-  void onESPNowDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
-    const uint8_t* mac = recv_info ? recv_info->src_addr : nullptr;
-    processIncomingEspNow(mac, incomingData, len);
-  }
-  #else
-  void onESPNowDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-    processIncomingEspNow(mac, incomingData, len);
-  }
-  #endif
-#endif
-
-static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-static void addOrUpdateBroadcastPeer(uint8_t channel) {
-#if defined(ESP8266)
-  if (esp_now_is_peer_exist(broadcastAddress)) {
-    esp_now_del_peer(broadcastAddress);
-  }
-  esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, channel, NULL, 0);
-#elif defined(ESP32)
-  if (esp_now_is_peer_exist(broadcastAddress)) {
-    esp_now_del_peer(broadcastAddress);
-  }
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0; // 0 = aktuellen WLAN-Kanal dynamisch nutzen (verhindert ESP_ERR_ESPNOW_CHAN)
-  peerInfo.ifidx = WIFI_IF_STA;
-  peerInfo.encrypt = false;
-  esp_err_t addRes = esp_now_add_peer(&peerInfo);
-  if (addRes != ESP_OK) {
-    Serial.printf("[ESP-NOW] AddPeer Fehler: 0x%X\n", addRes);
-  }
-#endif
-}
-
 void initESPNowBase() {
-  int initRes = esp_now_init();
+  int initRes = EspNowTransport::init(processIncomingEspNow);
   if (initRes != 0) {
     Serial.printf("[ESP-NOW] Init fehlgeschlagen: Code %d\n", initRes);
     return;
   }
 
-#if defined(ESP8266)
-  esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
-#endif
-  esp_now_register_recv_cb(onESPNowDataRecv);
-
-  uint8_t currentCh = WiFi.channel();
+  uint8_t currentCh = EspNowTransport::channel();
   if (currentCh == 0) currentCh = 1;
 
-  addOrUpdateBroadcastPeer(currentCh);
-
-#if defined(ESP32)
-  Serial.printf("[ESP-NOW] Bereit! Kanal: %d | STA MAC: %s\n", currentCh, WiFi.macAddress().c_str());
-#endif
+  EspNowTransport::addOrUpdateBroadcastPeer(currentCh);
+  EspNowTransport::logReady(currentCh);
 }
 
 void handleTimeSyncBroadcast() {
@@ -251,13 +182,13 @@ void handleTimeSyncBroadcast() {
   if (millis() - lastSyncTime >= 500UL) {
     lastSyncTime = millis();
     
-    uint8_t currentCh = WiFi.channel();
+    uint8_t currentCh = EspNowTransport::channel();
     if (currentCh == 0) currentCh = 1;
 
     // Funkkanal des Broadcast-Peers dynamisch nachführen
     static uint8_t registeredChannel = 0;
     if (currentCh != registeredChannel) {
-      addOrUpdateBroadcastPeer(currentCh);
+      EspNowTransport::addOrUpdateBroadcastPeer(currentCh);
       registeredChannel = currentCh;
     }
     
@@ -267,26 +198,17 @@ void handleTimeSyncBroadcast() {
     syncPkt.channel = currentCh;
     syncPkt.stratum = 0;
 
-    int sendRes = esp_now_send(broadcastAddress, (uint8_t *)&syncPkt, sizeof(syncPkt));
-    (void)sendRes;
+    int sendRes = EspNowTransport::sendBroadcast((uint8_t *)&syncPkt, sizeof(syncPkt));
 
-#if defined(ESP32)
     static uint32_t lastBeaconLog = 0;
     if (millis() - lastBeaconLog > 3000) {
       lastBeaconLog = millis();
-      if (sendRes != ESP_OK) {
-        Serial.printf("[ESP-NOW] Beacon Send-Fehler: 0x%X auf Ch %d\n", sendRes, currentCh);
-      } else {
-        Serial.printf("[ESP-NOW] Beacon gesendet auf Ch %d (OK)\n", currentCh);
-      }
+      EspNowTransport::logBeaconResult(sendRes, currentCh);
     }
-#endif
   }
 }
 
 void sendSZOtaTrigger(uint8_t targetMode, const char* ssid, const char* pass) {
-  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
   // 1. NEUER TRIGGER (101 Bytes) für die Zukunft (inklusive Ziel-WLAN Zugangsdaten)
   OtaTriggerPacket pkt;
   pkt.magicCode = OTA_MAGIC_CODE;
@@ -297,7 +219,7 @@ void sendSZOtaTrigger(uint8_t targetMode, const char* ssid, const char* pass) {
   strncpy(pkt.pass, pass, sizeof(pkt.pass) - 1);
 
   for (int i = 0; i < 3; i++) {
-    esp_now_send(broadcastAddress, (uint8_t *)&pkt, sizeof(pkt));
+    EspNowTransport::sendBroadcast((uint8_t *)&pkt, sizeof(pkt));
     delay(25);
   }
   
@@ -311,7 +233,7 @@ void sendSZOtaTrigger(uint8_t targetMode, const char* ssid, const char* pass) {
   legacyPkt.magicCode = OTA_MAGIC_CODE;
 
   for (int i = 0; i < 3; i++) {
-    esp_now_send(broadcastAddress, (uint8_t *)&legacyPkt, sizeof(legacyPkt));
+    EspNowTransport::sendBroadcast((uint8_t *)&legacyPkt, sizeof(legacyPkt));
     delay(25);
   }
 }
