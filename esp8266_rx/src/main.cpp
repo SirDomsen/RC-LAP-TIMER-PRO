@@ -6,6 +6,7 @@
 #include "web_server.h"
 #include "esp_now_base.h"
 #include "buzzer.h"
+#include <status_leds.h>
 
 #if defined(ESP8266)
 #include <ESP8266mDNS.h>
@@ -53,7 +54,7 @@ void loop() {
   processLapLogic();
   updateLapLogicTasks();
   processStorageQueue();
-  updateLEDs();
+  LapStatusLeds::update();
   updateBuzzer();
   handleNetworkTasks();
   handleTimeSyncBroadcast();

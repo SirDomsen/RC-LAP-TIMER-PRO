@@ -5,6 +5,7 @@
 #include "storage.h"
 #include "web_server.h"
 #include "buzzer.h"
+#include <status_leds.h>
 #include <sys/time.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -121,9 +122,6 @@ bool ghostAudioEnabled = true;
 
 const uint16_t CLEARANCE_TIMEOUT_MS = 1000; 
 
-static uint32_t readyLedOffTime = 0;
-static bool readyLedBlinking = false;
-
 void loadDailyBest() {
   loadTracksFromFS();
 }
@@ -225,13 +223,7 @@ void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8
 }
 
 void initLapLogic() {
-  pinMode(LED_READY, OUTPUT);
-  pinMode(LED_SIGNAL, OUTPUT);
-  pinMode(LED_ONBOARD, OUTPUT);
-
-  digitalWrite(LED_READY, LOW); 
-  digitalWrite(LED_SIGNAL, LOW);
-  digitalWrite(LED_ONBOARD, HIGH);
+  LapStatusLeds::init();
   
   currentMode = MODE_PRACTICE;
   modeEndTimeMs = 0;
@@ -320,7 +312,7 @@ void resetAllLaps(bool isHardReset) {
 
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
   IrDecoder::resetFrameFilter();
-  readyLedBlinking = false;
+  LapStatusLeds::cancelReadyPulse();
   broadcastWebSocket("{\"type\":\"reset\"}");
 }
 
@@ -520,9 +512,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
       queueLapForStorage(carId, completedRun, elapsedMs, sz1TimeMs[carId], sz2TimeMs[carId], sz3TimeMs[carId], 0, pos, (uint8_t)currentMode, currentTsMs);
 
-      digitalWrite(LED_READY, LOW);
-      readyLedBlinking = true;
-      readyLedOffTime = millis() + 200;
+      LapStatusLeds::pulseReady();
 
       broadcastSectorEvent(carId, targetSector, finishSecTime, elapsedMs, isSecPB, isSecOverall, secDeltaMs);
 
@@ -738,9 +728,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
     split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
 
-    digitalWrite(LED_READY, LOW);
-    readyLedBlinking = true;
-    readyLedOffTime = millis() + 200;
+    LapStatusLeds::pulseReady();
 
     char startJson[128];
     snprintf(startJson, sizeof(startJson), "{\"type\":\"drag_start\",\"carId\":%d,\"driver\":\"%s\"}", carId, driverNames[carId].c_str());
@@ -767,9 +755,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
     split1TimeMs[carId] = 0; split2TimeMs[carId] = 0; split3TimeMs[carId] = 0;
 
-    digitalWrite(LED_READY, LOW);
-    readyLedBlinking = true;
-    readyLedOffTime = millis() + 200;
+    LapStatusLeds::pulseReady();
 
     char baseJson[128];
     snprintf(baseJson, sizeof(baseJson), "{\"type\":\"base_cross\",\"carId\":%d,\"driver\":\"%s\"}", carId, driverNames[carId].c_str());
@@ -970,9 +956,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 
   if (lapCounted) {
-    digitalWrite(LED_READY, LOW);
-    readyLedBlinking = true;
-    readyLedOffTime = millis() + 200;
+    LapStatusLeds::pulseReady();
   }
 }
 void processLapLogic() {
@@ -1041,21 +1025,4 @@ void updateLapLogicTasks() {
   }
 
   checkDailyBestDateRollover();
-}
-
-void updateLEDs() {
-  static uint32_t lastYellowFlash = 0;
-  if (digitalRead(LED_SIGNAL) == HIGH) {
-    if (millis() - lastYellowFlash > 12) {
-      digitalWrite(LED_SIGNAL, LOW);
-      lastYellowFlash = millis();
-    }
-  } else {
-    lastYellowFlash = millis();
-  }
-
-  if (readyLedBlinking && millis() >= readyLedOffTime) {
-    digitalWrite(LED_READY, HIGH);
-    readyLedBlinking = false;
-  }
 }
