@@ -7,6 +7,7 @@
 namespace RaceRules {
 
 bool ranksByBestLap(RaceMode mode);
+bool isTimedMode(RaceMode mode);
 uint8_t getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3);
 uint8_t getFinalSectorNumber(bool useSz1, bool useSz2, bool useSz3);
 

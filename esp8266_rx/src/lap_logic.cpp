@@ -331,7 +331,7 @@ uint8_t getCurrentPosition(uint8_t carId) {
 }
 
 bool areAllActiveCarsFinished() {
-  if (currentMode != MODE_QUALIFYING && currentMode != MODE_RACE_TIME) return false;
+  if (!RaceRules::isTimedMode(currentMode)) return false;
   if (modeEndTimeMs == 0 || millis() <= modeEndTimeMs) return false;
 
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
@@ -379,7 +379,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     if (!dragRunActive[carId] || lastCrossTime[carId] == 0) return;
   }
 
-  if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && finishedFinalLap[carId]) {
+  if (RaceRules::isTimedMode(currentMode) && finishedFinalLap[carId]) {
     return;
   }
 
@@ -748,7 +748,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 
   if (lapCounter[carId] == 0) {
-    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
+    if (RaceRules::isTimedMode(currentMode) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
 
     awaitingBaseCross[carId] = false;
     lastLapIsOutLap[carId] = false;
@@ -774,7 +774,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     return;
   }
 
-  if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
+  if (RaceRules::isTimedMode(currentMode)) {
     if (modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
       if (finishedFinalLap[carId]) return;
       if (lastCrossTime[carId] == 0) return;
@@ -925,7 +925,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     lapCounted = true;
 
-    if ((currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
+    if (RaceRules::isTimedMode(currentMode) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
       finishedFinalLap[carId] = true;
     }
 
@@ -1031,7 +1031,7 @@ void updateLapLogicTasks() {
   }
   
   static bool sessionEndBroadcasted = false;
-  if (currentMode == MODE_QUALIFYING || currentMode == MODE_RACE_TIME) {
+  if (RaceRules::isTimedMode(currentMode)) {
     if (modeEndTimeMs > 0 && now > modeEndTimeMs) {
       if (!sessionEndBroadcasted && areAllActiveCarsFinished()) {
         sessionEndBroadcasted = true;

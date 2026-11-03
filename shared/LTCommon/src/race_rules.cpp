@@ -6,6 +6,10 @@ bool RaceRules::ranksByBestLap(RaceMode mode) {
          mode == MODE_GHOST_HUNT;
 }
 
+bool RaceRules::isTimedMode(RaceMode mode) {
+  return mode == MODE_QUALIFYING || mode == MODE_RACE_TIME;
+}
+
 uint8_t RaceRules::getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3) {
   if (useSz3) return 3;
   if (useSz2) return 2;
