@@ -1,27 +1,32 @@
 # 🏁 RC LAP TIMER PRO – SYSTEM ROADMAP & ARCHITEKTUR
 
 > **Interne System-Roadmap & Modulübersicht für AI-Assistenten und Entwickler.**  
-> *Stand Firmware: v4.5.2 | Platform: ESP8266 (160 MHz) + ATtiny13*
+> *Stand Firmware: v4.7.0 | Basisstation: ESP8266 oder ESP32-S3 + Sektorstationen: ESP-01S + Transponder: ATtiny13A*
 
 ---
 
 ## 🧭 1. Projektübersicht & Philosophie
-**RC Lap Timer Pro** ist ein autarkes, hochpräzises Infrarot-Rundenzählersystem für RC-Cars (Maßstäbe 1:10, 1:8, 1:24 etc.). Es läuft ohne Cloud oder zwingende Router-Infrastruktur auf einem ESP8266-Mikrocontroller. Die Bedienung und Live-Anzeige erfolgt komplett über ein responsives, modernes Web-Frontend (HTML5 / Vanilla JS / WebSockets).
+**RC Lap Timer Pro** ist ein autarkes, hochpräzises Infrarot-Rundenzählersystem für RC-Cars (Maßstäbe 1:10, 1:8, 1:24 etc.). Die Basisstation läuft auf ESP8266 oder ESP32-S3; Bedienung und Live-Anzeige erfolgen über ein responsives Web-Frontend (HTML5 / Vanilla JS / WebSockets).
 
-* **Basisstation:** Empfängt IR-Transponder an Start/Ziel, betreibt Webserver/WebSockets, verwaltet Streckenrekorde, Session-Dateien und Zeitrechnung.
-* **Sektorstationen (SZ1–SZ3):** Autonome Stationen an Streckenabschnitten. Erfassen Zwischenzeiten via IR und übertragen diese per **ESP-NOW Mesh/Sync** mit Zeitzonenausgleich an die Basis.
-* **Transponder (TX):** Kleiner ATtiny13-Sender in jedem RC-Car, sendet individuelle 12-Bit IR-Codes auf 38 kHz.
+* **Basisstation (`LT_Base/`):** Gemeinsame Rennlogik und Web-App mit separaten ESP8266- und ESP32-S3-Hardwareadaptern; empfängt Start/Ziel-Transponder, betreibt Webserver/WebSockets und verwaltet Rekorde und Sessions.
+* **Sektorstationen (`LT_SectorStation/`, SZ1–SZ3):** Eigenständiges ESP-01S-Projekt. Die Stationen erfassen Zwischenzeiten und übertragen sie synchronisiert per ESP-NOW an die Basis.
+* **Transponder (`attiny13_tx/`):** ATtiny13-Sender in jedem RC-Car mit individuellen 12-Bit-IR-Codes auf 38 kHz.
 
 ---
 
-## ⚙️ 2. PlatformIO Environments & Build-Konfiguration (`platformio.ini`)
+## ⚙️ 2. PlatformIO Environments & Build-Konfiguration
 
-| Environment | Board | CPU Takt | Dateisystem | Upload / Port | Zweck / Flags |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | espota (laptimer.local) | Basisstation, AsyncWebServer, ArduinoJson 7, LWIP2 Low Memory |
-| `sz1` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-1.local) | Sektorstation 1 (`-DSECTOR_STATION -DSTATION_ID=1`) |
-| `sz2` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-2.local) | Sektorstation 2 (`-DSECTOR_STATION -DSTATION_ID=2`) |
-| `sz3` | ESP-01S (`esp01_1m`) | 160 MHz | - | espota (SZ-3.local) | Sektorstation 3 (`-DSECTOR_STATION -DSTATION_ID=3`) |
+Die Projekte besitzen getrennte PlatformIO-Konfigurationen. `LTCommon` liegt unter `LT_Base/lib/LTCommon/` und wird sowohl von der Basis als auch von den Sektorstationen eingebunden.
+
+| Projekt / Environment | Board | Takt | Dateisystem | Zweck |
+| :--- | :--- | :--- | :--- | :--- |
+| `LT_Base` / `basisstation` | NodeMCU V2 (`nodemcuv2`) | 160 MHz | LittleFS | ESP8266-Basis, LWIP2 Low Memory |
+| `LT_Base` / `basisstation_s3` | ESP32-S3 DevKitC-1 N16R8 | 240 MHz | LittleFS | ESP32-S3-Basis, 16 MB Flash, 8 MB Octal-PSRAM, USB-CDC |
+| `LT_SectorStation` / `sz1` | ESP-01S (`esp01_1m`) | 160 MHz | - | Sektorstation 1 (`-DSECTOR_STATION -DSTATION_ID=1`) |
+| `LT_SectorStation` / `sz2` | ESP-01S (`esp01_1m`) | 160 MHz | - | Sektorstation 2 (`-DSECTOR_STATION -DSTATION_ID=2`) |
+| `LT_SectorStation` / `sz3` | ESP-01S (`esp01_1m`) | 160 MHz | - | Sektorstation 3 (`-DSECTOR_STATION -DSTATION_ID=3`) |
+
+Builds werden vom Repository-Root aus z. B. mit `pio run -d LT_Base -e basisstation`, `pio run -d LT_Base -e basisstation_s3` oder `pio run -d LT_SectorStation -e sz1` gestartet. Das LittleFS-Image der Basis wird mit `pio run -d LT_Base -e basisstation -t buildfs` gebaut.
 
 ---
 
@@ -152,13 +157,14 @@
 flowchart TD
     subgraph Hardware
         TX[ATtiny13 TX Transponder 38kHz] -->|IR Signal| TSOP[TSOP4838 Sensor]
-        SZ[ESP-01S Sektorstationen SZ1-SZ3] -->|ESP-NOW Funksignal| BASE_ESP[Basisstation ESP8266 160MHz]
-        TSOP --> BASE_ESP
+        SZ[ESP-01S Sektorstationen SZ1-SZ3] -->|ESP-NOW Funksignal| BASE[Gemeinsame Basisstations-Firmware]
+        TSOP --> BASE
     end
 
     subgraph Firmware_Backend
-        BASE_ESP --> IR_DEC[IR Decoder ISR]
-        BASE_ESP --> ESPNOW_RX[ESP-NOW Base Receiver]
+        BASE --> TARGET[ESP8266- oder ESP32-S3-Adapter]
+        BASE --> IR_DEC[IR Decoder ISR]
+        BASE --> ESPNOW_RX[ESP-NOW Base Receiver]
         IR_DEC --> LAP_CORE[Lap Logic & Sektorberechnung]
         ESPNOW_RX --> LAP_CORE
         LAP_CORE --> STORAGE[Storage Manager LittleFS & EEPROM]
@@ -180,9 +186,7 @@ flowchart TD
 ## 📋 7. Unverzichtbare Entwicklungsregeln für Antigravity
 
 1. **Zuerst reden, dann coden:** Jede Codeänderung oder Feature-Erweiterung wird zuerst diskutiert und konzipiert. Erst nach Bestätigung des Users wird editiert.
-2. **Dual-Tree-Synchronisation:** Jeder Code- oder Datei-Schreibvorgang muss **zeitgleich** in beiden Pfaden gepflegt werden:
-   * Worktree: `C:\Users\Domsen\.gemini\antigravity\worktrees\RC-LAP-TIMER-PRO\analyze_project_structure_roadmap\`
-   * Haupt-Repo: `C:\#Coding\Github\RC-LAP-TIMER-PRO\`
-3. **Cache-Busting-Pflicht:** Sobald `data/*.js` oder `data/*.css` geändert werden, **muss** die Versionsnummer in `admin.html`, `index.html` und `config.h` (`FIRMWARE_VERSION`) synchron erhöht werden (`?v=X.X.X`).
-4. **RAM-Schonung auf dem ESP8266:** Nie blockierende Loops oder große Strings auf dem Heap erzeugen. JSON-Dokumente strikt mit `ArduinoJson 7` reservieren oder direkt streamen.
-5. **Code-Integrität:** Bestehende Sicherheitsmechanismen (Heap-Guard, 95%-Flash-Schutz, Sektor-Entprellung, ISR-Zeitschranken) niemals aus Versehen entfernen oder abschwächen.
+2. **Projektstruktur:** Basisstationsquellen und Webassets gehören nach `LT_Base/`; Sektorstationsquellen nach `LT_SectorStation/`; die Transponder-Referenz bleibt unter `attiny13_tx/`. Gemeinsame Decoder- und Protokollteile liegen in `LT_Base/lib/LTCommon/`.
+3. **Cache-Busting-Pflicht:** Sobald `LT_Base/data/*.js` oder `LT_Base/data/*.css` geändert werden, **muss** die Versionsnummer in `admin.html`, `index.html` und `LT_Base/src/common/config.h` (`FIRMWARE_VERSION`) synchron erhöht werden (`?v=X.X.X`).
+4. **RAM-Schonung auf dem ESP8266:** Nie blockierende Loops oder große Strings auf dem Heap erzeugen. JSON-Dokumente strikt mit ArduinoJson 7 reservieren oder direkt streamen.
+5. **Code-Integrität:** Bestehende Sicherheitsmechanismen (Heap-Guard, 95%-Flash-Schutz, Sektor-Entprellung, ISR-Zeitschranken) niemals aus Versehen entfernen oder abschwächen; Änderungen am gemeinsamen Basisstationskern müssen für ESP8266 und ESP32-S3 gebaut werden.

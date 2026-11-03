@@ -1,71 +1,72 @@
 # RC Lap Timer Pro 🏎️⏱️
 
-A standalone, Wi-Fi-based infrared lap timing system for RC cars built on the **ESP8266** with an integrated web server.
+A standalone, Wi-Fi-based infrared lap timing system for RC cars. The repository contains separate PlatformIO projects for the base station and sector stations, plus the ATtiny13 transmitter reference.
 
----
+## Projects
 
-## 🌟 Features
+| Project | Hardware | Description |
+| --- | --- | --- |
+| `LT_Base/` | ESP8266 NodeMCU V2 or ESP32-S3 DevKitC-1 | Base firmware, shared race logic, LittleFS web app and common `LTCommon` library |
+| `LT_SectorStation/` | ESP-01S (SZ1–SZ3) | Sector station firmware; shares `LTCommon` with the base |
+| `attiny13_tx/` | ATtiny13A | IR transponder transmitter reference |
 
-* **Infrared Detection:** Precise transponder signal acquisition using TSOP4838 sensors.
-* **Integrated Web Server:** Live display of lap times, best laps, and standings directly in your browser (no app installation required).
-* **Multiple Race Modes:** 
-  * Free Practice
-  * Qualifying (Time-based)
-  * Race (Lap- or Time-based)
-* **Dynamic Storage:** Saves driver names, car profiles, lap histories, and session results to flash memory via LittleFS.
-* **Flexible Wi-Fi Connectivity:** Creates its own Access Point or connects to an existing home network.
-* **Over-The-Air (OTA) Updates:** Convenient firmware and web interface updates straight through the browser.
-* **Arcade Sound Effects:** Authentic 1-bit PC-speaker sounds (Grand Prix Circuit 2-1-GO start lights, lap ticks, track record fanfares).
+The base project's `platformio.ini` provides the `basisstation` and `basisstation_s3` environments. Sector station environments `sz1`, `sz2` and `sz3` are defined separately in `LT_SectorStation/platformio.ini`.
 
----
+## Features
 
-## 🛠️ Hardware Requirements
+* Infrared transponder detection and live lap timing
+* Practice, qualifying, lap/time races, drag race and Ghost Battle
+* Sector timing over ESP-NOW with synchronized sector stations
+* Browser-based dashboard, race control, statistics and OTA updates
+* LittleFS storage for tracks, settings and session history
+* Arcade sound effects and optional hardware speaker output
 
-* **Microcontroller:** ESP8266 (e.g., NodeMCU V2/V3 or Wemos D1 Mini)
-* **IR Receiver:** TSOP4838 (connected to Pin `D2` / GPIO4)
-* **LEDs (optional status indicators):**
-  * Green LED (Ready/Status): Pin `D5` (GPIO14)
-  * Yellow LED (IR Signal): Pin `D6` (GPIO12)
+## Hardware
 
----
+* **Base:** ESP8266 NodeMCU V2 or ESP32-S3 DevKitC-1
+* **Sector stations:** ESP-01S modules with TSOP4838 IR receivers
+* **Transponder:** ATtiny13A with a 38 kHz IR LED
 
-## 🚀 Installation & Setup
+See [LT_Base/GEMINI.md](LT_Base/GEMINI.md) for the current pin assignments and architecture notes.
 
-### 1. Clone the Repository
-```bash
-git clone [https://github.com/SirDomsen/RC-LAP-TIMER-PRO.git](https://github.com/SirDomsen/RC-LAP-TIMER-PRO.git)
-cd RC-LAP-TIMER-PRO
+## Setup and builds
 
+Install PlatformIO Core or the VS Code PlatformIO extension.
 
-2. Configure Wi-Fi Credentials
-Create a file named secrets.h inside the src/ directory with your local Wi-Fi credentials:
+Create `LT_Base/src/common/secrets.h` with optional home-network credentials:
 
-C++
-#ifndef SECRETS_H
-#define SECRETS_H
+```cpp
+#define HOME_SSID "YourWifiName"
+#define HOME_PASS "YourWifiPassword"
+```
 
-#define HOME_SSID   "YourWifiName"
-#define HOME_PASS   "YourWifiPassword"
+For sector-station fallback access to the same home network, create `LT_SectorStation/src/secrets.h` with those credentials. Both files are local-only and ignored by Git. The firmware also has defaults and can be built without these files.
 
-#endif
-(Note: The secrets.h file is excluded via .gitignore and will never be pushed to GitHub).
+From the repository root, build a base target:
 
-3. Build & Flash
-This project is optimized for PlatformIO:
+```sh
+pio run -d LT_Base -e basisstation
+pio run -d LT_Base -e basisstation_s3
+```
 
-Open the project folder in VS Code with the PlatformIO extension installed.
+Build the web filesystem image for the base:
 
-Connect your ESP8266 via USB.
+```sh
+pio run -d LT_Base -e basisstation -t buildfs
+```
 
-Upload both the Firmware and the Filesystem (LittleFS image).
+Build a sector station:
 
-💻 Usage
-Connect to the timer's Wi-Fi network or navigate to the following URL in your web browser:
-http://192.168.0.8 or http://laptimer.local
+```sh
+pio run -d LT_SectorStation -e sz1
+```
 
-Configure drivers, car names, and deadtime parameters in the dashboard.
+The configured environments support OTA uploads when the device is reachable at its configured address. Connect over USB and use PlatformIO's normal upload target when performing a serial flash.
 
-Start a session and track lap times in real-time!
+## Usage
 
-📄 License
+Connect to the timer's Wi-Fi network or open its configured address in a browser. Configure drivers, cars and timing options in the dashboard, then start a session.
+
+## License
+
 This project is licensed under the MIT License.
