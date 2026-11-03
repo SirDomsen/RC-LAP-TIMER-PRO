@@ -1,6 +1,7 @@
 #include "buzzer.h"
 #include "config.h"
 #include "../Sound/soundtracks.h"
+#include <buzzer_output.h>
 
 // Aktivierungsstatus (Standard: aktiv)
 bool buzzerEnabled = true;
@@ -78,22 +79,18 @@ static String currentTrackName = "";
 
 static inline void soundOn(uint16_t freq) {
   if (freq > 0) {
-    tone(SPEAKER_PIN, freq);
+    BuzzerOutput::startTone(freq);
     hwToneActive = true;
   }
 }
 
 static inline void soundOff() {
-  if (hwToneActive) {
-    noTone(SPEAKER_PIN);
-    hwToneActive = false;
-  }
-  digitalWrite(SPEAKER_PIN, LOW);
+  BuzzerOutput::stopTone(hwToneActive);
+  hwToneActive = false;
 }
 
 void initBuzzer() {
-  pinMode(SPEAKER_PIN, OUTPUT);
-  digitalWrite(SPEAKER_PIN, LOW);
+  BuzzerOutput::init();
   hwToneActive = false;
   isBuzzerPlaying = false;
   isLooping = false;
