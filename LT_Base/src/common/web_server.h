@@ -13,6 +13,7 @@ void handleNetworkTasks();
 void broadcastWebSocket(const String& msg);
 void scheduleESPReset(uint16_t delayMs = 500);
 bool isHeapCriticalForFileTransfer();
+bool isHeapCriticalForLiveData();
 
 // Netzwerk-Wechsel auslösen
 void triggerWifiSwitch(uint8_t mode);

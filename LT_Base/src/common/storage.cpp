@@ -94,6 +94,7 @@ static const String defaultCars[MAX_CARS + 1] = {
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;
+bool pendingNameHistoryBaseline = false;
 
 static const char* getModeFolderName(uint8_t mode) {
   switch (mode) {
@@ -726,12 +727,82 @@ void initFS() {
 #if defined(ESP8266)
   if (LittleFS.begin()) {
     updateFsUsageCache();
+    recordBootResetReason();
   }
 #elif defined(ESP32)
   if (LittleFS.begin(true)) {
     updateFsUsageCache();
+    recordBootResetReason();
   }
 #endif
+}
+
+String lastResetReason = "Unbekannt";
+String lastResetInfo = "";
+bool lastResetIsCrash = false;
+
+void recordBootResetReason() {
+#if defined(ESP8266)
+  lastResetReason = ESP.getResetReason();
+  lastResetInfo = ESP.getResetInfo();
+
+  // Ist es ein Crash / WDT / Exception?
+  String rLower = lastResetReason;
+  rLower.toLowerCase();
+  if (rLower.indexOf("watchdog") >= 0 || rLower.indexOf("exception") >= 0 || rLower.indexOf("fatal") >= 0) {
+    lastResetIsCrash = true;
+  } else {
+    lastResetIsCrash = false;
+  }
+
+  // Protokolliert jeden Neustart in /crash.log im LittleFS (max. 6 KB halten)
+  File f = LittleFS.open("/crash.log", "a");
+  if (f) {
+    if (f.size() > 6144) {
+      f.close();
+      LittleFS.remove("/crash.log");
+      f = LittleFS.open("/crash.log", "w");
+    }
+    if (f) {
+      const char* tag = "[START]";
+      if (lastResetIsCrash) {
+        tag = "[CRASH ⚠️]";
+      } else if (rLower.indexOf("power") >= 0) {
+        tag = "[POWER-ON]";
+      } else if (rLower.indexOf("restart") >= 0) {
+        tag = "[RESTART]";
+      } else if (rLower.indexOf("external") >= 0) {
+        tag = "[EXT-RESET]";
+      }
+
+      f.print(tag);
+      f.print(" Grund: ");
+      f.print(lastResetReason);
+      f.print(" | Details: ");
+      f.println(lastResetInfo);
+      f.close();
+    }
+  }
+#elif defined(ESP32)
+  lastResetReason = "Normal Boot (ESP32)";
+  lastResetInfo = "";
+  lastResetIsCrash = false;
+#endif
+}
+
+String getCrashLog() {
+  if (!LittleFS.exists("/crash.log")) {
+    return "Keine Reset-Eintraege vorhanden.";
+  }
+  File f = LittleFS.open("/crash.log", "r");
+  if (!f) return "Fehler beim Lesen des Reset-Logs.";
+  String log = f.readString();
+  f.close();
+  return log.length() > 0 ? log : "Log ist leer.";
+}
+
+bool clearCrashLog() {
+  return !LittleFS.exists("/crash.log") || LittleFS.remove("/crash.log");
 }
 
 // --- STRECKEN-VERWALTUNG (/tracks.json) ---
@@ -1012,10 +1083,12 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
   bool inQuotes = false;
   bool escaped = false;
   String currentObj = "";
-  currentObj.reserve(512);
+  currentObj.reserve(1024);
+  size_t bytesProcessed = 0;
 
   while (fIn.available()) {
     char c = (char)fIn.read();
+    if ((++bytesProcessed & 0x3FF) == 0) yield();
     if (braceDepth == 0) {
       if (c == '[') {
         braceDepth = 1;
@@ -1284,6 +1357,7 @@ bool saveAllNamesToFS() {
 }
 
 static bool appendNameHistoryEntry(uint8_t id, uint64_t timestampMs, const String& driver, const String& car) {
+  yield();
   bool needsSeparator = false;
   File existing = LittleFS.open("/names_history.jsonl", "r");
   if (existing) {
@@ -1309,6 +1383,7 @@ static bool appendNameHistoryEntry(uint8_t id, uint64_t timestampMs, const Strin
   size_t written = serializeJson(doc, f);
   bool success = written > 0 && f.println() > 0;
   f.close();
+  yield();
   return success;
 }
 
@@ -1316,6 +1391,9 @@ bool ensureNameHistoryBaseline() {
   if (baseUnixTimestampSec == 0) return false;
   static bool baselineComplete = false;
   if (baselineComplete) return true;
+  static bool baselineInProgress = false;
+  if (baselineInProgress) return false;
+  baselineInProgress = true;
 
   bool hasEntry[MAX_CARS + 1] = {false};
   uint8_t foundCount = 0;
@@ -1330,7 +1408,8 @@ bool ensureNameHistoryBaseline() {
     while (f.available()) {
       String line = f.readStringUntil('\n');
       JsonDocument doc;
-      if (deserializeJson(doc, line)) continue;
+      if (deserializeJson(doc, line)) { yield(); continue; }
+      yield();
       uint8_t id = doc["id"] | 0;
       if (id >= 1 && id <= MAX_CARS && !hasEntry[id]) {
         hasEntry[id] = true;
@@ -1351,16 +1430,22 @@ bool ensureNameHistoryBaseline() {
   }
 
   if (hasMissingEntries) {
+    yield();
     File output = LittleFS.open("/names_history.jsonl", "a");
-    if (!output) return false;
+    if (!output) {
+      baselineInProgress = false;
+      return false;
+    }
     if (needsSeparator && output.println() == 0) {
       output.close();
+      baselineInProgress = false;
       return false;
     }
 
     JsonDocument doc;
     for (uint8_t id = 1; id <= MAX_CARS; id++) {
       if (hasEntry[id]) continue;
+      yield();
       doc["id"] = id;
       doc["ts"] = timestampMs;
       doc["driver"] = driverNames[id];
@@ -1369,12 +1454,15 @@ bool ensureNameHistoryBaseline() {
       if (written == 0 || output.println() == 0) {
         Serial.printf("[Names] Baseline für ID %u konnte nicht gespeichert werden.\n", id);
         output.close();
+        baselineInProgress = false;
         return false;
       }
     }
     output.close();
+    yield();
   }
 
+  baselineInProgress = false;
   baselineComplete = true;
   return true;
 }
@@ -1559,7 +1647,7 @@ void flushCurrentSessionToIndex() {
       f.print("{\"sessions\":[");
       currentSessionIndexOffset = f.position();
       f.print(entryJson);
-      f.print("]}                ");
+      f.print("]}                                                                ");
       currentSessionIndexLen = entryJson.length();
       f.close();
     }
@@ -1585,11 +1673,11 @@ void flushCurrentSessionToIndex() {
     f.print(entryJson);
     f.print("]}");
     if (entryJson.length() < currentSessionIndexLen) {
-      size_t diff = currentSessionIndexLen - entryJson.length() + 8;
+      size_t diff = currentSessionIndexLen - entryJson.length() + 32;
       for (size_t i = 0; i < diff; i++) f.print(' ');
     } else {
       currentSessionIndexLen = entryJson.length();
-      f.print("        ");
+      f.print("                                ");
     }
     f.close();
   } else {
@@ -1623,7 +1711,7 @@ void flushCurrentSessionToIndex() {
     }
     currentSessionIndexOffset = f.position();
     f.print(entryJson);
-    f.print("]}                ");
+    f.print("]}                                                                ");
     currentSessionIndexLen = entryJson.length();
     f.close();
   }
@@ -1674,6 +1762,14 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
   if (millis() - lastStorageWrite < 120) return;
+
+  if (pendingNameHistoryBaseline && baseUnixTimestampSec > 0 && !isHeapCriticalForFileTransfer()) {
+    if (ensureNameHistoryBaseline()) {
+      pendingNameHistoryBaseline = false;
+    }
+    lastStorageWrite = millis();
+    return;
+  }
 
   if (queueHead != queueTail) { 
     PendingLap lap = lapQueue[queueTail];

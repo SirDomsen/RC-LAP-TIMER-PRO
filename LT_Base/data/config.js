@@ -278,7 +278,10 @@ async function saveConfig() {
         }
       }
     }
-    if (namesChanged && typeof loadCarNames === 'function') await loadCarNames();
+    if (namesChanged) {
+      window.carNamesHistoryMap = {};
+      if (typeof loadCarNames === 'function') await loadCarNames();
+    }
   } catch (err) { 
     console.error("Fehler beim Speichern der Konfiguration:", err); 
     if (typeof showAlert === 'function') {

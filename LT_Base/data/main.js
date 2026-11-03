@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.11';
+window.UI_VERSION = '4.7.0';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -358,7 +358,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.6');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.0');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -384,6 +384,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       if (typeof sessionFileCache !== 'undefined') sessionFileCache = {};
       await Promise.all([
         typeof loadCarNames === 'function' ? loadCarNames() : Promise.resolve(),
+        typeof loadCarNamesHistory === 'function' ? loadCarNamesHistory() : Promise.resolve(),
         typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
         typeof fetchSessionsAndStorageInfo === 'function' ? fetchSessionsAndStorageInfo() : Promise.resolve()
       ]);
@@ -1512,7 +1513,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.5.6');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.0');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -2214,22 +2215,23 @@ function updateStorageStatusUI(pct, full, usedBytes, totalBytes) {
   }
 }
 
-async function loadVersion() {
+async function loadVersion(retries = 3) {
   const fwElem = document.getElementById('firmware-version');
   const uiElem = document.getElementById('ui-version');
   if (uiElem) uiElem.textContent = UI_VERSION;
 
-  try {
-    let response = await fetch('/api/version');
-    if (response.ok) {
-      let data = await response.json();
-      if (fwElem) fwElem.textContent = data.firmware;
-    } else {
-      if (fwElem) fwElem.textContent = "--";
-    }
-  } catch (err) {
-    if (fwElem) fwElem.textContent = "--";
+  for (let i = 0; i < retries; i++) {
+    try {
+      let response = await fetch('/api/version');
+      if (response.ok) {
+        let data = await response.json();
+        if (fwElem) fwElem.textContent = data.firmware;
+        return;
+      }
+    } catch (err) {}
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 1000));
   }
+  if (fwElem && (!fwElem.textContent || fwElem.textContent === '')) fwElem.textContent = "--";
 }
 
 async function loadCarNames() {
@@ -2240,39 +2242,46 @@ async function loadCarNames() {
     for (let i = 1; i <= MAX_CARS; i++) {
       if (names[i]) carNamesMap[i] = names[i];
     }
-
-    try {
-      let historyResponse = await fetch('/api/names-history', { cache: 'no-store' });
-      if (!historyResponse.ok) throw new Error('HTTP ' + historyResponse.status);
-      let historyText = await historyResponse.text();
-      let history = {};
-      let lines = historyText.split(/\r?\n/);
-      lines.forEach((line, index) => {
-        if (!line.trim()) return;
-        let entry;
-        try {
-          entry = JSON.parse(line);
-        } catch (error) {
-          if (index === lines.length - 1 && !historyText.endsWith('\n')) return;
-          throw new Error(`Ungültiger Eintrag in der Namenshistorie (Zeile ${index + 1}): ${error.message}`);
-        }
-        if (!Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
-            !Number.isFinite(entry.ts) || entry.ts <= 0 ||
-            typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
-          throw new Error(`Ungültige Daten in der Namenshistorie (Zeile ${index + 1}).`);
-        }
-        if (!history[entry.id]) history[entry.id] = [];
-        history[entry.id].push(entry);
-      });
-      Object.values(history).forEach(entries => entries.sort((a, b) => a.ts - b.ts));
-      window.carNamesHistoryMap = history;
-    } catch (historyError) {
-      window.carNamesHistoryMap = {};
-      console.error("Fehler beim Laden der Namenshistorie:", historyError);
-    }
     populateDriverQuickSelect();
   } catch (e) {
     console.error("Fehler beim Laden der Namen:", e);
+  }
+}
+
+async function loadCarNamesHistory(force = false) {
+  if (!force && window.carNamesHistoryMap && Object.keys(window.carNamesHistoryMap).length > 0) {
+    return window.carNamesHistoryMap;
+  }
+  try {
+    let historyResponse = await fetch('/api/names-history');
+    if (!historyResponse.ok) throw new Error('HTTP ' + historyResponse.status);
+    let historyText = await historyResponse.text();
+    let history = {};
+    let lines = historyText.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (error) {
+        if (index === lines.length - 1 && !historyText.endsWith('\n')) return;
+        return;
+      }
+      if (!Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
+          !Number.isFinite(entry.ts) || entry.ts <= 0 ||
+          typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
+        return;
+      }
+      if (!history[entry.id]) history[entry.id] = [];
+      history[entry.id].push(entry);
+    });
+    Object.values(history).forEach(entries => entries.sort((a, b) => a.ts - b.ts));
+    window.carNamesHistoryMap = history;
+    return history;
+  } catch (historyError) {
+    console.warn("Namenshistorie konnte nicht geladen werden:", historyError);
+    if (!window.carNamesHistoryMap) window.carNamesHistoryMap = {};
+    return window.carNamesHistoryMap;
   }
 }
 
@@ -3332,7 +3341,24 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
+function ensureStylesheetLoaded() {
+  let link = document.querySelector('link[rel="stylesheet"]');
+  if (!link) return;
+  let loaded = false;
+  try {
+    loaded = !!(link.sheet && link.sheet.cssRules && link.sheet.cssRules.length > 0);
+  } catch (e) {
+    loaded = true;
+  }
+  if (!loaded) {
+    let b = link.href.split('&r=')[0];
+    link.href = b + (b.includes('?') ? '&' : '?') + 'r=' + Date.now();
+  }
+}
+
+async function initMainApp() {
+  ensureStylesheetLoaded();
+  setTimeout(ensureStylesheetLoaded, 1200);
   window.sessionStartTs = Math.floor(Date.now() / 1000);
 
   // Rolle verbindlich anhand der aufgerufenen Seite festlegen
@@ -3374,7 +3400,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   setTimeout(() => {
     pollData();
   }, 800);
-});
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initMainApp);
+} else {
+  initMainApp();
+}
 
 // ==========================================
 // QR-CODE VERBINDUNG / IP-ADRESSE

@@ -68,6 +68,7 @@ void loadSettingsFromEEPROM();
 void loadNamesFromFS();
 bool saveNamesToEEPROM(int id, const String& driver, const String& car);
 bool ensureNameHistoryBaseline();
+extern bool pendingNameHistoryBaseline;
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 
@@ -114,5 +115,13 @@ String getChipIdSuffix();
 String getDefaultApSSID();
 String getDeviceHostname();
 String getOtaHostname();
+
+// Crash- & Reset-Diagnose
+extern String lastResetReason;
+extern String lastResetInfo;
+extern bool lastResetIsCrash;
+void recordBootResetReason();
+String getCrashLog();
+bool clearCrashLog();
 
 #endif

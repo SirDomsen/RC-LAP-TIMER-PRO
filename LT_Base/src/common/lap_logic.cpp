@@ -241,8 +241,8 @@ void syncClockOnce(uint64_t clientTsSec) {
     settimeofday(&tv, nullptr);
     checkDailyBestDateRollover();
   }
-  if (baseUnixTimestampSec > 0 && !ensureNameHistoryBaseline()) {
-    Serial.println("[Names] Historischer Namens-Baseline konnte nicht vervollständigt werden.");
+  if (baseUnixTimestampSec > 0) {
+    pendingNameHistoryBaseline = true;
   }
 }
 

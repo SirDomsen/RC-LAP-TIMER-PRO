@@ -75,6 +75,7 @@
 * **Pufferung & Schutz:**
   * `PendingLap lapQueue[30]`: Rundenzeiten werden im RAM gepuffert und asynchron weggeschrieben, um den Loop nicht zu blockieren.
   * **95%-Flash-Schutz (`storageFullLocked`):** Verhindert das Einfrieren des ESP8266 bei vollem Speicher.
+  * Reset-Ursache und Details werden in einem größenbegrenzten `/crash.log` protokolliert; der Webserver stellt Crash-Log und Dateisystembelegung über leichtgewichtige Diagnose-Endpunkte bereit.
 
 ### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h` / `Sound/`)
 * **Hardware:** 32Ω Mylar- oder PC-Lautsprecher an **D1 (GPIO5)**, getrieben über **BC337-Transistor** (1kΩ Basiswiderstand) an 5V/VIN.
@@ -96,14 +97,14 @@
 * **Ruhestrom-Schutz:** Pin wird im Standby fest auf `LOW` gehalten, sodass der Transistor komplett sperrt und kein Strom fließt.
 
 ### 4.4 Webserver & Netzwerk (`web_server.cpp` / `web_handlers.cpp`)
-* **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`, hartes Limit auf 4 Clients).
+* **WLAN-Kaskade:** Heim-WLAN ➔ Mobiler Hotspot ➔ Eigener SoftAP (`RC-LapTimer-XXXX`, höchstens 4 WLAN-Clients; im AP-Modus höchstens 3 aktive Fahrer-WebSockets).
 * **Gelernte IP:** Merkt sich die im Heimnetz vergebene IP und nutzt diese auch im SoftAP, damit Browser-Lesezeichen immer gültig bleiben.
 * **Geister-WLAN (`setupGhostWLAN()`):** Nach dem Booten im Heimnetz wird kurzzeitig ein eigenes Hilfs-WLAN mit der IP im Namen aufgespannt (`LT_<SSID>-<IP>`), damit der Nutzer die IP sofort sieht. Schaltet nach dem ersten Webaufruf automatisch ab.
-* **Dynamischer Heap-Schutz:** Weist Verbindungen und `/api/laps`-Anfragen mit HTTP 503 (`BUSY_HTML_PROGMEM`) oder WebSocket-Code 1013 ab, wenn der freie RAM unter 16 kB sinkt, die Fragmentierung 55 % übersteigt oder der freie Block < 3 kB ist.
+* **Dynamischer Heap-Schutz:** Der Datei-Guard passt seine ESP8266-Grenzen dem WLAN-Modus an (AP: 5.5 kB / 75 % Fragmentierung / 1.4 kB größter Block; Station: 7.5 kB / 70 % / 1.8 kB). `/api/laps` hat einen separaten 3.5-kB-Guard (ESP8266; 8 kB auf S3); WebSocket-Neuverbindungen werden bei knappem Heap oder belegten Fahrer-Slots mit Code 1013 abgewiesen. CSS/JS bleiben für den Recovery-Loader abrufbar.
 * **4-Säulen Client-Lifecycle:** Verhindert TCP-PCB-Erschöpfung auf dem ESP8266 im AP-Modus:
   1. `tabId`-Zuordnung via `sessionStorage` (Reloads im selben Browser-Tab ersetzen alte Sockets gezielt).
   2. TCP-Sendestau-Erkennung (`queueLen() > 0` für $\ge 8\,\text{s}$) für gesperrte Handys im Standby.
-  3. `ws.cleanupClients(3)` garantiert stets min. 2 freie lwIP-PCBs für HTTP-Assets.
+  3. Der WebSocket-Gate lässt im AP-Modus maximal drei Fahrer zu und weist weitere Verbindungen zurück, statt bestehende Fahrer zu verdrängen. `ws.cleanupClients()` entfernt nur geschlossene Clients.
   4. Sauberes Teardown via `pagehide` / `beforeunload` ohne Reconnect-Stürme.
 * **Grand Prix Circuit Startampel & Standby-Re-Sync:**
   * Visuelle Ampel-Heartbeat-Anzeige (Rot=Standby, Gelb=Sync, Grün=Live) auf Fahrer- und Admin-Seite sowie im OLED-Dimmer.

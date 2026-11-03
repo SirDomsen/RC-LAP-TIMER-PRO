@@ -49,26 +49,35 @@ static uint8_t targetWifiMode = 0;
 static bool ghostWlanActive = false;
 static uint32_t ghostWlanOffTimer = 0;
 
-static const char* cacheHeaderStr = "max-age=86400";
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 12000;
-const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
-const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
+
 
 static const char BUSY_HTML_PROGMEM[] PROGMEM = 
   "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
   "<meta http-equiv='refresh' content='4'>"
-  "<title>RC Lap Timer - Warteschlange</title>"
+  "<title>RC Lap Timer - Boxengasse voll</title>"
   "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
   ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
-  "</style></head><body><div class='box'><h3>&#x23F3; Verbindungs-Warteschlange</h3>"
-  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
+  "</style></head><body><div class='box'><h3>&#x23F3; Boxengasse belegt</h3>"
+  "<p style='color:#f0f6fc;font-size:14px;'>Es sind bereits 3 Fahrer aktiv verbunden. Diese Seite l&auml;dt automatisch neu, sobald ein Platz frei wird...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
+#if defined(ESP8266)
   return PlatformRuntime::isHeapCritical(
-    HEAP_CRITICAL_MIN_BYTES,
-    HEAP_CRITICAL_MAX_FRAG,
-    HEAP_CRITICAL_MIN_BLOCK);
+    currentRuntimeWifiMode == 0 ? 5500 : 7500,
+    currentRuntimeWifiMode == 0 ? 75 : 70,
+    currentRuntimeWifiMode == 0 ? 1400 : 1800);
+#elif defined(ESP32)
+  return PlatformRuntime::isHeapCritical(12000, 100, 0);
+#endif
+}
+
+bool isHeapCriticalForLiveData() {
+#if defined(ESP8266)
+  return PlatformRuntime::isHeapCritical(3500, 100, 0);
+#elif defined(ESP32)
+  return PlatformRuntime::isHeapCritical(8000, 100, 0);
+#endif
 }
 
 static const char* getContentType(const String& path) {
@@ -82,6 +91,20 @@ static const char* getContentType(const String& path) {
   if (path.endsWith(".png"))  return "image/png";
   if (path.endsWith(".webp")) return "image/webp";
   return "text/plain; charset=utf-8";
+}
+
+static String escapeJsonStr(const String& s) {
+  String out = "";
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    if (c == '"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') continue;
+    else out += c;
+  }
+  return out;
 }
 
 static void triggerGhostWlanEarlyShutdown() {
@@ -101,13 +124,13 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
-      res->addHeader("Retry-After", "4");
+      res->addHeader("Retry-After", "3");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
     } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
-      res->addHeader("Retry-After", "4");
+      res->addHeader("Retry-After", "2");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
@@ -125,7 +148,11 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (hasGz) {
     response->addHeader("Content-Encoding", "gzip");
   }
-  response->addHeader("Cache-Control", cacheHeaderStr);
+  if (path.endsWith(".html")) {
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  } else {
+    response->addHeader("Cache-Control", "public, max-age=604800, immutable");
+  }
   response->addHeader("Connection", "close");
   request->send(response);
   return true;
@@ -207,10 +234,19 @@ static void unregisterWsClient(uint32_t clientId) {
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    if (isHeapCriticalForFileTransfer()) {
+#if defined(ESP8266)
+    // Schutz vor lwIP TCP-PCB Erschoepfung: Im AP-Modus max. 3 WebSockets zulassen
+    size_t maxWs = (currentRuntimeWifiMode == 0) ? 3 : 4;
+    if (ws.count() > maxWs || PlatformRuntime::isHeapCritical(4000, 100, 0)) {
+      client->close(1013, "Boxengasse voll");
+      return;
+    }
+#elif defined(ESP32)
+    if (PlatformRuntime::isHeapCritical(8000, 100, 0)) {
       client->close(1013, "Server busy");
       return;
     }
+#endif
     triggerGhostWlanEarlyShutdown();
     client->keepAlivePeriod(30);
     addWsClient(client->id());
@@ -443,22 +479,32 @@ void initNetworkAndServer() {
     }
   });
 
+  server.on("/api/storage", HTTP_GET, [](AsyncWebServerRequest *request) {
+    updateFsUsageCache();
+    String json;
+    json.reserve(128);
+    json = "{\"total\":";
+    json += cachedFsTotalBytes;
+    json += ",\"used\":";
+    json += cachedFsUsedBytes;
+    size_t freeBytes = (cachedFsTotalBytes > cachedFsUsedBytes) ? (cachedFsTotalBytes - cachedFsUsedBytes) : 0;
+    json += ",\"free\":";
+    json += freeBytes;
+    json += ",\"pct\":";
+    json += cachedFsUsedPct;
+    json += ",\"full\":";
+    json += (storageFullLocked || cachedFsUsedPct >= 95 ? "true" : "false");
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     flushCurrentSessionToIndex();
-#if defined(ESP8266)
-    FSInfo fs_info;
-    LittleFS.info(fs_info);
-    size_t totalBytes = fs_info.totalBytes;
-    size_t usedBytes = fs_info.usedBytes;
-#elif defined(ESP32)
-    size_t totalBytes = LittleFS.totalBytes();
-    size_t usedBytes = LittleFS.usedBytes();
-#endif
     updateFsUsageCache();
 
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    AsyncResponseStream *response = request->beginResponseStream("application/json", 2048);
     response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
-                     (unsigned int)totalBytes, (unsigned int)usedBytes);
+                     (unsigned int)cachedFsTotalBytes, (unsigned int)cachedFsUsedBytes);
 
     bool first = true;
     listFilesRecursive("/", response, first);
@@ -513,7 +559,7 @@ void initNetworkAndServer() {
 
   auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(256);
+    json.reserve(384);
     uint32_t uptime = millis() / 1000UL;
     uint32_t freeHeap = ESP.getFreeHeap();
 #if defined(ESP8266)
@@ -544,11 +590,27 @@ void initNetworkAndServer() {
     json += uptime;
     json += ",\"uptime\":";
     json += uptime;
+    json += ",\"resetReason\":\"";
+    json += escapeJsonStr(lastResetReason);
+    json += "\",\"resetInfo\":\"";
+    json += escapeJsonStr(lastResetInfo);
+    json += "\",\"isCrash\":";
+    json += (lastResetIsCrash ? "true" : "false");
     json += "}";
     request->send(200, "application/json", json);
   };
   server.on("/api/debug/system", HTTP_GET, handleSystemMetrics);
   server.on("/api/system/metrics", HTTP_GET, handleSystemMetrics);
+  server.on("/api/debug/crashlog", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain; charset=utf-8", getCrashLog());
+  });
+  server.on("/api/debug/crashlog/clear", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (clearCrashLog()) {
+      request->send(200, "text/plain", "OK");
+    } else {
+      request->send(500, "text/plain", "Crash-Log konnte nicht gelöscht werden");
+    }
+  });
 
   server.on("/api/allconfig", HTTP_GET, handleGetAllConfig);
   server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
@@ -705,8 +767,8 @@ void handleNetworkTasks() {
     }
   }
 
-  // Haelt max. 3 WebSockets aktiv, damit min. 2 TCP-PCBs fuer HTTP-Assets frei bleiben
-  ws.cleanupClients(3);
+  // Bereinigt getrennte / geschlossene WebSockets aus dem Speicher (ohne bestehende Clients zu kicken)
+  ws.cleanupClients();
 }
 
 void broadcastWebSocket(const String& msg) {
