@@ -6,6 +6,10 @@ const synth = window.speechSynthesis;
 // Phonetisches Wörterbuch für korrekte deutsche Sprachausgabe im Rennsport & Modellbau
 const PHONETIC_MAP = [
   // 1. Rennmodi & Renngeschehen
+  { pattern: /\bGhosthunt\b/gi, replacement: "Gohst-Hant" },
+  { pattern: /\bGhost Hunt\b/gi, replacement: "Gohst-Hant" },
+  { pattern: /\bGhost Battle\b/gi, replacement: "Gohst-Bättl" },
+  { pattern: /\bGhost\b/gi, replacement: "Gohst" },
   { pattern: /\bOutlaps\b/gi, replacement: "Autläpps" },
   { pattern: /\bOutlap\b/gi, replacement: "Autläpp" },
   { pattern: /\bInlaps\b/gi, replacement: "Innläpps" },
