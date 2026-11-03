@@ -604,7 +604,9 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
   // --- NORMALE RUNDENRENNEN-LOGIK ---
   if (stationId == 1 && useSz1) {
-    if (checkpointMode && currentExpectedSector[carId] != 1) return;
+    if (checkpointMode &&
+        currentExpectedSector[carId] != RaceRules::getExpectedSectorForStation(
+            stationId, useSz1, useSz2, useSz3)) return;
     if (sectorPassedInLap[carId] & (1 << 1)) return;
     sectorPassedInLap[carId] |= (1 << 1);
 
@@ -612,7 +614,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     split1TimeMs[carId] = split1;
     sz1TimeMs[carId] = split1;
     lastSectorTimeMs[carId] = timestampMs;
-    if (checkpointMode) currentExpectedSector[carId] = 2;
+    if (checkpointMode) currentExpectedSector[carId] = RaceRules::getNextExpectedSector(stationId);
 
     bool isPB = false;
     bool isOverall = false;
@@ -636,7 +638,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   } 
   else if (stationId == 2 && useSz2) {
     if (checkpointMode) {
-      uint8_t expected = useSz1 ? 2 : 1;
+      uint8_t expected = RaceRules::getExpectedSectorForStation(
+          stationId, useSz1, useSz2, useSz3);
       if (currentExpectedSector[carId] != expected) return;
     }
     if (sectorPassedInLap[carId] & (1 << 2)) return;
@@ -649,7 +652,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     split2TimeMs[carId] = split2;
     sz2TimeMs[carId] = s2;
     lastSectorTimeMs[carId] = timestampMs;
-    if (checkpointMode) currentExpectedSector[carId] = 3;
+    if (checkpointMode) currentExpectedSector[carId] = RaceRules::getNextExpectedSector(stationId);
 
     bool isPB = false;
     bool isOverall = false;
@@ -673,7 +676,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   } 
   else if (stationId == 3 && useSz3) {
     if (checkpointMode) {
-      uint8_t expected = useSz2 ? 3 : (useSz1 ? 2 : 1);
+      uint8_t expected = RaceRules::getExpectedSectorForStation(
+          stationId, useSz1, useSz2, useSz3);
       if (currentExpectedSector[carId] != expected) return;
     }
     if (sectorPassedInLap[carId] & (1 << 3)) return;
@@ -691,7 +695,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     split3TimeMs[carId] = split3;
     sz3TimeMs[carId] = s3;
     lastSectorTimeMs[carId] = timestampMs;
-    if (checkpointMode) currentExpectedSector[carId] = 4;
+    if (checkpointMode) currentExpectedSector[carId] = RaceRules::getNextExpectedSector(stationId);
 
     bool isPB = false;
     bool isOverall = false;

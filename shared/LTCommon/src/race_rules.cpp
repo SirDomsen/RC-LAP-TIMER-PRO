@@ -19,6 +19,25 @@ bool RaceRules::hasPassedAllCheckpoints(
   return finalSector == 0 || expectedSector >= finalSector;
 }
 
+uint8_t RaceRules::getExpectedSectorForStation(
+    uint8_t stationId,
+    bool useSz1,
+    bool useSz2,
+    bool useSz3) {
+  if (stationId == 1 && useSz1) return 1;
+  if (stationId == 2 && useSz2) return useSz1 ? 2 : 1;
+  if (stationId == 3 && useSz3) {
+    if (useSz2) return 3;
+    return useSz1 ? 2 : 1;
+  }
+  return 0;
+}
+
+uint8_t RaceRules::getNextExpectedSector(uint8_t stationId) {
+  if (stationId < 1 || stationId > 3) return 0;
+  return stationId + 1;
+}
+
 uint8_t RaceRules::getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3) {
   if (useSz3) return 3;
   if (useSz2) return 2;
