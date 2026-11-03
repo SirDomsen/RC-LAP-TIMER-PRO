@@ -8,14 +8,7 @@
 #include "buzzer.h"
 #include <status_leds.h>
 #include <lap_ir_input.h>
-
-#if defined(ESP8266)
-#include <ESP8266mDNS.h>
-#include <espnow.h>
-#elif defined(ESP32)
-#include <ESPmDNS.h>
-#include <esp_now.h>
-#endif
+#include <platform_runtime.h>
 
 // Globale Performance-Metriken
 uint32_t perfLoopCount = 0;
@@ -23,22 +16,7 @@ uint32_t perfMaxLoopUs = 0;
 uint32_t perfAvgLoopUs = 0;
 
 void setup() {
-#if defined(ESP8266)
-  // CPU-Takt auf 160 MHz setzen für maximale Rechenleistung
-  system_update_cpu_freq(160);
-#elif defined(ESP32)
-  setCpuFrequencyMhz(240);
-#endif
-
-  Serial.begin(115200);
-#if defined(ESP32)
-  uint32_t cdcWait = millis();
-  while (!Serial && (millis() - cdcWait < 1500)) {
-    delay(10);
-  }
-#else
-  delay(100);
-#endif
+  PlatformRuntime::init();
 
   initFS();
   loadSettingsFromEEPROM();
@@ -88,12 +66,6 @@ void loop() {
   static uint32_t lastHeapCheck = 0;
   if (millis() - lastHeapCheck > 30000) {
     lastHeapCheck = millis();
-#if defined(ESP8266)
-    Serial.printf("[SYSTEM] Freier Heap: %u Bytes | Fragmentierung: %u%% | Max Loop: %u us\n", 
-                  ESP.getFreeHeap(), ESP.getHeapFragmentation(), perfMaxLoopUs);
-#elif defined(ESP32)
-    Serial.printf("[SYSTEM] Freier Heap: %u Bytes | PSRAM: %u Bytes | Max Loop: %u us\n", 
-                  ESP.getFreeHeap(), ESP.getFreePsram(), perfMaxLoopUs);
-#endif
+    PlatformRuntime::logSystemMetrics(perfMaxLoopUs);
   }
 }
