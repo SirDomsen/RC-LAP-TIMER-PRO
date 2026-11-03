@@ -350,7 +350,7 @@
           <button id="viewToggleBtn" class="btn btn-purple" style="width:auto; padding:5px 12px; font-size:11px;" onclick="toggleViewMode()">📁 Ordner-Ansicht</button>
           <button id="backupZipBtn" class="btn btn-green" style="width:auto; padding:5px 12px; font-size:11px;" onclick="downloadAllFilesZip()">📦 Backup (.zip)</button>
           <button id="restoreZipBtn" class="btn btn-orange" style="width:auto; padding:5px 12px; font-size:11px;" onclick="document.getElementById('zipRestoreInput').click()">📥 Backup (.zip) einspielen</button>
-          <button class="btn btn-cyan" style="width:auto; padding:5px 12px; font-size:11px;" onclick="loadFilesList()">Aktualisieren 🔄</button>
+          <button class="btn btn-cyan" style="width:auto; padding:5px 12px; font-size:11px;" onclick="loadStorageInfo(); loadFilesList()">Aktualisieren 🔄</button>
         </div>
       </div>
       <div id="backupProgressText" style="font-size:12px; color:var(--neon-green); margin-top:8px; font-family:monospace; display:none;"></div>
@@ -1594,57 +1594,96 @@
       tbody.innerHTML = html;
     }
 
-    async function loadFilesList() {
+    function updateStorageCardUI(total, used, pct) {
+      if (total <= 0 && used <= 0) return;
+      let free = total > used ? (total - used) : 0;
+      if (pct === undefined || pct === null) {
+        pct = total > 0 ? Math.round((used / total) * 100) : 0;
+      }
+
+      let barFill = document.getElementById('storageBarFill');
+      let pctTxt = document.getElementById('storagePercent');
+      let warnBox = document.getElementById('storageWarningBox');
+
+      if (barFill) barFill.style.width = pct + '%';
+      if (pctTxt) pctTxt.innerText = pct + ' %';
+
+      if (pct >= 95) {
+        if (barFill) barFill.style.background = 'var(--neon-red)';
+        if (pctTxt) pctTxt.style.color = 'var(--neon-red)';
+        if (warnBox) {
+          warnBox.style.display = 'block';
+          warnBox.style.background = 'rgba(255, 51, 102, 0.15)';
+          warnBox.style.border = '1px solid var(--neon-red)';
+          warnBox.style.color = 'var(--neon-red)';
+          warnBox.innerText = '🛑 Speicher voll! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.';
+        }
+      } else if (pct >= 90) {
+        if (barFill) barFill.style.background = 'var(--neon-orange)';
+        if (pctTxt) pctTxt.style.color = 'var(--neon-orange)';
+        if (warnBox) {
+          warnBox.style.display = 'block';
+          warnBox.style.background = 'rgba(255, 153, 0, 0.15)';
+          warnBox.style.border = '1px solid var(--neon-orange)';
+          warnBox.style.color = 'var(--neon-orange)';
+          warnBox.innerText = `⚠️ Speicher zu ${pct}% gefüllt! Ab 95% werden keine neuen Sessions mehr aufgezeichnet.`;
+        }
+      } else {
+        if (barFill) barFill.style.background = 'linear-gradient(90deg, var(--neon-cyan), var(--neon-green))';
+        if (pctTxt) pctTxt.style.color = 'var(--neon-green)';
+        if (warnBox) warnBox.style.display = 'none';
+      }
+
+      let usedElem = document.getElementById('storageUsed');
+      let freeElem = document.getElementById('storageFree');
+      let totalElem = document.getElementById('storageTotal');
+      if (usedElem) usedElem.innerText = (used / 1024).toFixed(1) + ' KB';
+      if (freeElem) freeElem.innerText = (free / 1024).toFixed(1) + ' KB';
+      if (totalElem) totalElem.innerText = (total / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    async function loadStorageInfo() {
+      try {
+        let res = await fetch('/api/storage');
+        if (res.ok) {
+          let data = await res.json();
+          updateStorageCardUI(data.total, data.used, data.pct);
+          return;
+        }
+      } catch (e) {}
+      // Fallback
+      try {
+        let res = await fetch('/api/timeleft');
+        if (res.ok) {
+          let data = await res.json();
+          if (data.fsTotal !== undefined) {
+            updateStorageCardUI(data.fsTotal, data.fsUsed, data.fsPct);
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function loadFilesList(retries = 2) {
       let tbody = document.getElementById('fileListBody');
       try {
         let res = await fetch('/api/files');
+        if (!res.ok) throw new Error("HTTP " + res.status);
         let data = await res.json();
 
-        let total = data.total || 0;
-        let used = data.used || 0;
-        let free = total - used;
-        let pct = total > 0 ? Math.round((used / total) * 100) : 0;
-
-        let barFill = document.getElementById('storageBarFill');
-        let pctTxt = document.getElementById('storagePercent');
-        let warnBox = document.getElementById('storageWarningBox');
-
-        barFill.style.width = pct + '%';
-        pctTxt.innerText = pct + ' %';
-
-        if (pct >= 95) {
-          barFill.style.background = 'var(--neon-red)';
-          pctTxt.style.color = 'var(--neon-red)';
-          if (warnBox) {
-            warnBox.style.display = 'block';
-            warnBox.style.background = 'rgba(255, 51, 102, 0.15)';
-            warnBox.style.border = '1px solid var(--neon-red)';
-            warnBox.style.color = 'var(--neon-red)';
-            warnBox.innerText = '🛑 Speicher voll! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.';
-          }
-        } else if (pct >= 90) {
-          barFill.style.background = 'var(--neon-orange)';
-          pctTxt.style.color = 'var(--neon-orange)';
-          if (warnBox) {
-            warnBox.style.display = 'block';
-            warnBox.style.background = 'rgba(255, 153, 0, 0.15)';
-            warnBox.style.border = '1px solid var(--neon-orange)';
-            warnBox.style.color = 'var(--neon-orange)';
-            warnBox.innerText = `⚠️ Speicher zu ${pct}% gefüllt! Ab 95% werden keine neuen Sessions mehr aufgezeichnet.`;
-          }
-        } else {
-          barFill.style.background = 'linear-gradient(90deg, var(--neon-cyan), var(--neon-green))';
-          pctTxt.style.color = 'var(--neon-green)';
-          if (warnBox) warnBox.style.display = 'none';
+        if (data.total !== undefined) {
+          let total = data.total || 0;
+          let used = data.used || 0;
+          updateStorageCardUI(total, used);
         }
-
-        document.getElementById('storageUsed').innerText = (used / 1024).toFixed(1) + ' KB';
-        document.getElementById('storageFree').innerText = (free / 1024).toFixed(1) + ' KB';
-        document.getElementById('storageTotal').innerText = (total / (1024 * 1024)).toFixed(2) + ' MB';
 
         cachedFiles = data.files || [];
         renderFilesTable();
       } catch (e) {
+        if (retries > 0) {
+          console.warn('[Files] Retry in 800ms...', e);
+          setTimeout(() => loadFilesList(retries - 1), 800);
+          return;
+        }
         tbody.innerHTML = '<tr><td colspan="4" style="color:var(--neon-red); text-align:center; padding:12px;">Fehler beim Abrufen der Dateiliste.</td></tr>';
       }
     }
@@ -1663,6 +1702,7 @@
 
       try {
         await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
+        loadStorageInfo();
         loadFilesList();
       } catch(e) {
         await showAlert({
@@ -1996,6 +2036,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       initDragAndDrop();
+      loadStorageInfo();
       let nowSec = Math.floor(Date.now() / 1000);
       let tzOffsetSec = -(new Date().getTimezoneOffset() * 60);
       fetch('/api/synctime?ts=' + nowSec + '&tz=' + tzOffsetSec, { method: 'POST' }).finally(() => {

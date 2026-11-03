@@ -509,22 +509,32 @@ void initNetworkAndServer() {
     }
   });
 
+  server.on("/api/storage", HTTP_GET, [](AsyncWebServerRequest *request) {
+    updateFsUsageCache();
+    String json;
+    json.reserve(128);
+    json = "{\"total\":";
+    json += cachedFsTotalBytes;
+    json += ",\"used\":";
+    json += cachedFsUsedBytes;
+    size_t freeBytes = (cachedFsTotalBytes > cachedFsUsedBytes) ? (cachedFsTotalBytes - cachedFsUsedBytes) : 0;
+    json += ",\"free\":";
+    json += freeBytes;
+    json += ",\"pct\":";
+    json += cachedFsUsedPct;
+    json += ",\"full\":";
+    json += (storageFullLocked || cachedFsUsedPct >= 95 ? "true" : "false");
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
     flushCurrentSessionToIndex();
-#if defined(ESP8266)
-    FSInfo fs_info;
-    LittleFS.info(fs_info);
-    size_t totalBytes = fs_info.totalBytes;
-    size_t usedBytes = fs_info.usedBytes;
-#elif defined(ESP32)
-    size_t totalBytes = LittleFS.totalBytes();
-    size_t usedBytes = LittleFS.usedBytes();
-#endif
     updateFsUsageCache();
 
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    AsyncResponseStream *response = request->beginResponseStream("application/json", 2048);
     response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
-                     (unsigned int)totalBytes, (unsigned int)usedBytes);
+                     (unsigned int)cachedFsTotalBytes, (unsigned int)cachedFsUsedBytes);
 
     bool first = true;
     listFilesRecursive("/", response, first);
