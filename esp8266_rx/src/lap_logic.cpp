@@ -752,7 +752,9 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 
   if (lapCounter[carId] == 0) {
-    if (RaceRules::isTimedMode(currentMode) && modeEndTimeMs > 0 && millis() > modeEndTimeMs) return;
+    if (RaceRules::isTimedMode(currentMode) &&
+        !RaceRules::canAcceptTimedEventCross(
+            modeEndTimeMs, millis(), lapCounter[carId], 0, finishedFinalLap[carId])) return;
 
     awaitingBaseCross[carId] = false;
     lastLapIsOutLap[carId] = false;
@@ -779,12 +781,9 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 
   if (RaceRules::isTimedMode(currentMode)) {
-    if (modeEndTimeMs > 0 && millis() > modeEndTimeMs) {
-      if (finishedFinalLap[carId]) return;
-      if (lastCrossTime[carId] == 0) return;
-      uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
-      if (lapStartMs > modeEndTimeMs) return;
-    }
+    const uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
+    if (!RaceRules::canAcceptTimedEventCross(
+            modeEndTimeMs, millis(), lapCounter[carId], lapStartMs, finishedFinalLap[carId])) return;
   }
 
   if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;

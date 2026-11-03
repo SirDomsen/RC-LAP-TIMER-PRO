@@ -10,6 +10,17 @@ bool RaceRules::isTimedMode(RaceMode mode) {
   return mode == MODE_QUALIFYING || mode == MODE_RACE_TIME;
 }
 
+bool RaceRules::canAcceptTimedEventCross(
+    uint32_t modeEndTimeMs,
+    uint32_t nowMs,
+    uint16_t lapCount,
+    uint32_t lapStartMs,
+    bool finishedFinalLap) {
+  if (modeEndTimeMs == 0 || nowMs <= modeEndTimeMs) return true;
+  if (lapCount == 0 || lapStartMs == 0 || finishedFinalLap) return false;
+  return lapStartMs <= modeEndTimeMs;
+}
+
 bool RaceRules::exceedsOutLapThreshold(
     uint32_t averageLapMs,
     uint32_t elapsedMs,
