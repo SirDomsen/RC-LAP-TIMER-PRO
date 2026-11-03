@@ -37,12 +37,12 @@
   * Bit 1 = 350 µs Puls / 1050 µs Pause (~1400 µs).
 * **Entzerrung:** LFSR Pseudo-Zufallspause von 15 bis 30 ms zwischen Sendungen (verhindert Signalüberlagerung bei Pulkfahrten).
 
-### 3.2 IR-Decoder (`esp8266_rx/src/ir_decoder.cpp`)
+### 3.2 IR-Decoder (`LT_Base/lib/LTCommon/src/ir_decoder.cpp`)
 * **Hardware:** TSOP4838 an D2 (GPIO4 bei Basis) bzw. GPIO3/RX (ESP-01S bei SZ).
 * **Empfang:** Interrupt auf fallende Flanke (`handleIRInterrupt()`).
 * **Sicherheit:** Striktes Timing-Fenster für Header (1800–4200 µs) und Bits (400–1800 µs, Schwelle 950 µs). Bei jeder kleinsten Abweichung erfolgt ein sofortiger Hard-Reset des Schieberegisters.
 
-### 3.3 ESP-NOW Funknetzwerk (`esp_now_base.cpp` & `src_sz/main.cpp`)
+### 3.3 ESP-NOW Funknetzwerk (`esp_now_base.cpp` & `LT_SectorStation/src/main.cpp`)
 * **Sync-Master:** Basis sendet periodische Beacons (`BeaconSyncPacket`, Stratum 0).
 * **Kanal-Verfolgung:** Sektorstationen hoppen durch die WLAN-Kanäle bis zum Beacon-Lock.
 * **Multi-Hop / Stratum:** Stationen synchronisieren lokale Mikrosekunden mit ~1 ms Hop-Kompensation und leiten Pakete weiter (Relay Queue & Cache).
@@ -51,7 +51,7 @@
 
 ---
 
-## 💻 4. Backend-Architektur Basisstation (`esp8266_rx/src/`)
+## 💻 4. Backend-Architektur Basisstation (`LT_Base/src/common/`)
 
 ### 4.1 Zeit- & Rennlogik (`lap_logic.cpp`)
 * **Rennmodi:**
@@ -78,7 +78,7 @@
 
 ### 4.3 Arcade-Sound & Signal-Akustik (`buzzer.cpp` / `buzzer.h` / `Sound/`)
 * **Hardware:** 32Ω Mylar- oder PC-Lautsprecher an **D1 (GPIO5)**, getrieben über **BC337-Transistor** (1kΩ Basiswiderstand) an 5V/VIN.
-* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM` unter `esp8266_rx/Sound/`), dynamische Staccato-Artikulation für klassische MIDI- und `wav2c`-extrahierte Notenfolgen.
+* **Architektur:** 100% non-blocking State-Machine im `loop()`, **0 Byte Heap-Allokation** (alle Tonfolgen in `PROGMEM` unter `LT_Base/Sound/`), dynamische Staccato-Artikulation für klassische MIDI- und `wav2c`-extrahierte Notenfolgen.
 * **Sound-Events & Soundtracks:**
   * **Startampel:** Original Grand Prix Circuit (1988) Sequenz (2x Rot 260 Hz à 300 ms, 650 ms Pause ➔ Grün 1050 Hz à 450 ms), synchronisiert mit Renn-Countdown in `modes.js`.
   * **Zieldurchfahrt:** Kurzer, trockener Bestätigungs-Impuls (1760 Hz, 35 ms) direkt bei Zieldurchfahrt in `lap_logic.cpp`.
@@ -111,7 +111,7 @@
 
 ---
 
-## 🖥️ 5. Frontend-Architektur (`esp8266_rx/data/`)
+## 🖥️ 5. Frontend-Architektur (`LT_Base/data/`)
 
 * **`index.html` (Fahrer-Dashboard):**
   * Bereinigtes Display für Teilnehmer und Zuschauer.

@@ -1,6 +1,6 @@
 #include "buzzer.h"
 #include "config.h"
-#include "../Sound/soundtracks.h"
+#include "../../Sound/soundtracks.h"
 #include <buzzer_output.h>
 
 // Aktivierungsstatus (Standard: aktiv)

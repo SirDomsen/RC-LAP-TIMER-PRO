@@ -1,5 +1,8 @@
 ## ESP-01S Sektorstationen (SZ1–SZ3)
 
+### PlatformIO
+Die Sektorstationen sind ein eigenständiges PlatformIO-Projekt in `LT_SectorStation/`. Die Builds `sz1`, `sz2` und `sz3` teilen denselben Quellcode und nutzen die gemeinsame Library `LT_Base/lib/LTCommon/`. Build- und Upload-Befehle aus `Code zum flashen.txt` im Projektordner `LT_SectorStation` ausführen.
+
 ### Hardware & Pins
 * **Pin 1 (TX):** Im `setup()` als `OUTPUT` hart auf `LOW` geschaltet (Massebezug für Spannungsteiler / Schaltung).
 * **GPIO 0:** `INPUT_PULLUP` zur Batterieüberwachung (HIGH = Akku leer).

@@ -219,7 +219,7 @@ Diese ZIP-Datei ist ein vollständiges Dateisystem-Backup. Die Offline-Statistik
 
 ## 10. Offline-Statistiken
 
-Mit der Offline-Statistik kannst du gespeicherte Ergebnisse ansehen, ohne mit dem Lap Timer verbunden zu sein. Öffne dafür die Datei [offline_stats/index.html](esp8266_rx/offline_stats/index.html) aus dem Projektordner in einem Browser.
+Mit der Offline-Statistik kannst du gespeicherte Ergebnisse ansehen, ohne mit dem Lap Timer verbunden zu sein. Öffne dafür die Datei [offline_stats/index.html](LT_Base/offline_stats/index.html) aus dem Projektordner in einem Browser.
 
 1. Wähle **ZIP/JSON auswählen**.
 2. Lade ein zuvor erstelltes vollständiges Lap-Timer-Backup (`.zip`) oder ein unterstütztes Statistik-Backup (`.json`).

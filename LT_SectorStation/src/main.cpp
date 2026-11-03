@@ -5,7 +5,9 @@
 #include <ir_decoder.h>
 #include <ir_protocol.h>
 #include <espnow_protocol.h>
-#include "secrets.h"
+#if __has_include("secrets.h")
+  #include "secrets.h"
+#endif
 
 extern "C" {
   #include <espnow.h>
