@@ -93,6 +93,7 @@ static const String defaultCars[MAX_CARS + 1] = {
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;
+bool pendingNameHistoryBaseline = false;
 
 static const char* getModeFolderName(uint8_t mode) {
   switch (mode) {
@@ -1690,6 +1691,14 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
   if (millis() - lastStorageWrite < 120) return;
+
+  if (pendingNameHistoryBaseline && baseUnixTimestampSec > 0 && !isHeapCriticalForFileTransfer()) {
+    if (ensureNameHistoryBaseline()) {
+      pendingNameHistoryBaseline = false;
+    }
+    lastStorageWrite = millis();
+    return;
+  }
 
   if (queueHead != queueTail) { 
     PendingLap lap = lapQueue[queueTail];

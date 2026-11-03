@@ -101,13 +101,13 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (isHeapCriticalForFileTransfer()) {
     if (path.endsWith(".html")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
-      res->addHeader("Retry-After", "4");
+      res->addHeader("Retry-After", "3");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
-    } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
+    } else {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
-      res->addHeader("Retry-After", "4");
+      res->addHeader("Retry-After", "2");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
@@ -125,7 +125,11 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   if (hasGz) {
     response->addHeader("Content-Encoding", "gzip");
   }
-  response->addHeader("Cache-Control", cacheHeaderStr);
+  if (path.endsWith(".html")) {
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  } else {
+    response->addHeader("Cache-Control", "public, max-age=604800, immutable");
+  }
   response->addHeader("Connection", "close");
   request->send(response);
   return true;
