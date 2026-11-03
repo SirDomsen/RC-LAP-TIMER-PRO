@@ -38,6 +38,8 @@ bool lastLapIsOutLap[MAX_CARS + 1]   = {false};
 static uint32_t recentValidLaps[MAX_CARS + 1][3] = {{0}};
 static uint8_t  recentValidLapCount[MAX_CARS + 1] = {0};
 static uint8_t  recentValidLapIdx[MAX_CARS + 1]   = {0};
+static uint16_t lastBroadcastLapNum[MAX_CARS + 1] = {0};
+static bool hasBroadcastLapEvent[MAX_CARS + 1] = {false};
 
 // Bitmaske zum Schutz vor doppelter Sektorerfassung in derselben Runde (Bit 1=SZ1, Bit 2=SZ2, Bit 3=SZ3)
 static uint8_t sectorPassedInLap[MAX_CARS + 1] = {0};
@@ -214,6 +216,12 @@ void broadcastSectorEvent(uint8_t carId, uint8_t sectorNum, uint32_t sectorTimeM
 }
 
 void broadcastLapEvent(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t pos, bool isPB, bool isOverallBest, bool isTrackRecord, bool isDailyRecord, bool isOutLap) {
+  if (carId > MAX_CARS) return;
+  if (hasBroadcastLapEvent[carId] && lastBroadcastLapNum[carId] == lapNum) return;
+
+  hasBroadcastLapEvent[carId] = true;
+  lastBroadcastLapNum[carId] = lapNum;
+
   char buffer[256];
   snprintf(buffer, sizeof(buffer), 
     "{\"type\":\"lap\",\"carId\":%d,\"driver\":\"%s\",\"lap\":%d,\"lapTime\":%lu,\"pos\":%d,\"isPB\":%s,\"isOverallBest\":%s,\"isTrackRecord\":%s,\"isDailyRecord\":%s,\"isOutLap\":%s}",
@@ -274,6 +282,8 @@ void resetAllLaps(bool isHardReset) {
   startNewSessionFrame((uint8_t)currentMode);
 
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
+    lastBroadcastLapNum[i] = 0;
+    hasBroadcastLapEvent[i] = false;
     lastCrossTime[i] = 0;
     lastLapDuration[i] = 0;
     bestLapDuration[i] = 0;

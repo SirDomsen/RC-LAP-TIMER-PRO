@@ -244,6 +244,7 @@ function hideConnectionNotice() {
 
 let lastResetTimestamp = 0;
 let lastDragStartTs = {};
+let lastLiveLapEventByCar = {};
 
 function handleLiveEvent(msg) {
   if (msg.type === 'ghost_target') {
@@ -285,6 +286,7 @@ function handleLiveEvent(msg) {
       isSessionFinished = false;
       isSessionActive = false;
       if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
+      lastLiveLapEventByCar = {};
       if (typeof sectorFlashUntilMap !== 'undefined') sectorFlashUntilMap = {};
       if (typeof previousLaps !== 'undefined') previousLaps = {};
       if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
@@ -330,6 +332,7 @@ function onSessionStartLiveEvent(msg) {
   announcedLaps3 = false;
   announcedLaps1 = false;
   if (typeof lastAnnouncedLapMap !== 'undefined') lastAnnouncedLapMap = {};
+  lastLiveLapEventByCar = {};
   if (typeof previousLaps !== 'undefined') previousLaps = {};
   if (typeof previousBestLaps !== 'undefined') previousBestLaps = {};
   if (typeof lastLapDeltaMap !== 'undefined') lastLapDeltaMap = {};
@@ -569,8 +572,17 @@ function onLapLiveEvent(msg) {
   if (!msg || !msg.carId) return;
 
   let carId = msg.carId;
-  let driverName = msg.driver || (typeof carNamesMap !== 'undefined' && carNamesMap[carId]?.driver) || ("Fahrer " + carId);
   let completedLapNum = msg.lap || 1;
+  let now = Date.now();
+  let lastLiveLapEvent = lastLiveLapEventByCar[carId];
+  if (lastLiveLapEvent &&
+      lastLiveLapEvent.lap === completedLapNum &&
+      now - lastLiveLapEvent.timestamp < 10000) {
+    return;
+  }
+  lastLiveLapEventByCar[carId] = { lap: completedLapNum, timestamp: now };
+
+  let driverName = msg.driver || (typeof carNamesMap !== 'undefined' && carNamesMap[carId]?.driver) || ("Fahrer " + carId);
   let position = msg.pos || 1;
   let isOutLapDone = !!msg.isOutLap;
   let isNewTrackRecord = !!msg.isTrackRecord;
