@@ -1,5 +1,9 @@
 #include "ir_decoder.h"
 
+#if defined(ESP32)
+  #include <soc/gpio_struct.h>
+#endif
+
 volatile uint32_t irBuffer = 0;
 volatile uint8_t  bitIndex = 0;
 volatile uint32_t lastEdgeTime = 0;
