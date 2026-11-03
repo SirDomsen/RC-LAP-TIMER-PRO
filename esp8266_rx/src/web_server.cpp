@@ -54,11 +54,11 @@ static uint32_t ghostWlanOffTimer = 0;
 static const char BUSY_HTML_PROGMEM[] PROGMEM = 
   "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
   "<meta http-equiv='refresh' content='4'>"
-  "<title>RC Lap Timer - Warteschlange</title>"
+  "<title>RC Lap Timer - Boxengasse voll</title>"
   "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
   ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
-  "</style></head><body><div class='box'><h3>&#x23F3; Verbindungs-Warteschlange</h3>"
-  "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
+  "</style></head><body><div class='box'><h3>&#x23F3; Boxengasse belegt</h3>"
+  "<p style='color:#f0f6fc;font-size:14px;'>Es sind bereits 3 Fahrer aktiv verbunden. Diese Seite l&auml;dt automatisch neu, sobald ein Platz frei wird...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
 #if defined(ESP8266)
@@ -226,8 +226,10 @@ static void unregisterWsClient(uint32_t clientId) {
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
 #if defined(ESP8266)
-    if (ESP.getFreeHeap() < 3500) {
-      client->close(1013, "Server busy");
+    // Schutz vor lwIP TCP-PCB Erschoepfung: Im AP-Modus max. 3 WebSockets zulassen
+    size_t maxWs = (currentRuntimeWifiMode == 0) ? 3 : 4;
+    if (ws.count() > maxWs || ESP.getFreeHeap() < 4000) {
+      client->close(1013, "Boxengasse voll");
       return;
     }
 #elif defined(ESP32)
@@ -787,8 +789,8 @@ void handleNetworkTasks() {
     }
   }
 
-  // Haelt max. 3 WebSockets aktiv, damit min. 2 TCP-PCBs fuer HTTP-Assets frei bleiben
-  ws.cleanupClients(3);
+  // Bereinigt getrennte / geschlossene WebSockets aus dem Speicher (ohne bestehende Clients zu kicken)
+  ws.cleanupClients();
 }
 
 void broadcastWebSocket(const String& msg) {
