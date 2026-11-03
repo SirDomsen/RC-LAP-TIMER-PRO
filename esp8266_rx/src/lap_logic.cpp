@@ -420,8 +420,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   if (elapsedMs < 100 || elapsedMs > 600000) return;
 
   uint32_t avgLap = getAverageLapTimeMs(carId);
-  uint32_t szOutlapThresholdMs = (avgLap * PIT_PAUSE_FACTOR_PERCENT) / 100;
-  if (currentMode != MODE_DRAGRACE && avgLap > 0 && elapsedMs > szOutlapThresholdMs) {
+  if (currentMode != MODE_DRAGRACE &&
+      RaceRules::exceedsOutLapThreshold(avgLap, elapsedMs, PIT_PAUSE_FACTOR_PERCENT)) {
     isOutLap[carId] = true;
   }
   bool isOutSector = isOutLap[carId];
@@ -806,8 +806,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     
     uint32_t avgLap = getAverageLapTimeMs(carId);
     bool currentLapIsOutLap = isOutLap[carId] || inPitOrPause[carId];
-    uint32_t outlapThresholdMs = (avgLap * PIT_PAUSE_FACTOR_PERCENT) / 100;
-    if (avgLap > 0 && currentLapTimeMs > outlapThresholdMs) {
+    if (RaceRules::exceedsOutLapThreshold(avgLap, currentLapTimeMs, PIT_PAUSE_FACTOR_PERCENT)) {
       currentLapIsOutLap = true;
     }
 
@@ -1005,8 +1004,7 @@ void updateLapLogicTasks() {
         uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
         if (now > lapStartMs) {
           uint32_t currentElapsedMs = now - lapStartMs;
-          uint32_t thresholdMs = (avgMs * PIT_PAUSE_FACTOR_PERCENT) / 100;
-          if (currentElapsedMs > thresholdMs) {
+          if (RaceRules::exceedsOutLapThreshold(avgMs, currentElapsedMs, PIT_PAUSE_FACTOR_PERCENT)) {
             inPitOrPause[i] = true;
             if (pitEnteredMs[i] == 0) {
               pitEnteredMs[i] = now;

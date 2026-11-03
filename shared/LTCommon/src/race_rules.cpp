@@ -10,6 +10,15 @@ bool RaceRules::isTimedMode(RaceMode mode) {
   return mode == MODE_QUALIFYING || mode == MODE_RACE_TIME;
 }
 
+bool RaceRules::exceedsOutLapThreshold(
+    uint32_t averageLapMs,
+    uint32_t elapsedMs,
+    uint16_t factorPercent) {
+  if (averageLapMs == 0) return false;
+  const uint32_t thresholdMs = (averageLapMs * factorPercent) / 100;
+  return elapsedMs > thresholdMs;
+}
+
 bool RaceRules::hasPassedAllCheckpoints(
     bool useSz1,
     bool useSz2,

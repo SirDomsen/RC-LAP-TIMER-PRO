@@ -17,7 +17,7 @@
 - `basisstation_s3`: ESP32-S3 DevKitC-1 N16R8 (240 MHz Dual-Core, 16MB Flash Quad, 8MB PSRAM Octal SPI `qio_opi`, USB-CDC), AsyncWebServer, AsyncTCP, ArduinoJson 7.
 - `sz1`, `sz2`, `sz3`: ESP-01S (`esp01_1m`, 160 MHz), Flags `-DSECTOR_STATION -DSTATION_ID=1/2/3`.
 - `shared/LTCommon/` ist eine PlatformIO-Library ausserhalb dieses Projekts. Basisstation und Sektorstationen beziehen daraus denselben IR-Decoderkern, die IR-Frame-Pruefung und die ESP-NOW-Paketdefinitionen; `lib_extra_dirs = ../shared` bindet die Library in jedem Environment ein.
-- Plattformneutrale Rennregeln werden schrittweise nach `shared/LTCommon/src/` extrahiert. `race_mode.h` definiert die gemeinsamen Rennmodi; `race_rules.cpp` bestimmt Rangmodus, zeitbasierte Modi, die Checkbox-abhaengige Checkpoint-Reihenfolge und -Vollstaendigkeit, Position und Sektorziele. Das Fahrzeuglimit bleibt konfigurationsabhaengig und wird von der aufrufenden Firmware vorgegeben.
+- Plattformneutrale Rennregeln werden schrittweise nach `shared/LTCommon/src/` extrahiert. `race_mode.h` definiert die gemeinsamen Rennmodi; `race_rules.cpp` bestimmt Rangmodus, zeitbasierte Modi, Outlap-Schwellen, die Checkbox-abhaengige Checkpoint-Reihenfolge und -Vollstaendigkeit, Position und Sektorziele. Das Fahrzeuglimit bleibt konfigurationsabhaengig und wird von der aufrufenden Firmware vorgegeben.
 
 ### 🔧 Backend Basisstation (`esp8266_rx/src/`)
 - **Hardware ESP8266:** TSOP4838 IR-Empfänger an **D2 (GPIO4)**, Status-LEDs an **D5 (Grün)** & **D6 (Gelb/Signal)**, **Arcade-Speaker an D1 (GPIO5)** getrieben über **BC337-Transistor** (1kΩ Basiswiderstand).
