@@ -17,4 +17,8 @@ void logSystemMetrics(uint32_t maxLoopUs) {
                 ESP.getFreeHeap(), ESP.getFreePsram(), maxLoopUs);
 }
 
+bool isHeapCritical(size_t minimumFreeBytes, uint8_t, size_t) {
+  return ESP.getFreeHeap() < minimumFreeBytes;
+}
+
 }

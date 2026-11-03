@@ -15,4 +15,10 @@ void logSystemMetrics(uint32_t maxLoopUs) {
                 ESP.getFreeHeap(), ESP.getHeapFragmentation(), maxLoopUs);
 }
 
+bool isHeapCritical(size_t minimumFreeBytes, uint8_t maximumFragmentation, size_t minimumFreeBlockBytes) {
+  return (ESP.getFreeHeap() < minimumFreeBytes ||
+          ESP.getHeapFragmentation() > maximumFragmentation ||
+          ESP.getMaxFreeBlockSize() < minimumFreeBlockBytes);
+}
+
 }

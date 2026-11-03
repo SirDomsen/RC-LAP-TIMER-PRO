@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "esp_now_base.h"
 #include <status_leds.h>
+#include <platform_runtime.h>
 
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
@@ -65,11 +66,10 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<p style='color:#f0f6fc;font-size:14px;'>Mehrere Geräte laden gleichzeitig. Verbinde automatisch in wenigen Sekunden...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
-#if defined(ESP8266)
-  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
-#elif defined(ESP32)
-  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES);
-#endif
+  return PlatformRuntime::isHeapCritical(
+    HEAP_CRITICAL_MIN_BYTES,
+    HEAP_CRITICAL_MAX_FRAG,
+    HEAP_CRITICAL_MIN_BLOCK);
 }
 
 static const char* getContentType(const String& path) {
