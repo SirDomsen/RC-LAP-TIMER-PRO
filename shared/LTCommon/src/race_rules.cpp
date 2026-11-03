@@ -10,6 +10,15 @@ bool RaceRules::isTimedMode(RaceMode mode) {
   return mode == MODE_QUALIFYING || mode == MODE_RACE_TIME;
 }
 
+bool RaceRules::hasPassedAllCheckpoints(
+    bool useSz1,
+    bool useSz2,
+    bool useSz3,
+    uint8_t expectedSector) {
+  const uint8_t finalSector = getFinalSectorNumber(useSz1, useSz2, useSz3);
+  return finalSector == 0 || expectedSector >= finalSector;
+}
+
 uint8_t RaceRules::getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3) {
   if (useSz3) return 3;
   if (useSz2) return 2;

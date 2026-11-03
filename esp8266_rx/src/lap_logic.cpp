@@ -786,12 +786,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
 
   if (checkpointMode && currentMode != MODE_DRAGRACE && lapCounter[carId] > 0) {
-    bool passedAll = true;
-    if (useSz3 && currentExpectedSector[carId] < 4) passedAll = false;
-    else if (useSz2 && !useSz3 && currentExpectedSector[carId] < 3) passedAll = false;
-    else if (useSz1 && !useSz2 && !useSz3 && currentExpectedSector[carId] < 2) passedAll = false;
-
-    if (!passedAll) {
+    if (!RaceRules::hasPassedAllCheckpoints(
+            useSz1, useSz2, useSz3, currentExpectedSector[carId])) {
       currentExpectedSector[carId] = 1;
       sectorPassedInLap[carId] = 0;
       return;
