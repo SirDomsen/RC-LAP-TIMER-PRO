@@ -48,7 +48,6 @@ static uint8_t targetWifiMode = 0;
 static bool ghostWlanActive = false;
 static uint32_t ghostWlanOffTimer = 0;
 
-static const char* cacheHeaderStr = "max-age=86400";
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
 const size_t HEAP_CRITICAL_MIN_BYTES = 12000;
 const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
