@@ -4,9 +4,9 @@
 #include "esp_now_base.h"
 #include <status_leds.h>
 #include <platform_runtime.h>
+#include <network_platform.h>
 
 #if defined(ESP8266)
-#include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
@@ -18,7 +18,6 @@ extern "C" {
   #include <espnow.h>
 }
 #elif defined(ESP32)
-#include <WiFi.h>
 #include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
@@ -251,27 +250,18 @@ static void blinkGreenLED(int count) {
 }
 
 static void setupGhostWLAN() {
-  currentActiveIP = WiFi.localIP();
-#if defined(ESP8266)
-  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.setOutputPower(20.5);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
-#elif defined(ESP32)
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.setSleep(false);
-#endif
+  currentActiveIP = NetworkPlatform::stationIP();
+  NetworkPlatform::prepareAccessPoint(true);
   
   String ipStr = currentActiveIP.toString();
-  String connectedSsid = WiFi.SSID();
+  String connectedSsid = NetworkPlatform::stationSSID();
   
   int maxSsidLen = 31 - 4 - ipStr.length();
   if (maxSsidLen > 0 && connectedSsid.length() > (size_t)maxSsidLen) {
     connectedSsid = connectedSsid.substring(0, maxSsidLen);
   }
-  
   String ipApName = "LT_" + connectedSsid + "-" + ipStr;
-  WiFi.softAP(ipApName.c_str(), "Laptimer123", WiFi.channel(), 0, 1);
+  NetworkPlatform::startAccessPoint(ipApName.c_str(), "Laptimer123", NetworkPlatform::channel(), 0, 1);
 
   ghostWlanActive = true;
   ghostWlanOffTimer = 0; 
@@ -281,17 +271,9 @@ static void setupGhostWLAN() {
 
 static void setupFallbackAP() {
   ghostWlanActive = false;
-  WiFi.disconnect(true);
+  NetworkPlatform::disconnect(true);
   delay(50);
-#if defined(ESP8266)
-  WiFi.setPhyMode(WIFI_PHY_MODE_11N); 
-  WiFi.mode(WIFI_AP);
-  WiFi.setOutputPower(20.5);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
-#elif defined(ESP32)
-  WiFi.mode(WIFI_AP);
-  WiFi.setSleep(false);
-#endif
+  NetworkPlatform::prepareAccessPoint(false);
   
   IPAddress local_IP(192, 168, 0, 8);
   if (learnedApIP.length() > 0) {
@@ -302,12 +284,12 @@ static void setupFallbackAP() {
   }
   IPAddress gateway = local_IP;
   IPAddress subnet(255, 255, 255, 0);
-  WiFi.softAPConfig(local_IP, gateway, subnet);
+  NetworkPlatform::configureAccessPoint(local_IP, gateway, subnet);
   
   String activeApName = (apSSID.length() > 0) ? apSSID : getDefaultApSSID();
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
-  WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 4);
+  NetworkPlatform::startAccessPoint(activeApName.c_str(), apKey, 1, 0, 4);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
   LapStatusLeds::setNetworkReady(true);
@@ -319,31 +301,20 @@ static void connectNetworkCascade(uint8_t startMode) {
     String p = homePass.length() > 0 ? homePass : HOME_PASS;
     
     LapStatusLeds::setNetworkReady(false);
-    WiFi.disconnect(true);
+    NetworkPlatform::disconnect(true);
     delay(50);
-#if defined(ESP8266)
-    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
-    WiFi.mode(WIFI_STA);
-    WiFi.setOutputPower(20.5);
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    WiFi.config(0u, 0u, 0u);
-    WiFi.hostname(getDeviceHostname());
-#elif defined(ESP32)
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false);
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    WiFi.setHostname(getDeviceHostname().c_str());
-#endif
+    String hostname = getDeviceHostname();
+    NetworkPlatform::prepareStation(hostname.c_str());
     
-    WiFi.begin(s.c_str(), p.c_str());
+    NetworkPlatform::beginStation(s.c_str(), p.c_str());
     uint32_t startMs = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 10000)) {
+    while (!NetworkPlatform::isStationConnected() && (millis() - startMs < 10000)) {
       delay(100);
     }
     
-    if (WiFi.status() == WL_CONNECTED) {
+    if (NetworkPlatform::isStationConnected()) {
       currentRuntimeWifiMode = 1;
-      updateLearnedApIP(WiFi.localIP());
+      updateLearnedApIP(NetworkPlatform::stationIP());
       setupGhostWLAN();
       return; 
     } else {
@@ -355,29 +326,18 @@ static void connectNetworkCascade(uint8_t startMode) {
 
   if (startMode == 2 && hotspotSSID.length() > 0) {
     LapStatusLeds::setNetworkReady(false);
-    WiFi.disconnect(true);
+    NetworkPlatform::disconnect(true);
     delay(50);
-#if defined(ESP8266)
-    WiFi.setPhyMode(WIFI_PHY_MODE_11N);
-    WiFi.mode(WIFI_STA);
-    WiFi.setOutputPower(20.5);
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    WiFi.config(0u, 0u, 0u);
-    WiFi.hostname(getDeviceHostname());
-#elif defined(ESP32)
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false);
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    WiFi.setHostname(getDeviceHostname().c_str());
-#endif
+    String hostname = getDeviceHostname();
+    NetworkPlatform::prepareStation(hostname.c_str());
     
-    WiFi.begin(hotspotSSID.c_str(), hotspotPass.c_str());
+    NetworkPlatform::beginStation(hotspotSSID.c_str(), hotspotPass.c_str());
     uint32_t startMs = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 12000)) {
+    while (!NetworkPlatform::isStationConnected() && (millis() - startMs < 12000)) {
       delay(100);
     }
     
-    if (WiFi.status() == WL_CONNECTED) {
+    if (NetworkPlatform::isStationConnected()) {
       currentRuntimeWifiMode = 2;
       setupGhostWLAN();
       return; 
@@ -697,13 +657,8 @@ void handleNetworkTasks() {
 
   if (ghostWlanActive && ghostWlanOffTimer > 0 && millis() >= ghostWlanOffTimer) {
     ghostWlanActive = false;
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-#if defined(ESP8266)
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-#elif defined(ESP32)
-    WiFi.setSleep(false);
-#endif
+    NetworkPlatform::stopAccessPoint(true);
+    NetworkPlatform::setStationMode();
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {

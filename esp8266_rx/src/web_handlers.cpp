@@ -5,8 +5,9 @@
 #include "web_server.h"
 #include "buzzer.h"
 #include <ir_decoder.h>
+#include <network_platform.h>
+
 #if defined(ESP8266)
-#include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <sys/time.h>
@@ -15,7 +16,6 @@ extern "C" {
   #include <espnow.h>
 }
 #elif defined(ESP32)
-#include <WiFi.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <sys/time.h>
@@ -666,7 +666,7 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
   response->printf("\"hotspotPass\":\"%s\",", hotspotPass.c_str());
   response->printf("\"apSSID\":\"%s\",", apSSID.c_str());
   response->printf("\"apPass\":\"%s\",", apPass.c_str());
-  String curIP = (currentRuntimeWifiMode == 0) ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+  String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
   String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
   response->printf("\"currentIP\":\"%s\",", curIP.c_str());
   response->printf("\"learnedApIP\":\"%s\",", lIP.c_str());
@@ -705,7 +705,7 @@ void handleGetWifiConfig(AsyncWebServerRequest *request) {
   doc["hotspotPass"] = hotspotPass;
   doc["apSSID"] = apSSID;
   doc["apPass"] = apPass;
-  doc["currentIP"] = (currentRuntimeWifiMode == 0) ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+  doc["currentIP"] = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
   doc["learnedApIP"] = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
   doc["defaultApSSID"] = getDefaultApSSID();
 
