@@ -754,22 +754,32 @@ void recordBootResetReason() {
     lastResetIsCrash = false;
   }
 
-  // Bei WDT / Exception in /crash.log im LittleFS sichern (max. 4 KB Loggroesse halten)
-  if (lastResetIsCrash) {
-    File f = LittleFS.open("/crash.log", "a");
+  // Protokolliert jeden Neustart in /crash.log im LittleFS (max. 6 KB halten)
+  File f = LittleFS.open("/crash.log", "a");
+  if (f) {
+    if (f.size() > 6144) {
+      f.close();
+      LittleFS.remove("/crash.log");
+      f = LittleFS.open("/crash.log", "w");
+    }
     if (f) {
-      if (f.size() > 4096) {
-        f.close();
-        LittleFS.remove("/crash.log");
-        f = LittleFS.open("/crash.log", "w");
+      const char* tag = "[START]";
+      if (lastResetIsCrash) {
+        tag = "[CRASH ⚠️]";
+      } else if (rLower.indexOf("power") >= 0) {
+        tag = "[POWER-ON]";
+      } else if (rLower.indexOf("restart") >= 0) {
+        tag = "[RESTART]";
+      } else if (rLower.indexOf("external") >= 0) {
+        tag = "[EXT-RESET]";
       }
-      if (f) {
-        f.print("[CRASH] Grund: ");
-        f.print(lastResetReason);
-        f.print(" | Details: ");
-        f.println(lastResetInfo);
-        f.close();
-      }
+
+      f.print(tag);
+      f.print(" Grund: ");
+      f.print(lastResetReason);
+      f.print(" | Details: ");
+      f.println(lastResetInfo);
+      f.close();
     }
   }
 #elif defined(ESP32)
@@ -781,13 +791,13 @@ void recordBootResetReason() {
 
 String getCrashLog() {
   if (!LittleFS.exists("/crash.log")) {
-    return "Keine Crash-Eintraege vorhanden. System laeuft sauber.";
+    return "Keine Reset-Eintraege vorhanden.";
   }
   File f = LittleFS.open("/crash.log", "r");
-  if (!f) return "Fehler beim Lesen des Crash-Logs.";
+  if (!f) return "Fehler beim Lesen des Reset-Logs.";
   String log = f.readString();
   f.close();
-  return log;
+  return log.length() > 0 ? log : "Log ist leer.";
 }
 
 void clearCrashLog() {

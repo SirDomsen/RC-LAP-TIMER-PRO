@@ -211,7 +211,7 @@
           <div id="valResetDetail" style="font-size: 11px; font-family: monospace; color: var(--text-muted); margin-top: 4px; word-break: break-all;">--</div>
         </div>
         <div>
-          <button class="btn btn-secondary" onclick="openCrashLogModal()" style="font-size: 11px; padding: 6px 12px; margin:0; border-color: rgba(255,255,255,0.2);">📋 Crash-Log anzeigen</button>
+          <button class="btn btn-secondary" onclick="openCrashLogModal()" style="font-size: 11px; padding: 6px 12px; margin:0; border-color: rgba(255,255,255,0.2);">📋 Reset- &amp; Crash-Log</button>
         </div>
       </div>
     </div>
@@ -1107,11 +1107,11 @@
   <div id="crashLogModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(4px); overflow-y:auto; box-sizing:border-box; padding:20px 10px;">
     <div style="background:#11151c; border:1px solid var(--neon-cyan); border-radius:10px; max-width:650px; margin:40px auto; padding:20px; box-shadow:0 0 25px rgba(0,229,255,0.3); text-align:left;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
-        <h3 style="font-family:'Orbitron'; margin:0; color:var(--neon-cyan);">📋 ESP8266 Crash- &amp; Reset-Log</h3>
+        <h3 style="font-family:'Orbitron'; margin:0; color:var(--neon-cyan);">📋 ESP8266 Reset- &amp; Crash-Log</h3>
         <button onclick="closeCrashLogModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
       </div>
       <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
-        Verlauf aller aufgezeichneten Watchdog-Resets und Fatal Exceptions im Flash (LittleFS <code style="color:var(--neon-cyan);">/crash.log</code>):
+        Verlauf aller aufgezeichneten Systemstarts, Reboots und Abstürze im Flash (LittleFS <code style="color:var(--neon-cyan);">/crash.log</code>):
       </div>
       <pre id="crashLogContent" style="background:#0a0c10; border:1px solid rgba(255,255,255,0.1); padding:12px; border-radius:6px; font-size:12px; font-family:monospace; color:#00ff9d; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;">Lade Log...</pre>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px;">
