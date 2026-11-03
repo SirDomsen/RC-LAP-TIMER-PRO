@@ -17,6 +17,26 @@ bool RaceRules::isLapLimitExceeded(
   return mode == MODE_RACE_LAPS && targetRounds > 0 && lapCount > targetRounds;
 }
 
+bool RaceRules::isLapTimeAboveMinimum(
+    uint64_t elapsedMicros,
+    uint16_t minimumLapTimeMs) {
+  return elapsedMicros > ((uint32_t)minimumLapTimeMs * 1000UL);
+}
+
+bool RaceRules::isValidSectorDuration(uint32_t durationMs) {
+  return durationMs >= 100 && durationMs < 600000;
+}
+
+bool RaceRules::isValidIntermediateSectorDuration(uint32_t durationMs) {
+  return durationMs >= 100 && durationMs <= 600000;
+}
+
+bool RaceRules::hasFinalSectorRemainder(
+    uint32_t lapDurationMs,
+    uint32_t lastSplitMs) {
+  return lastSplitMs > 0 && lapDurationMs > lastSplitMs;
+}
+
 bool RaceRules::canAcceptTimedEventCross(
     uint32_t modeEndTimeMs,
     uint32_t nowMs,

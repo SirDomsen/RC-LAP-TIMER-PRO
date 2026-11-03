@@ -414,7 +414,7 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
   }
 
   uint32_t elapsedMs = timestampMs - lapStartMs;
-  if (elapsedMs < 100 || elapsedMs > 600000) return;
+  if (!RaceRules::isValidIntermediateSectorDuration(elapsedMs)) return;
 
   uint32_t avgLap = getAverageLapTimeMs(carId);
   if (currentMode != MODE_DRAGRACE &&
@@ -797,7 +797,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
   bool lapCounted = false;
 
-  if ((exactMicros - lastCrossTime[carId] > ((uint32_t)minLapTimeMs * 1000UL)) && readyForNextLap[carId]) {
+  if (RaceRules::isLapTimeAboveMinimum(
+          exactMicros - lastCrossTime[carId], minLapTimeMs) && readyForNextLap[carId]) {
     uint32_t currentLapTimeMs = (exactMicros - lastCrossTime[carId]) / 1000UL;
     
     uint32_t avgLap = getAverageLapTimeMs(carId);
@@ -814,10 +815,10 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
       else if (finalSectorNum == 3 && (sectorPassedInLap[carId] & (1 << 2))) lastSplit = split2TimeMs[carId];
       else if (finalSectorNum == 2 && (sectorPassedInLap[carId] & (1 << 1))) lastSplit = split1TimeMs[carId];
 
-      if (lastSplit > 0 && currentLapTimeMs > lastSplit) {
+      if (RaceRules::hasFinalSectorRemainder(currentLapTimeMs, lastSplit)) {
         uint32_t sFinal = currentLapTimeMs - lastSplit;
 
-        if (sFinal >= 100 && sFinal < 600000) {
+        if (RaceRules::isValidSectorDuration(sFinal)) {
           bool isPB = false;
           bool isOverall = false;
           int32_t deltaMs = 0;

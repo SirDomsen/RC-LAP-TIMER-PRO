@@ -9,6 +9,10 @@ namespace RaceRules {
 bool ranksByBestLap(RaceMode mode);
 bool isTimedMode(RaceMode mode);
 bool isLapLimitExceeded(RaceMode mode, uint16_t lapCount, uint16_t targetRounds);
+bool isLapTimeAboveMinimum(uint64_t elapsedMicros, uint16_t minimumLapTimeMs);
+bool isValidSectorDuration(uint32_t durationMs);
+bool isValidIntermediateSectorDuration(uint32_t durationMs);
+bool hasFinalSectorRemainder(uint32_t lapDurationMs, uint32_t lastSplitMs);
 bool canAcceptTimedEventCross(
     uint32_t modeEndTimeMs,
     uint32_t nowMs,
