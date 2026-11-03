@@ -726,12 +726,74 @@ void initFS() {
 #if defined(ESP8266)
   if (LittleFS.begin()) {
     updateFsUsageCache();
+    recordBootResetReason();
   }
 #elif defined(ESP32)
   if (LittleFS.begin(true)) {
     updateFsUsageCache();
+    recordBootResetReason();
   }
 #endif
+}
+
+String lastResetReason = "Unbekannt";
+String lastResetInfo = "";
+bool lastResetIsCrash = false;
+
+void recordBootResetReason() {
+#if defined(ESP8266)
+  lastResetReason = ESP.getResetReason();
+  lastResetInfo = ESP.getResetInfo();
+
+  // Ist es ein Crash / WDT / Exception?
+  String rLower = lastResetReason;
+  rLower.toLowerCase();
+  if (rLower.indexOf("watchdog") >= 0 || rLower.indexOf("exception") >= 0 || rLower.indexOf("fatal") >= 0) {
+    lastResetIsCrash = true;
+  } else {
+    lastResetIsCrash = false;
+  }
+
+  // Bei WDT / Exception in /crash.log im LittleFS sichern (max. 4 KB Loggroesse halten)
+  if (lastResetIsCrash) {
+    File f = LittleFS.open("/crash.log", "a");
+    if (f) {
+      if (f.size() > 4096) {
+        f.close();
+        LittleFS.remove("/crash.log");
+        f = LittleFS.open("/crash.log", "w");
+      }
+      if (f) {
+        f.print("[CRASH] Grund: ");
+        f.print(lastResetReason);
+        f.print(" | Details: ");
+        f.println(lastResetInfo);
+        f.close();
+      }
+    }
+  }
+#elif defined(ESP32)
+  lastResetReason = "Normal Boot (ESP32)";
+  lastResetInfo = "";
+  lastResetIsCrash = false;
+#endif
+}
+
+String getCrashLog() {
+  if (!LittleFS.exists("/crash.log")) {
+    return "Keine Crash-Eintraege vorhanden. System laeuft sauber.";
+  }
+  File f = LittleFS.open("/crash.log", "r");
+  if (!f) return "Fehler beim Lesen des Crash-Logs.";
+  String log = f.readString();
+  f.close();
+  return log;
+}
+
+void clearCrashLog() {
+  if (LittleFS.exists("/crash.log")) {
+    LittleFS.remove("/crash.log");
+  }
 }
 
 // --- STRECKEN-VERWALTUNG (/tracks.json) ---

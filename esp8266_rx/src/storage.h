@@ -116,4 +116,12 @@ String getDefaultApSSID();
 String getDeviceHostname();
 String getOtaHostname();
 
+// Crash- & Reset-Diagnose
+extern String lastResetReason;
+extern String lastResetInfo;
+extern bool lastResetIsCrash;
+void recordBootResetReason();
+String getCrashLog();
+void clearCrashLog();
+
 #endif

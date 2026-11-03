@@ -84,6 +84,20 @@ static const char* getContentType(const String& path) {
   return "text/plain; charset=utf-8";
 }
 
+static String escapeJsonStr(const String& s) {
+  String out = "";
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    if (c == '"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') continue;
+    else out += c;
+  }
+  return out;
+}
+
 static void triggerGhostWlanEarlyShutdown() {
   if (ghostWlanActive && ghostWlanOffTimer == 0) {
     ghostWlanOffTimer = millis() + 15000UL; 
@@ -563,7 +577,7 @@ void initNetworkAndServer() {
 
   auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(256);
+    json.reserve(384);
     uint32_t uptime = millis() / 1000UL;
     uint32_t freeHeap = ESP.getFreeHeap();
 #if defined(ESP8266)
@@ -594,11 +608,24 @@ void initNetworkAndServer() {
     json += uptime;
     json += ",\"uptime\":";
     json += uptime;
+    json += ",\"resetReason\":\"";
+    json += escapeJsonStr(lastResetReason);
+    json += "\",\"resetInfo\":\"";
+    json += escapeJsonStr(lastResetInfo);
+    json += "\",\"isCrash\":";
+    json += (lastResetIsCrash ? "true" : "false");
     json += "}";
     request->send(200, "application/json", json);
   };
   server.on("/api/debug/system", HTTP_GET, handleSystemMetrics);
   server.on("/api/system/metrics", HTTP_GET, handleSystemMetrics);
+  server.on("/api/debug/crashlog", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain; charset=utf-8", getCrashLog());
+  });
+  server.on("/api/debug/crashlog/clear", HTTP_POST, [](AsyncWebServerRequest *request) {
+    clearCrashLog();
+    request->send(200, "text/plain", "OK");
+  });
 
   server.on("/api/allconfig", HTTP_GET, handleGetAllConfig);
   server.on("/api/wificonfig", HTTP_GET, handleGetWifiConfig);
