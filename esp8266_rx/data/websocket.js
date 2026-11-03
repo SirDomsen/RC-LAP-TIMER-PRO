@@ -111,6 +111,13 @@ function initWebSocket() {
       if (typeof loadTracks === 'function') {
         loadTracks();
       }
+      const fwElem = document.getElementById('firmware-version');
+      if (fwElem && (fwElem.textContent === '--' || !fwElem.textContent.trim()) && typeof loadVersion === 'function') {
+        loadVersion();
+      }
+      if (typeof loadSectorConfigInitial === 'function') {
+        loadSectorConfigInitial();
+      }
     };
     socket.onmessage = function(event) {
       lastHeartbeatPacketTs = Date.now();

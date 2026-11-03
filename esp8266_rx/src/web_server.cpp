@@ -105,7 +105,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
-    } else {
+    } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
       res->addHeader("Retry-After", "2");
       res->addHeader("Connection", "close");

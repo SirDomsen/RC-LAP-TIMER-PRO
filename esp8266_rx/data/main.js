@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.5.12';
+window.UI_VERSION = '4.5.13';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -2215,22 +2215,23 @@ function updateStorageStatusUI(pct, full, usedBytes, totalBytes) {
   }
 }
 
-async function loadVersion() {
+async function loadVersion(retries = 3) {
   const fwElem = document.getElementById('firmware-version');
   const uiElem = document.getElementById('ui-version');
   if (uiElem) uiElem.textContent = UI_VERSION;
 
-  try {
-    let response = await fetch('/api/version');
-    if (response.ok) {
-      let data = await response.json();
-      if (fwElem) fwElem.textContent = data.firmware;
-    } else {
-      if (fwElem) fwElem.textContent = "--";
-    }
-  } catch (err) {
-    if (fwElem) fwElem.textContent = "--";
+  for (let i = 0; i < retries; i++) {
+    try {
+      let response = await fetch('/api/version');
+      if (response.ok) {
+        let data = await response.json();
+        if (fwElem) fwElem.textContent = data.firmware;
+        return;
+      }
+    } catch (err) {}
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 1000));
   }
+  if (fwElem && (!fwElem.textContent || fwElem.textContent === '')) fwElem.textContent = "--";
 }
 
 async function loadCarNames() {
@@ -3355,7 +3356,7 @@ function ensureStylesheetLoaded() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
+async function initMainApp() {
   ensureStylesheetLoaded();
   setTimeout(ensureStylesheetLoaded, 1200);
   window.sessionStartTs = Math.floor(Date.now() / 1000);
@@ -3399,7 +3400,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   setTimeout(() => {
     pollData();
   }, 800);
-});
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initMainApp);
+} else {
+  initMainApp();
+}
 
 // ==========================================
 // QR-CODE VERBINDUNG / IP-ADRESSE
