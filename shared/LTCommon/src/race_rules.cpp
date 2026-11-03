@@ -1,5 +1,11 @@
 #include "race_rules.h"
 
+bool RaceRules::ranksByBestLap(RaceMode mode) {
+  return mode == MODE_DRAGRACE ||
+         mode == MODE_QUALIFYING ||
+         mode == MODE_GHOST_HUNT;
+}
+
 uint8_t RaceRules::getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3) {
   if (useSz3) return 3;
   if (useSz2) return 2;

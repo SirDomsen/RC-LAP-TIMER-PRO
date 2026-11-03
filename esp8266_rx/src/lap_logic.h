@@ -3,15 +3,7 @@
 
 #include "config.h"
 #include <Arduino.h>
-
-enum RaceMode {
-  MODE_PRACTICE,   // Freies Training
-  MODE_QUALIFYING, // Qualifying (Zeitbasiert)
-  MODE_RACE_LAPS,  // Rennen (Rundenbasiert)
-  MODE_RACE_TIME,  // Rennen (Zeitbasiert)
-  MODE_DRAGRACE,   // Dragrace-Modus (Modus 4)
-  MODE_GHOST_HUNT  // Geisterjagd / Ghost Hunt (Modus 5)
-};
+#include <race_mode.h>
 
 extern RaceMode currentMode;
 extern uint32_t modeEndTimeMs;   

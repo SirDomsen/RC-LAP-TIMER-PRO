@@ -325,12 +325,9 @@ void resetAllLaps(bool isHardReset) {
 }
 
 uint8_t getCurrentPosition(uint8_t carId) {
-  const bool rankByBestLap =
-      currentMode == MODE_DRAGRACE ||
-      currentMode == MODE_QUALIFYING ||
-      currentMode == MODE_GHOST_HUNT;
   return RaceRules::getPosition(
-      carId, MAX_CARS, rankByBestLap, bestLapDuration, lapCounter, lastCrossTime);
+      carId, MAX_CARS, RaceRules::ranksByBestLap(currentMode),
+      bestLapDuration, lapCounter, lastCrossTime);
 }
 
 bool areAllActiveCarsFinished() {

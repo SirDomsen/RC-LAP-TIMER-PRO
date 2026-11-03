@@ -2,9 +2,11 @@
 #define LT_RACE_RULES_H
 
 #include <stdint.h>
+#include "race_mode.h"
 
 namespace RaceRules {
 
+bool ranksByBestLap(RaceMode mode);
 uint8_t getActiveTargetSector(bool useSz1, bool useSz2, bool useSz3);
 uint8_t getFinalSectorNumber(bool useSz1, bool useSz2, bool useSz3);
 
