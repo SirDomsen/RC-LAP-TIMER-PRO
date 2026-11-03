@@ -23,7 +23,11 @@ extern "C" {
 #endif
 
 void handleGetLaps(AsyncWebServerRequest *request) {
-  if (isHeapCriticalForFileTransfer()) {
+#if defined(ESP8266)
+  if (ESP.getFreeHeap() < 3500) {
+#elif defined(ESP32)
+  if (ESP.getFreeHeap() < 8000) {
+#endif
     AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
     res->addHeader("Retry-After", "2");
     res->addHeader("Connection", "close");

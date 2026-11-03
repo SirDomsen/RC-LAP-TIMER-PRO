@@ -49,9 +49,7 @@ static bool ghostWlanActive = false;
 static uint32_t ghostWlanOffTimer = 0;
 
 // --- DYNAMISCHE HEAP-SCHUTZMAUER ---
-const size_t HEAP_CRITICAL_MIN_BYTES = 12000;
-const uint8_t HEAP_CRITICAL_MAX_FRAG = 55;
-const size_t HEAP_CRITICAL_MIN_BLOCK = 3072;
+
 
 static const char BUSY_HTML_PROGMEM[] PROGMEM = 
   "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -64,9 +62,12 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
 
 bool isHeapCriticalForFileTransfer() {
 #if defined(ESP8266)
-  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES || ESP.getHeapFragmentation() > HEAP_CRITICAL_MAX_FRAG || ESP.getMaxFreeBlockSize() < HEAP_CRITICAL_MIN_BLOCK);
+  size_t minBytes = (currentRuntimeWifiMode == 0) ? 5500 : 7500;
+  uint8_t maxFrag = (currentRuntimeWifiMode == 0) ? 75 : 70;
+  size_t minBlock = (currentRuntimeWifiMode == 0) ? 1400 : 1800;
+  return (ESP.getFreeHeap() < minBytes || ESP.getHeapFragmentation() > maxFrag || ESP.getMaxFreeBlockSize() < minBlock);
 #elif defined(ESP32)
-  return (ESP.getFreeHeap() < HEAP_CRITICAL_MIN_BYTES);
+  return (ESP.getFreeHeap() < 12000);
 #endif
 }
 
@@ -210,10 +211,17 @@ static void unregisterWsClient(uint32_t clientId) {
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    if (isHeapCriticalForFileTransfer()) {
+#if defined(ESP8266)
+    if (ESP.getFreeHeap() < 3500) {
       client->close(1013, "Server busy");
       return;
     }
+#elif defined(ESP32)
+    if (ESP.getFreeHeap() < 8000) {
+      client->close(1013, "Server busy");
+      return;
+    }
+#endif
     triggerGhostWlanEarlyShutdown();
     client->keepAlivePeriod(30);
     addWsClient(client->id());
