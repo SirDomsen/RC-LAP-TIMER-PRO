@@ -21,6 +21,21 @@ bool RaceRules::canAcceptTimedEventCross(
   return lapStartMs <= modeEndTimeMs;
 }
 
+bool RaceRules::isTimedEventCarPendingFinish(
+    uint32_t modeEndTimeMs,
+    uint32_t nowMs,
+    uint16_t lapCount,
+    uint32_t lapStartMs,
+    uint32_t lastSeenMs,
+    bool finishedFinalLap,
+    bool inPitOrPause,
+    uint32_t inactivityTimeoutMs) {
+  if (modeEndTimeMs == 0 || nowMs <= modeEndTimeMs) return false;
+  if (lapCount == 0 || finishedFinalLap || inPitOrPause) return false;
+  if (lapStartMs > modeEndTimeMs) return false;
+  return nowMs - lastSeenMs < inactivityTimeoutMs;
+}
+
 bool RaceRules::exceedsOutLapThreshold(
     uint32_t averageLapMs,
     uint32_t elapsedMs,

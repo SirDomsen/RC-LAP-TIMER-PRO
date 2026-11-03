@@ -335,13 +335,10 @@ bool areAllActiveCarsFinished() {
   if (modeEndTimeMs == 0 || millis() <= modeEndTimeMs) return false;
 
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (lapCounter[i] > 0 && !finishedFinalLap[i] && !inPitOrPause[i]) {
-      uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
-      if (lapStartMs <= modeEndTimeMs) {
-        if (millis() - lastSeenMs[i] < 60000UL) {
-          return false;
-        }
-      }
+    if (RaceRules::isTimedEventCarPendingFinish(
+            modeEndTimeMs, millis(), lapCounter[i], lastCrossTime[i] / 1000UL,
+            lastSeenMs[i], finishedFinalLap[i], inPitOrPause[i], 60000UL)) {
+      return false;
     }
   }
   return true;
