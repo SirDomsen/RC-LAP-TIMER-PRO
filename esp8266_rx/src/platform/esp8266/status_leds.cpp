@@ -28,6 +28,10 @@ void LapStatusLeds::cancelReadyPulse() {
   readyLedBlinking = false;
 }
 
+void LapStatusLeds::setNetworkReady(bool ready) {
+  digitalWrite(LED_READY, ready ? HIGH : LOW);
+}
+
 void LapStatusLeds::update() {
   if (digitalRead(LED_SIGNAL) == HIGH) {
     if (millis() - lastYellowFlash > 12) {

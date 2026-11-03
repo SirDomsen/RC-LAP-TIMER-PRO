@@ -1,6 +1,5 @@
 #include "lap_logic.h"
-#include <ir_decoder.h>
-#include <ir_protocol.h>
+#include <lap_ir_input.h>
 #include <race_rules.h>
 #include "storage.h"
 #include "web_server.h"
@@ -311,7 +310,7 @@ void resetAllLaps(bool isHardReset) {
   }
 
   for (int i = 0; i < 5; i++) recentIDs[i] = 0;
-  IrDecoder::resetFrameFilter();
+  LapIrInput::resetFrameFilter();
   LapStatusLeds::cancelReadyPulse();
   broadcastWebSocket("{\"type\":\"reset\"}");
 }
@@ -959,12 +958,8 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     LapStatusLeds::pulseReady();
   }
 }
-void processLapLogic() {
-  uint8_t carId = 0;
-  uint32_t exactSignalTime = 0;
-  bool confirmed = false;
-  if (!IrDecoder::consumeFrame(MAX_CARS, carId, exactSignalTime, confirmed) || carId > MAX_CARS) return;
-
+void processLapInputFrame(uint8_t carId, uint32_t exactSignalTime, bool confirmed) {
+  if (carId > MAX_CARS) return;
   lastSeenMs[carId] = millis();
   if (!confirmed) return;
 

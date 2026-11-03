@@ -7,6 +7,7 @@
 #include "esp_now_base.h"
 #include "buzzer.h"
 #include <status_leds.h>
+#include <lap_ir_input.h>
 
 #if defined(ESP8266)
 #include <ESP8266mDNS.h>
@@ -51,7 +52,12 @@ void setup() {
 void loop() {
   uint32_t loopStart = micros();
 
-  processLapLogic();
+  uint8_t carId = 0;
+  uint32_t exactSignalTime = 0;
+  bool confirmed = false;
+  if (LapIrInput::consumeFrame(MAX_CARS, carId, exactSignalTime, confirmed)) {
+    processLapInputFrame(carId, exactSignalTime, confirmed);
+  }
   updateLapLogicTasks();
   processStorageQueue();
   LapStatusLeds::update();

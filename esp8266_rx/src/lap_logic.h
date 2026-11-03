@@ -115,7 +115,7 @@ void initLapLogic();
 void loadDailyBest();
 void saveDailyBest();
 
-void processLapLogic();
+void processLapInputFrame(uint8_t carId, uint32_t exactSignalTime, bool confirmed);
 void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs);
 void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros);
 void updateLapLogicTasks(); 

@@ -2,6 +2,7 @@
 #include "web_handlers.h"
 #include "storage.h"
 #include "esp_now_base.h"
+#include <status_leds.h>
 
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
@@ -242,9 +243,9 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
 
 static void blinkGreenLED(int count) {
   for(int i = 0; i < count; i++) {
-    digitalWrite(LED_READY, HIGH);
+    LapStatusLeds::setNetworkReady(true);
     delay(166);
-    digitalWrite(LED_READY, LOW);
+    LapStatusLeds::setNetworkReady(false);
     delay(166);
   }
 }
@@ -275,7 +276,7 @@ static void setupGhostWLAN() {
   ghostWlanActive = true;
   ghostWlanOffTimer = 0; 
 
-  digitalWrite(LED_READY, HIGH); 
+  LapStatusLeds::setNetworkReady(true);
 }
 
 static void setupFallbackAP() {
@@ -309,7 +310,7 @@ static void setupFallbackAP() {
   WiFi.softAP(activeApName.c_str(), apKey, 1, 0, 4);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
-  digitalWrite(LED_READY, HIGH); 
+  LapStatusLeds::setNetworkReady(true);
 }
 
 static void connectNetworkCascade(uint8_t startMode) {
@@ -317,7 +318,7 @@ static void connectNetworkCascade(uint8_t startMode) {
     String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
     String p = homePass.length() > 0 ? homePass : HOME_PASS;
     
-    digitalWrite(LED_READY, LOW);
+    LapStatusLeds::setNetworkReady(false);
     WiFi.disconnect(true);
     delay(50);
 #if defined(ESP8266)
@@ -353,7 +354,7 @@ static void connectNetworkCascade(uint8_t startMode) {
   }
 
   if (startMode == 2 && hotspotSSID.length() > 0) {
-    digitalWrite(LED_READY, LOW);
+    LapStatusLeds::setNetworkReady(false);
     WiFi.disconnect(true);
     delay(50);
 #if defined(ESP8266)

@@ -6,6 +6,7 @@ namespace LapStatusLeds {
 void init();
 void pulseReady();
 void cancelReadyPulse();
+void setNetworkReady(bool ready);
 void update();
 
 }  // namespace LapStatusLeds
