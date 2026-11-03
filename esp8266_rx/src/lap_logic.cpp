@@ -1,5 +1,6 @@
 #include "lap_logic.h"
-#include "ir_decoder.h"
+#include <ir_decoder.h>
+#include <ir_protocol.h>
 #include "storage.h"
 #include "web_server.h"
 #include "buzzer.h"
@@ -1012,12 +1013,8 @@ void processLapLogic() {
   uint32_t exactSignalTime = irTriggerTimeMicros;
   newCodeAvailable = false;
 
-  uint8_t carId    = (code >> 6) & 0x3F;
-  uint8_t carIdInv = code & 0x3F;
-
-  bool isValidSignal = ((carId ^ carIdInv) == 0x3F);
-
-  if (isValidSignal && carId >= 1 && carId <= MAX_CARS) {
+  uint8_t carId = 0;
+  if (IrProtocol::decodeFrame(code, carId) && carId <= MAX_CARS) {
     lastSeenMs[carId] = millis();
     bool confirmPassed = false;
 

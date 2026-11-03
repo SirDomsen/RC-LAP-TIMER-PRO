@@ -2,7 +2,9 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
 #include "config.h"
-#include "ir_decoder.h"
+#include <ir_decoder.h>
+#include <ir_protocol.h>
+#include <espnow_protocol.h>
 #include "secrets.h"
 
 extern "C" {
@@ -32,48 +34,8 @@ volatile bool baseMacKnown = false;
 uint32_t lastDirectBaseBeaconMs = 0;
 const uint32_t DIRECT_BASE_TIMEOUT_MS = 2500;
 
-// ==========================================
-// PAKETSTRUKTUREN
-// ==========================================
-
-struct __attribute__((packed)) SectorPacket {
-  uint8_t  stationId;
-  uint8_t  carId;
-  uint32_t timestamp;
-  uint16_t seqNumber;
-  uint8_t  ttl;
-};
-
 static SectorPacket lastUnicastPkt;
 volatile bool pendingBroadcastFallback = false;
-
-#define BEACON_SYNC_MAGIC 0x53594E43 // "SYNC"
-struct __attribute__((packed)) BeaconSyncPacket {
-  uint32_t magicCode;
-  uint32_t baseTimeMs;
-  uint8_t  channel;
-  uint8_t  stratum; 
-};
-
-struct __attribute__((packed)) AlivePacket {
-  uint8_t stationId;
-  uint8_t batteryLow;
-  uint8_t isUnicast;
-};
-
-#define OTA_MAGIC_CODE 0x07A1234
-struct __attribute__((packed)) OtaTriggerPacket {
-  uint32_t magicCode;
-  uint8_t  targetMode; 
-  char     ssid[32];
-  char     pass[64];
-};
-
-#define OTA_ACK_MAGIC 0x07A1235
-struct __attribute__((packed)) OtaAckPacket {
-  uint32_t magicCode;
-  uint8_t  stationId;
-};
 
 // ==========================================
 // GLOBALE STATUSVARIABLEN
@@ -395,7 +357,7 @@ void setup() {
     esp_now_add_peer(broadcastMac, ESP_NOW_ROLE_COMBO, currentChannel, NULL, 0);
   }
 
-  initIRDecoder();
+  initIRDecoder(IR_PIN, LED_SIGNAL);
 }
 
 // ==========================================
@@ -509,11 +471,8 @@ void loop() {
     newCodeAvailable = false;
     
     uint32_t triggerTime = getSynchronizedTimeMs();
-    uint16_t code = receivedCode & 0xFFF;
-    uint8_t detectedCarId = (code >> 6) & 0x3F;
-    uint8_t carIdInv      = code & 0x3F;
-
-    if (((detectedCarId ^ carIdInv) == 0x3F) && detectedCarId >= 1 && detectedCarId <= MAX_CARS) {
+    uint8_t detectedCarId = 0;
+    if (IrProtocol::decodeFrame(receivedCode, detectedCarId) && detectedCarId <= MAX_CARS) {
       if (!batteryLow) {
         digitalWrite(LED_SIGNAL, HIGH); 
         ledPulseEndMs = nowMs + 40;

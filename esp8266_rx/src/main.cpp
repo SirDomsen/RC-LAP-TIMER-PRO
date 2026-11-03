@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "storage.h"
-#include "ir_decoder.h"
+#include <ir_decoder.h>
 #include "lap_logic.h"
 #include "web_server.h"
 #include "esp_now_base.h"
@@ -40,7 +40,7 @@ void setup() {
 
   initFS();
   loadSettingsFromEEPROM();
-  initIRDecoder();
+  initIRDecoder(IR_PIN, LED_SIGNAL);
   initLapLogic();
   initNetworkAndServer();
   initESPNowBase();

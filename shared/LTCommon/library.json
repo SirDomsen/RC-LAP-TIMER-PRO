@@ -1,0 +1,9 @@
+{
+  "name": "LTCommon",
+  "description": "Shared IR decoder and ESP-NOW protocol definitions for RC-LAP-TIMER-PRO devices.",
+  "frameworks": "arduino",
+  "platforms": [
+    "espressif8266",
+    "espressif32"
+  ]
+}
