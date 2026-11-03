@@ -246,9 +246,10 @@ async function openStatsOverviewModal(initialTab) {
   sessionFileCache = {};
   try {
     let p1 = (typeof loadCarNames === 'function') ? loadCarNames() : Promise.resolve();
+    let p1h = (typeof loadCarNamesHistory === 'function') ? loadCarNamesHistory() : Promise.resolve();
     let p2 = (typeof loadTracks === 'function') ? loadTracks() : Promise.resolve();
     let p3 = fetchSessionsAndStorageInfo();
-    await Promise.all([p1, p2, p3]);
+    await Promise.all([p1, p1h, p2, p3]);
   } catch (err) {
     console.warn("Fehler beim Vorab-Laden der Statistik-Daten:", err);
   }
@@ -1451,7 +1452,8 @@ async function openDriverStats(carId) {
   if (container) container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Lade Fahrer-Statistik...</p>';
 
   await Promise.all([
-    loadCarNames(),
+    typeof loadCarNames === 'function' ? loadCarNames() : Promise.resolve(),
+    typeof loadCarNamesHistory === 'function' ? loadCarNamesHistory() : Promise.resolve(),
     typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
     fetchSessionsAndStorageInfo()
   ]);

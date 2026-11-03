@@ -302,12 +302,19 @@ void handleGetNames(AsyncWebServerRequest *request) {
 }
 
 void handleGetNameHistory(AsyncWebServerRequest *request) {
+  if (isHeapCriticalForFileTransfer()) {
+    AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
+    res->addHeader("Retry-After", "2");
+    res->addHeader("Connection", "close");
+    request->send(res);
+    return;
+  }
   if (!LittleFS.exists("/names_history.jsonl")) {
     request->send(200, "application/x-ndjson", "");
     return;
   }
   AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/names_history.jsonl", "application/x-ndjson");
-  response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  response->addHeader("Cache-Control", "public, max-age=30");
   request->send(response);
 }
 

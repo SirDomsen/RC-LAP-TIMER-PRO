@@ -1011,10 +1011,12 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
   bool inQuotes = false;
   bool escaped = false;
   String currentObj = "";
-  currentObj.reserve(512);
+  currentObj.reserve(1024);
+  size_t bytesProcessed = 0;
 
   while (fIn.available()) {
     char c = (char)fIn.read();
+    if ((++bytesProcessed & 0x3FF) == 0) yield();
     if (braceDepth == 0) {
       if (c == '[') {
         braceDepth = 1;
@@ -1283,6 +1285,7 @@ bool saveAllNamesToFS() {
 }
 
 static bool appendNameHistoryEntry(uint8_t id, uint64_t timestampMs, const String& driver, const String& car) {
+  yield();
   bool needsSeparator = false;
   File existing = LittleFS.open("/names_history.jsonl", "r");
   if (existing) {
@@ -1308,6 +1311,7 @@ static bool appendNameHistoryEntry(uint8_t id, uint64_t timestampMs, const Strin
   size_t written = serializeJson(doc, f);
   bool success = written > 0 && f.println() > 0;
   f.close();
+  yield();
   return success;
 }
 
@@ -1315,6 +1319,9 @@ bool ensureNameHistoryBaseline() {
   if (baseUnixTimestampSec == 0) return false;
   static bool baselineComplete = false;
   if (baselineComplete) return true;
+  static bool baselineInProgress = false;
+  if (baselineInProgress) return false;
+  baselineInProgress = true;
 
   bool hasEntry[MAX_CARS + 1] = {false};
   uint8_t foundCount = 0;
@@ -1329,7 +1336,8 @@ bool ensureNameHistoryBaseline() {
     while (f.available()) {
       String line = f.readStringUntil('\n');
       JsonDocument doc;
-      if (deserializeJson(doc, line)) continue;
+      if (deserializeJson(doc, line)) { yield(); continue; }
+      yield();
       uint8_t id = doc["id"] | 0;
       if (id >= 1 && id <= MAX_CARS && !hasEntry[id]) {
         hasEntry[id] = true;
@@ -1350,16 +1358,22 @@ bool ensureNameHistoryBaseline() {
   }
 
   if (hasMissingEntries) {
+    yield();
     File output = LittleFS.open("/names_history.jsonl", "a");
-    if (!output) return false;
+    if (!output) {
+      baselineInProgress = false;
+      return false;
+    }
     if (needsSeparator && output.println() == 0) {
       output.close();
+      baselineInProgress = false;
       return false;
     }
 
     JsonDocument doc;
     for (uint8_t id = 1; id <= MAX_CARS; id++) {
       if (hasEntry[id]) continue;
+      yield();
       doc["id"] = id;
       doc["ts"] = timestampMs;
       doc["driver"] = driverNames[id];
@@ -1368,12 +1382,15 @@ bool ensureNameHistoryBaseline() {
       if (written == 0 || output.println() == 0) {
         Serial.printf("[Names] Baseline für ID %u konnte nicht gespeichert werden.\n", id);
         output.close();
+        baselineInProgress = false;
         return false;
       }
     }
     output.close();
+    yield();
   }
 
+  baselineInProgress = false;
   baselineComplete = true;
   return true;
 }
@@ -1558,7 +1575,7 @@ void flushCurrentSessionToIndex() {
       f.print("{\"sessions\":[");
       currentSessionIndexOffset = f.position();
       f.print(entryJson);
-      f.print("]}                ");
+      f.print("]}                                                                ");
       currentSessionIndexLen = entryJson.length();
       f.close();
     }
@@ -1584,11 +1601,11 @@ void flushCurrentSessionToIndex() {
     f.print(entryJson);
     f.print("]}");
     if (entryJson.length() < currentSessionIndexLen) {
-      size_t diff = currentSessionIndexLen - entryJson.length() + 8;
+      size_t diff = currentSessionIndexLen - entryJson.length() + 32;
       for (size_t i = 0; i < diff; i++) f.print(' ');
     } else {
       currentSessionIndexLen = entryJson.length();
-      f.print("        ");
+      f.print("                                ");
     }
     f.close();
   } else {
@@ -1622,7 +1639,7 @@ void flushCurrentSessionToIndex() {
     }
     currentSessionIndexOffset = f.position();
     f.print(entryJson);
-    f.print("]}                ");
+    f.print("]}                                                                ");
     currentSessionIndexLen = entryJson.length();
     f.close();
   }
