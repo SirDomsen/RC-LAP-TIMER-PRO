@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.6.19"
+#define FIRMWARE_VERSION  "v4.6.20"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif
@@ -34,7 +34,7 @@
 #elif defined(ESP32)
   #include <hardware_config.h>
 #else
-  #include "platform/esp8266/hardware_config.h"
+  #include <hardware_config.h>
 #endif
 
 // --- Renn- & EEPROM Parameter ---
