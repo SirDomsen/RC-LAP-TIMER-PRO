@@ -12,9 +12,9 @@
 
 ## 🏗️ 2. Architektur & Roadmap: Wo wird was gemacht?
 
-### ⚙️ PlatformIO Build-Environments (`platformio.ini`)
+### ⚙️ PlatformIO Build-Environments
 - `basisstation`: NodeMCU V2 (`nodemcuv2`, 160 MHz, LittleFS, LWIP2 Low Memory), AsyncWebServer, ArduinoJson 7.
-- `basisstation_s3`: ESP32-S3 DevKitC-1 N16R8 (240 MHz Dual-Core, 16MB Flash Quad, 8MB PSRAM Octal SPI `qio_opi`, USB-CDC), AsyncWebServer, AsyncTCP, ArduinoJson 7.
+- `basisstation_s3`: eigenständiges PlatformIO-Projekt in `ESP32_S3_rx/platformio.ini`, ESP32-S3 DevKitC-1 N16R8 (240 MHz Dual-Core, 16MB Flash Quad, 8MB PSRAM Octal SPI `qio_opi`, USB-CDC), AsyncWebServer, AsyncTCP, ArduinoJson 7. Während der schrittweisen Quellcode-Aufteilung bleibt das bisherige S3-Environment in `esp8266_rx/platformio.ini` vorerst als Vergleichs-/Fallback-Build bestehen.
 - `sz1`, `sz2`, `sz3`: ESP-01S (`esp01_1m`, 160 MHz), Flags `-DSECTOR_STATION -DSTATION_ID=1/2/3`.
 - `shared/LTCommon/` ist eine PlatformIO-Library ausserhalb dieses Projekts. Basisstation und Sektorstationen beziehen daraus denselben IR-Decoderkern, die IR-Frame-Pruefung und die ESP-NOW-Paketdefinitionen; `lib_extra_dirs = ../shared` bindet die Library in jedem Environment ein.
 - Plattformneutrale Rennregeln werden schrittweise nach `shared/LTCommon/src/` extrahiert. `race_mode.h` definiert die gemeinsamen Rennmodi; `race_rules.cpp` bestimmt Rangmodus, zeitbasierte Modi, Mindest-Rundenzeit, Rundenlimit-Pruefung, Schlussrunden-Zulassung und ausstehende Schlussrunden nach Eventende, den finalen Sektorrest, Sektorzeit-Plausibilitaet, Outlap-Schwellen, die Checkbox-abhaengige Checkpoint-Reihenfolge und -Vollstaendigkeit, Position und Sektorziele. Die Plausibilitaetsgrenzen bleiben fuer Zwischen- und finale Sektorzeiten getrennt; das Fahrzeuglimit und die Inaktivitaetsfrist bleiben konfigurationsabhaengig und werden von der aufrufenden Firmware vorgegeben.
