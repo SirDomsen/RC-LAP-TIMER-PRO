@@ -783,7 +783,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
             modeEndTimeMs, millis(), lapCounter[carId], lapStartMs, finishedFinalLap[carId])) return;
   }
 
-  if (currentMode == MODE_RACE_LAPS && targetRounds > 0 && lapCounter[carId] > targetRounds) return;
+  if (RaceRules::isLapLimitExceeded(currentMode, lapCounter[carId], targetRounds)) return;
 
   if (checkpointMode && currentMode != MODE_DRAGRACE && lapCounter[carId] > 0) {
     if (!RaceRules::hasPassedAllCheckpoints(

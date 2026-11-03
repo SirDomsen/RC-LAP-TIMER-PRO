@@ -10,6 +10,13 @@ bool RaceRules::isTimedMode(RaceMode mode) {
   return mode == MODE_QUALIFYING || mode == MODE_RACE_TIME;
 }
 
+bool RaceRules::isLapLimitExceeded(
+    RaceMode mode,
+    uint16_t lapCount,
+    uint16_t targetRounds) {
+  return mode == MODE_RACE_LAPS && targetRounds > 0 && lapCount > targetRounds;
+}
+
 bool RaceRules::canAcceptTimedEventCross(
     uint32_t modeEndTimeMs,
     uint32_t nowMs,
