@@ -157,9 +157,6 @@ if ('speechSynthesis' in window) {
 }
 
 window.countdownTimeouts = window.countdownTimeouts || [];
-let speechStartTimeout = null;
-let activeSpeechUtterance = null;
-let speechWatchdogTimeout = null;
 
 function cancelRaceCountdown(notifyBackend = false) {
   if (typeof countdownTimeouts !== 'undefined') {
@@ -167,26 +164,13 @@ function cancelRaceCountdown(notifyBackend = false) {
     countdownTimeouts = [];
   }
   if ('speechSynthesis' in window) {
-    cancelSpeechPlayback();
+    try { synth.cancel(); } catch (e) {}
+    speechQueue = [];
+    isSpeaking = false;
   }
   if (notifyBackend) {
     fetch('/api/countdown?cmd=cancel', { method: 'POST' }).catch(() => {});
   }
-}
-
-function cancelSpeechPlayback() {
-  if (speechStartTimeout !== null) {
-    clearTimeout(speechStartTimeout);
-    speechStartTimeout = null;
-  }
-  if (speechWatchdogTimeout !== null) {
-    clearTimeout(speechWatchdogTimeout);
-    speechWatchdogTimeout = null;
-  }
-  activeSpeechUtterance = null;
-  speechQueue = [];
-  isSpeaking = false;
-  try { synth.cancel(); } catch (e) {}
 }
 
 function handleCountdownEvent(msg) {
@@ -220,9 +204,10 @@ function speak(text, cancelCurrent = false, carId = null) {
   if (!('speechSynthesis' in window)) return;
   
   if (cancelCurrent) {
-    cancelSpeechPlayback();
-    speechStartTimeout = setTimeout(() => {
-      speechStartTimeout = null;
+    try { synth.cancel(); } catch (e) {}
+    speechQueue = [];
+    isSpeaking = false;
+    setTimeout(() => {
       speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
       processSpeechQueue();
     }, 50);
@@ -242,6 +227,8 @@ function speak(text, cancelCurrent = false, carId = null) {
   speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
   processSpeechQueue();
 }
+
+let speechWatchdogTimeout = null;
 
 function processSpeechQueue() {
   if (isSpeaking || speechQueue.length === 0) return;
@@ -266,28 +253,33 @@ function processSpeechQueue() {
   utterance.lang = 'de-DE';
   utterance.rate = 1.0;
 
-  activeSpeechUtterance = utterance;
-
-  let finishUtterance = () => {
-    if (activeSpeechUtterance !== utterance) return;
-    if (speechWatchdogTimeout !== null) {
+  let clearWatchdog = () => {
+    if (speechWatchdogTimeout) {
       clearTimeout(speechWatchdogTimeout);
       speechWatchdogTimeout = null;
     }
-    activeSpeechUtterance = null;
+  };
+
+  utterance.onend = function() {
+    clearWatchdog();
     isSpeaking = false;
     processSpeechQueue();
   };
-  utterance.onend = finishUtterance;
-  utterance.onerror = finishUtterance;
-  speechWatchdogTimeout = setTimeout(() => {
-    if (activeSpeechUtterance !== utterance) return;
-    speechWatchdogTimeout = null;
-    activeSpeechUtterance = null;
+
+  utterance.onerror = function() {
+    clearWatchdog();
     isSpeaking = false;
-    try { synth.cancel(); } catch (e) {}
     processSpeechQueue();
-  }, Math.max(10000, text.length * 250));
+  };
+
+  clearWatchdog();
+  speechWatchdogTimeout = setTimeout(() => {
+    if (isSpeaking) {
+      try { synth.cancel(); } catch (e) {}
+      isSpeaking = false;
+      processSpeechQueue();
+    }
+  }, 5000);
 
   synth.speak(utterance);
 }
@@ -312,7 +304,9 @@ function unmuteIOSAudio() {
     }
   }
   if ('speechSynthesis' in window) {
-    cancelSpeechPlayback();
+    synth.cancel();
+    speechQueue = [];
+    isSpeaking = false;
     let u = new SpeechSynthesisUtterance(' ');
     u.volume = 0.01;
     synth.speak(u);
