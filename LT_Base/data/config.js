@@ -275,6 +275,30 @@ async function saveConfig() {
       }
     }
     if (namesChanged) {
+      // Namen werden pro Session nur beim ersten Auftreten einer ID gespeichert:
+      // Betrifft die Aenderung eine ID mit Runden in der laufenden Session, wird sie beendet.
+      let affectsRunningSession = Object.keys(updatedNames).some(id =>
+        (updatedNames[id].driver !== carNamesMap[id]?.driver || updatedNames[id].car !== carNamesMap[id]?.car) &&
+        typeof carsWithLapsMap !== 'undefined' && carsWithLapsMap[id]);
+      let restartPractice = false;
+      if (affectsRunningSession) {
+        let raceRunning = typeof currentMode !== 'undefined' && currentMode >= 2 && isSessionActive && !isSessionFinished;
+        let ok = await showConfirm({
+          title: "⚠️ SESSION WIRD BEENDET",
+          theme: "danger",
+          message: "Aktuelle Session wird beendet und ein neues Freies Training gestartet." +
+            (raceRunning ? "<br><b>Das laufende Rennen wird beendet!</b>" : "") +
+            '<br><span style="color:var(--neon-red); font-size:12px;">Namen gelten immer für die gesamte Session.</span>',
+          confirmText: "BEENDEN & NEU STARTEN",
+          cancelText: "ABBRECHEN"
+        });
+        if (!ok) {
+          if (typeof loadCarNames === 'function') await loadCarNames();
+          return;
+        }
+        await fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' });
+        restartPractice = true;
+      }
       let body = new URLSearchParams({ names: JSON.stringify(updatedNames) });
       let response = await fetch('/api/rename', {
         method: 'POST',
@@ -287,6 +311,7 @@ async function saveConfig() {
       }
       carNamesMap = updatedNames;
       if (typeof loadCarNames === 'function') await loadCarNames();
+      if (restartPractice && typeof startPractice === 'function') startPractice();
     }
   } catch (err) { 
     console.error("Fehler beim Speichern der Konfiguration:", err); 

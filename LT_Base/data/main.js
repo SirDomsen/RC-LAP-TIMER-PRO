@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.6';
+window.UI_VERSION = '4.7.7';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -112,6 +112,7 @@ let currentLeaderId = null;
 let sessionBestLap = 0;
 let lapHistoryMap = {}; 
 let statusCarsMap = {};
+let carsWithLapsMap = {};
 let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
@@ -356,7 +357,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.6');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.7');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1510,7 +1511,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.6');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.7');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -2644,8 +2645,12 @@ async function updateData(fullSync = false) {
     let minBestLap = 0;
     let activeCarsWithLaps = 0;
 
+    carsWithLapsMap = {};
     data.forEach(r => {
-      if (r.completedLaps > 0 || r.bestLap > 0) activeCarsWithLaps++;
+      if (r.completedLaps > 0 || r.bestLap > 0) {
+        activeCarsWithLaps++;
+        carsWithLapsMap[r.id] = true;
+      }
       let b1 = r.bestSz1 > 0 ? r.bestSz1 : 0;
       if (b1 > 0 && (minSz1 === 0 || b1 < minSz1)) minSz1 = b1;
       let b2 = r.bestSz2 > 0 ? r.bestSz2 : 0;
