@@ -260,26 +260,32 @@ async function saveConfig() {
     await fetch(`/api/setsectorconfig?sz1=${sz1}&sz2=${sz2}&sz3=${sz3}&cp=${cp}&dr=${dr}&audio=${audio}&ghostAudio=${gAudioVal}`, { method: 'POST' });
 
     let namesChanged = false;
+    let updatedNames = {};
     for (let i = 1; i <= MAX_CARS; i++) {
       let driverElem = document.getElementById('cfg_driver_' + i);
       let carElem = document.getElementById('cfg_car_' + i);
       if (driverElem && carElem) {
         let driverVal = driverElem.value.trim() || ('Fahrer ' + i);
         let carVal = carElem.value.trim() || ('Auto ' + i);
-        
+
+        updatedNames[i] = { driver: driverVal, car: carVal };
         let oldDriver = carNamesMap[i]?.driver;
         let oldCar = carNamesMap[i]?.car;
-        
-        if (driverVal !== oldDriver || carVal !== oldCar) {
-          let response = await fetch('/api/rename?id=' + i + '&driver=' + encodeURIComponent(driverVal) + '&car=' + encodeURIComponent(carVal), { method: 'POST' });
-          if (!response.ok) throw new Error(`Zuordnung für ID ${i} konnte nicht gespeichert werden (HTTP ${response.status}).`);
-          carNamesMap[i] = { driver: driverVal, car: carVal };
-          namesChanged = true;
-        }
+        if (driverVal !== oldDriver || carVal !== oldCar) namesChanged = true;
       }
     }
     if (namesChanged) {
-      window.carNamesHistoryMap = {};
+      let body = new URLSearchParams({ names: JSON.stringify(updatedNames) });
+      let response = await fetch('/api/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      if (!response.ok) {
+        let detail = await response.text();
+        throw new Error(`Fahrer-/Auto-Zuordnungen konnten nicht gespeichert werden (HTTP ${response.status}): ${detail}`);
+      }
+      carNamesMap = updatedNames;
       if (typeof loadCarNames === 'function') await loadCarNames();
     }
   } catch (err) { 

@@ -11,7 +11,6 @@ void handleGetRecent(AsyncWebServerRequest *request);
 void handleGetDeadtime(AsyncWebServerRequest *request);
 void handleGetFilter(AsyncWebServerRequest *request);
 void handleGetNames(AsyncWebServerRequest *request);
-void handleGetNameHistory(AsyncWebServerRequest *request);
 void handleGetVersion(AsyncWebServerRequest *request);
 void handlePostSetFilter(AsyncWebServerRequest *request);
 void handlePostSetDeadtime(AsyncWebServerRequest *request);

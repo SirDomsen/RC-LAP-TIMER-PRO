@@ -241,9 +241,6 @@ void syncClockOnce(uint64_t clientTsSec) {
     settimeofday(&tv, nullptr);
     checkDailyBestDateRollover();
   }
-  if (baseUnixTimestampSec > 0) {
-    pendingNameHistoryBaseline = true;
-  }
 }
 
 uint64_t getCurrentTimestampMs() {

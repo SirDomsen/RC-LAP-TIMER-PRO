@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.0';
+window.UI_VERSION = '4.7.2';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -78,7 +78,6 @@ let lastLapDeltaMap = {};
 let previousBestSzMap = {};
 let lastAnnouncedLapMap = {}; 
 let carNamesMap = {};
-window.carNamesHistoryMap = {};
 let audioUnmuted = false;
 let lastLapsData = [];
 let awaitingBaseCrossMap = {};
@@ -113,7 +112,6 @@ let currentLeaderId = null;
 let sessionBestLap = 0;
 let lapHistoryMap = {}; 
 let statusCarsMap = {};
-let activeStatsCarId = null;
 let serverMillisOffset = 0;
 let currentTab = 'training';
 let announceLapTimesInRace = JSON.parse(localStorage.getItem('announceLapTimesInRace') ?? 'true');
@@ -358,7 +356,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.0');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.2');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -384,7 +382,6 @@ if (typeof openStatsOverviewModal !== 'function') {
       if (typeof sessionFileCache !== 'undefined') sessionFileCache = {};
       await Promise.all([
         typeof loadCarNames === 'function' ? loadCarNames() : Promise.resolve(),
-        typeof loadCarNamesHistory === 'function' ? loadCarNamesHistory() : Promise.resolve(),
         typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
         typeof fetchSessionsAndStorageInfo === 'function' ? fetchSessionsAndStorageInfo() : Promise.resolve()
       ]);
@@ -1513,7 +1510,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.0');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.2');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -2245,43 +2242,6 @@ async function loadCarNames() {
     populateDriverQuickSelect();
   } catch (e) {
     console.error("Fehler beim Laden der Namen:", e);
-  }
-}
-
-async function loadCarNamesHistory(force = false) {
-  if (!force && window.carNamesHistoryMap && Object.keys(window.carNamesHistoryMap).length > 0) {
-    return window.carNamesHistoryMap;
-  }
-  try {
-    let historyResponse = await fetch('/api/names-history');
-    if (!historyResponse.ok) throw new Error('HTTP ' + historyResponse.status);
-    let historyText = await historyResponse.text();
-    let history = {};
-    let lines = historyText.split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      let entry;
-      try {
-        entry = JSON.parse(line);
-      } catch (error) {
-        if (index === lines.length - 1 && !historyText.endsWith('\n')) return;
-        return;
-      }
-      if (!Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
-          !Number.isFinite(entry.ts) || entry.ts <= 0 ||
-          typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
-        return;
-      }
-      if (!history[entry.id]) history[entry.id] = [];
-      history[entry.id].push(entry);
-    });
-    Object.values(history).forEach(entries => entries.sort((a, b) => a.ts - b.ts));
-    window.carNamesHistoryMap = history;
-    return history;
-  } catch (historyError) {
-    console.warn("Namenshistorie konnte nicht geladen werden:", historyError);
-    if (!window.carNamesHistoryMap) window.carNamesHistoryMap = {};
-    return window.carNamesHistoryMap;
   }
 }
 

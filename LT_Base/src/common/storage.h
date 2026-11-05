@@ -66,9 +66,7 @@ struct PendingLap {
 
 void loadSettingsFromEEPROM();
 void loadNamesFromFS();
-bool saveNamesToEEPROM(int id, const String& driver, const String& car);
-bool ensureNameHistoryBaseline();
-extern bool pendingNameHistoryBaseline;
+bool saveNamesToEEPROM(const String& namesJson);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
 
@@ -105,7 +103,7 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 void processStorageQueue();
 
 void deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
-void deleteDriverHistory(uint8_t carId);
+void deleteDriverHistory(const String& driverName);
 void deleteAllHistory();
 
 void deleteSessionById(const String& sessionId);

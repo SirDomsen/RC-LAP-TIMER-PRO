@@ -1,102 +1,46 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "RC Lap Timer Pro - Session Telemetry Data Schema",
-  "version": 1,
-  "description": "Definition und Dechiffrierung der kompakten Session- und Telemetriedaten des RC Lap Timer Pro.",
+  "version": 2,
+  "description": "Kompaktes Schema der Sitzungs- und Statistikdaten.",
   "sessionHeader": {
-    "id": { "type": "string", "description": "Eindeutige Session-ID (z. B. 26-10-26_14-45-39)" },
-    "trackId": { "type": "string", "description": "Strecken-ID (z. B. kirchhof)" },
-    "trackName": { "type": "string", "description": "Streckenname (z. B. Kirchhof GP)" },
-    "mode": { "type": "integer", "description": "Rennmodus: 0=Freies Training, 1=Qualifying, 2=Rennen (Runden), 3=Rennen (Zeit), 4=Dragrace, 5=Ghost Battle" },
-    "modeName": { "type": "string", "description": "Lesbarer Modusname" },
-    "startTs": { "type": "integer", "description": "Startzeitpunkt der Session in Unix-Sekunden" },
-    "laps": { "type": "array", "description": "Array von Runden-Telemetrie-Objekten" }
+    "i": "Session-ID",
+    "t": "Strecken-ID",
+    "n": "Streckenname",
+    "m": "Modus-ID",
+    "s": "Session-Startzeit als Unix-Sekunden",
+    "l": "Rundenliste"
   },
-  "sessionResultKeys": {
-    "bestTs": {
-      "type": "integer",
-      "unit": "ms",
-      "description": "Zeitstempel der besten Runde; dient zur historischen Fahrer-/Auto-Zuordnung"
-    }
+  "lapFields": {
+    "c": "Transponder-/Auto-ID",
+    "l": "Rundennummer",
+    "t": "Rundenzeit in Millisekunden",
+    "p": "Rundenzeit als formatierter Text",
+    "s": "Rundenzeitstempel in Millisekunden",
+    "1": "Sektor 1 in Millisekunden",
+    "2": "Sektor 2 in Millisekunden",
+    "3": "Sektor 3 in Millisekunden",
+    "4": "Sektor 4 in Millisekunden",
+    "o": "Outlap",
+    "d": "Fahrername beim ersten Auftreten der ID in dieser Session",
+    "v": "Fahrzeugname beim ersten Auftreten der ID in dieser Session"
   },
-  "nameHistoryFile": {
-    "path": "/names_history.jsonl",
-    "format": "JSON Lines",
-    "fields": {
-      "id": { "type": "integer", "range": [1, 15], "description": "Transponder-ID" },
-      "ts": { "type": "integer", "unit": "ms", "description": "Zeitpunkt, ab dem diese Zuordnung gilt" },
-      "driver": { "type": "string", "description": "Zu diesem Zeitpunkt zugeordneter Fahrername" },
-      "car": { "type": "string", "description": "Zu diesem Zeitpunkt zugeordneter Autoname" }
-    }
+  "sessionResultFields": {
+    "id": "Strecken-ID",
+    "name": "Streckenname",
+    "mode": "Modus-ID",
+    "date": "Session-Startzeit",
+    "duration": "Sessiondauer in Sekunden",
+    "laps": "Rundenzahl je Fahrer",
+    "best": "Beste Rundenzeit je Fahrer",
+    "driver": "Fahrername aus dem Session-Snapshot",
+    "car": "Fahrzeugname aus dem Session-Snapshot",
+    "pos": "Platzierung"
   },
-  "lapKeys": {
-    "c": {
-      "legacyKey": "carId",
-      "type": "integer",
-      "range": [1, 15],
-      "required": true,
-      "description": "Fahrzeug- / Transponder-ID"
-    },
-    "l": {
-      "legacyKey": "lap",
-      "type": "integer",
-      "required": true,
-      "description": "Rundennummer des Fahrzeugs (ab 1)"
-    },
-    "t": {
-      "legacyKey": "time",
-      "type": "integer",
-      "unit": "ms",
-      "required": true,
-      "description": "Rundenzeit in Millisekunden"
-    },
-    "p": {
-      "legacyKey": "pos",
-      "type": "integer",
-      "required": true,
-      "description": "Platzierung beim Zieldurchgang"
-    },
-    "s": {
-      "legacyKey": "ts",
-      "type": "integer",
-      "unit": "ms",
-      "required": true,
-      "description": "Zeitstempel des Zieldurchgangs in Millisekunden"
-    },
-    "s1": {
-      "legacyKey": "sz1",
-      "type": "integer",
-      "unit": "ms",
-      "required": false,
-      "description": "Sektorzeit 1 in Millisekunden (wird nur geschrieben wenn > 0)"
-    },
-    "s2": {
-      "legacyKey": "sz2",
-      "type": "integer",
-      "unit": "ms",
-      "required": false,
-      "description": "Sektorzeit 2 in Millisekunden (wird nur geschrieben wenn > 0)"
-    },
-    "s3": {
-      "legacyKey": "sz3",
-      "type": "integer",
-      "unit": "ms",
-      "required": false,
-      "description": "Sektorzeit 3 in Millisekunden (wird nur geschrieben wenn > 0)"
-    },
-    "s4": {
-      "legacyKey": "sz4",
-      "type": "integer",
-      "unit": "ms",
-      "required": false,
-      "description": "Sektorzeit 4 in Millisekunden (wird nur geschrieben wenn > 0)"
-    },
-    "o": {
-      "legacyKey": "outlap",
-      "type": "integer",
-      "values": [0, 1],
-      "required": false,
-      "description": "Outlap-Kennzeichnung (1 = Boxenausfahrt / Outlap, wird nur geschrieben wenn 1)"
-    }
+  "identity": {
+    "driver": "Fahrername; Sessions gruppieren gleichnamige Fahrer unabhängig von der Transponder-ID.",
+    "vehicle": "Fahrzeugname; bleibt getrennt vom Fahrer und von der Transponder-ID.",
+    "rename": "Eine Namensänderung gilt für neue Sessions; vorhandene Session-Snapshots bleiben unverändert."
+  },
+  "legacyFiles": {
+    "names_history.jsonl": "Wird vom aktuellen Firmwareformat nicht mehr verwendet."
   }
 }

@@ -7,7 +7,7 @@ Die Offline-Statistik ist eine lokale, vollbildfähige Auswertung für Lap-Timer
 - Einstieg: `offline_stats/index.html`
 - Implementierung des Offline-Datenadapters, ZIP-Import/-Export und IndexedDB: `offline_stats/offline_stats.js`
 - Gemeinsame Statistikdarstellung: `data/stats.js`
-- Aktuelle Offline-App-Version: **0.8.1**
+- Aktuelle Offline-App-Version: **0.8.2**
 - Speicherung: IndexedDB `rc-lap-timer-offline-stats`
 
 Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-Löschen oder Flash-Reparaturen werden nicht als lokale Änderungen ausgeführt.
@@ -17,18 +17,20 @@ Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-
 Unterstützte Eingaben:
 
 - LittleFS-ZIP-Backups des Lap Timers
-- Statistik-JSON-Backups der Versionen 3 und 4
+- Statistik-JSON-Backups der Versionen 3, 4 und 5
 
-Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `names_history.jsonl`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. `names_history.jsonl` protokolliert zeitgestempelt, welcher Fahrer und welches Auto einer Transponder-ID zugeordnet waren; Session-Ergebnisse nutzen den Zeitstempel ihrer besten Runde. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
+Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. Neue Sessiondateien speichern Fahrer und Fahrzeug als Snapshot (`d`/`v`) beim ersten Auftreten einer ID. Kompakte Header- und Sektor-Keys reduzieren die Dateigröße; das aktuelle Backupformat ist Version 5. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
+
+Bei älteren Sessiondateien ohne `d`/`v` übernimmt die Statistik Fahrer- und Fahrzeugnamen aus dem jeweiligen Eintrag in `sessions.json`, soweit vorhanden. Namenshistorien-Dateien werden nicht importiert oder exportiert.
 
 Die Daten werden nach relativem Dateipfad in IndexedDB gespeichert und mit dem vorhandenen Bestand zusammengeführt:
 
 - Eine Statistikdatei am bereits gespeicherten Pfad wird aktualisiert.
 - Neue Sessiondateien werden ergänzt.
 - Sessions werden anhand ihres Dateipfads (ersatzweise ihrer ID) dedupliziert.
-- Streckenrekorde, aktuelle Fahrernamen und Zuordnungshistorien werden zusammengeführt. Ältere Backups ohne Namenshistorie bleiben mit ihren gespeicherten Session-Namen nutzbar.
+- Streckenrekorde, aktuelle Fahrernamen und Sessions werden zusammengeführt. Gleichnamige Fahrer werden unabhängig von ihrer ID gemeinsam ausgewertet; die Session-Snapshots bleiben von späteren Umbenennungen unberührt.
 
-Über **„Stats-ZIP herunterladen“** lässt sich die kumulierte Datenbank als ZIP mit denselben relativen Pfaden sichern. Dabei wird die Zuordnungshistorie als `names_history.json` exportiert; beim Import eines Geräte-Backups wird die originale `names_history.jsonl` eingelesen. Dieses ZIP kann später wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien.
+Über **„Stats-ZIP herunterladen“** lässt sich die kumulierte Datenbank als ZIP mit denselben relativen Pfaden sichern. Dieses ZIP kann später wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien. Alte Dateien `names_history.json`/`.jsonl` werden nicht mehr verwendet.
 
 Die Datenbank bleibt zunächst im Browserprofil gespeichert. Browserdaten zu löschen oder ein anderes Browserprofil zu verwenden entfernt bzw. trennt diese lokale Datenbank; daher sollte das heruntergeladene Stats-ZIP als portables Backup aufbewahrt werden.
 
@@ -66,6 +68,6 @@ Für Offline-spezifische Änderungen werden keine Firmware- oder Geräte-Fronten
 - Wiederholter Import aktualisiert gleiche Pfade und erzeugt keine doppelten Sessions.
 - Export enthält nur Statistikdateien und bewahrt Pfade sowie UTF-8-Dateinamen.
 - Ein exportiertes Stats-ZIP kann erneut importiert werden.
-- Die gemeinsame Statistikansicht funktioniert mit Gerätedaten und mit importierten Offline-Daten.
+- Die gemeinsame Statistikansicht funktioniert mit kompakten und bisherigen Sessiondateien sowie mit importierten Offline-Daten.
 - Offline-spezifische Aktionen bleiben lokal bzw. schreibgeschützt; keine unerwarteten Geräte-API-Aufrufe.
 - Cache- und App-Versionen stimmen mit dem geänderten Umfang überein.

@@ -1,7 +1,7 @@
 let allSessionsCache = [];
 let sessionFileCache = {};
 let currentStatsTrackFilter = 'all';
-window.carNamesHistoryMap = window.carNamesHistoryMap || {};
+let activeStatsDriverName = '';
 
 if (typeof formatLapTime !== 'function') {
   window.formatLapTime = function(ms, fallback = '---') {
@@ -40,7 +40,7 @@ let embeddedLapsState = {};
 let driverProfileSessionSort = { col: 'ts', dir: 'desc' };
 let driverProfileAllLapsState = null;
 
-// Dechiffriert / normalisiert Runden gem. schema.json (abwärtskompatibel zu alten Keys)
+// Normalisiert das kompakte Telemetrie-Schema für die Statistikansicht.
 function normalizeLap(l) {
   if (!l) return null;
   return {
@@ -49,13 +49,13 @@ function normalizeLap(l) {
     time: l.t !== undefined ? l.t : (l.time || 0),
     pos: l.p !== undefined ? l.p : (l.pos || 0),
     ts: l.s !== undefined ? l.s : (l.ts || 0),
-    sz1: l.s1 !== undefined ? l.s1 : (l.sz1 || 0),
-    sz2: l.s2 !== undefined ? l.s2 : (l.sz2 || 0),
-    sz3: l.s3 !== undefined ? l.s3 : (l.sz3 || 0),
-    sz4: l.s4 !== undefined ? l.s4 : (l.sz4 || 0),
+    sz1: l['1'] !== undefined ? l['1'] : (l.s1 !== undefined ? l.s1 : (l.sz1 || 0)),
+    sz2: l['2'] !== undefined ? l['2'] : (l.s2 !== undefined ? l.s2 : (l.sz2 || 0)),
+    sz3: l['3'] !== undefined ? l['3'] : (l.s3 !== undefined ? l.s3 : (l.sz3 || 0)),
+    sz4: l['4'] !== undefined ? l['4'] : (l.s4 !== undefined ? l.s4 : (l.sz4 || 0)),
     outlap: l.o !== undefined ? Boolean(l.o) : Boolean(l.outlap),
-    driver: l.driver,
-    car: l.car
+    driver: l.d !== undefined ? l.d : l.driver,
+    car: l.v !== undefined ? l.v : l.car
   };
 }
 
@@ -63,32 +63,14 @@ function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-function getHistoricalCarNames(carId, timestampMs) {
-  let entries = window.carNamesHistoryMap?.[carId];
-  let ts = Number(timestampMs) || 0;
-  if (!Array.isArray(entries) || ts <= 0) return null;
-
-  let latest = null;
-  entries.forEach(entry => {
-    if (Number(entry.ts) <= ts && (!latest || Number(entry.ts) >= Number(latest.ts))) {
-      latest = entry;
-    }
-  });
-  return latest;
-}
-
-function getCarDriverName(carId, timestampMs = 0) {
-  let historical = getHistoricalCarNames(carId, timestampMs);
-  if (historical?.driver) return historical.driver;
+function getCarDriverName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.driver) {
     return carNamesMap[carId].driver;
   }
   return 'Fahrer ' + (carId || '?');
 }
 
-function getCarCarName(carId, timestampMs = 0) {
-  let historical = getHistoricalCarNames(carId, timestampMs);
-  if (historical?.car) return historical.car;
+function getCarCarName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.car) {
     return carNamesMap[carId].car;
   }
@@ -96,12 +78,47 @@ function getCarCarName(carId, timestampMs = 0) {
 }
 
 function getSessionResultNames(session, result) {
-  let timestampMs = Number(result.bestTs) || (Number(session.startTs) * 1000);
-  let historical = getHistoricalCarNames(result.id, timestampMs);
   return {
-    driver: historical?.driver || result.driver || getCarDriverName(result.id),
-    car: historical?.car || result.car || getCarCarName(result.id)
+    driver: result.driver || getCarDriverName(result.id),
+    car: result.car || getCarCarName(result.id)
   };
+}
+
+function normalizeSessionFile(data, filePath = '') {
+  let mode = data.m !== undefined ? data.m : (data.mode || 0);
+  let pathParts = String(filePath || '').split('/');
+  let trackPath = pathParts.length > 2 ? pathParts[pathParts.length - 3] : '';
+  let modeNames = ['Freies Training', 'Qualifying', 'Rennen (Runden)', 'Rennen (Zeit)', 'Dragrace', 'Ghost Battle'];
+  return {
+    ...data,
+    id: data.i || data.id || pathParts[pathParts.length - 1]?.replace(/\.json$/i, ''),
+    trackId: data.t || data.trackId || trackPath || 'standard',
+    trackName: data.n || data.trackName || data.t || data.trackId || trackPath || 'Standard',
+    mode,
+    modeName: data.modeName || modeNames[mode] || 'Freies Training',
+    startTs: data.s !== undefined ? data.s : (data.startTs || 0),
+    laps: Array.isArray(data.l) ? data.l : (Array.isArray(data.laps) ? data.laps : [])
+  };
+}
+
+function resolveSessionLapNames(rawLaps, session = null) {
+  let namesByCar = {};
+  (session?.results || []).forEach(result => {
+    namesByCar[result.id] = {
+      driver: result.driver,
+      car: result.car
+    };
+  });
+  return rawLaps.map(normalizeLap).filter(Boolean).map(lap => {
+    let names = namesByCar[lap.carId] || (namesByCar[lap.carId] = {});
+    if (lap.driver !== undefined) names.driver = lap.driver;
+    if (lap.car !== undefined) names.car = lap.car;
+    return {
+      ...lap,
+      driver: lap.driver !== undefined ? lap.driver : names.driver,
+      car: lap.car !== undefined ? lap.car : names.car
+    };
+  });
 }
 
 function modeToTabName(mode) {
@@ -246,10 +263,9 @@ async function openStatsOverviewModal(initialTab) {
   sessionFileCache = {};
   try {
     let p1 = (typeof loadCarNames === 'function') ? loadCarNames() : Promise.resolve();
-    let p1h = (typeof loadCarNamesHistory === 'function') ? loadCarNamesHistory() : Promise.resolve();
     let p2 = (typeof loadTracks === 'function') ? loadTracks() : Promise.resolve();
     let p3 = fetchSessionsAndStorageInfo();
-    await Promise.all([p1, p1h, p2, p3]);
+    await Promise.all([p1, p2, p3]);
   } catch (err) {
     console.warn("Fehler beim Vorab-Laden der Statistik-Daten:", err);
   }
@@ -462,6 +478,7 @@ function getAggregatedRecords() {
         let names = getSessionResultNames(s, r);
         let dName = names.driver;
         let cName = names.car;
+        let driverArg = encodeURIComponent(dName).replace(/'/g, '%27');
         let comboKey = `${tId}_${dName.toLowerCase()}_${cName.toLowerCase()}`;
 
         if (!comboBestMap[comboKey] || r.bestLap < comboBestMap[comboKey].lap) {
@@ -708,32 +725,20 @@ function renderDriversOverview() {
   });
 
   let driverStatsMap = {};
-  for (let i = 1; i <= MAX_CARS; i++) {
-    driverStatsMap[i] = {
-      id: i,
-      driver: carNamesMap[i]?.driver || ("Fahrer " + i),
-      car: carNamesMap[i]?.car || ("Auto " + i),
-      totalLaps: 0,
-      sessionsCount: 0,
-      bestLap: 0,
-      bestSessionId: null,
-      bestMode: 0,
-      bestTrackId: null,
-      bestTrackName: null,
-      trackBests: {}
-    };
-  }
 
   filteredSessions.forEach(s => {
     let tId = s.trackId || 'standard';
     let tName = getTrackNameById(tId, s.trackName);
     (s.results || []).forEach(r => {
-      let cid = r.id;
-      if (!driverStatsMap[cid]) {
-        driverStatsMap[cid] = {
-          id: cid,
-          driver: r.driver || ("Fahrer " + cid),
-          car: r.car || ("Auto " + cid),
+      let driver = (r.driver || getCarDriverName(r.id)).trim();
+      let driverKey = driver.toLocaleLowerCase();
+      let cid = Number(r.id) || 0;
+      if (!driverStatsMap[driverKey]) {
+        driverStatsMap[driverKey] = {
+          driver,
+          carNames: new Set(),
+          carIds: new Set(),
+          sessionIds: new Set(),
           totalLaps: 0,
           sessionsCount: 0,
           bestLap: 0,
@@ -741,13 +746,19 @@ function renderDriversOverview() {
           bestMode: 0,
           bestTrackId: null,
           bestTrackName: null,
+          bestCarId: cid,
           trackBests: {}
         };
       }
-      let ds = driverStatsMap[cid];
+      let ds = driverStatsMap[driverKey];
+      if (r.car) ds.carNames.add(r.car);
+      if (cid > 0) ds.carIds.add(cid);
       if (r.laps > 0 || r.bestLap > 0) {
         ds.totalLaps += (r.laps || 0);
-        ds.sessionsCount += 1;
+        if (!ds.sessionIds.has(s.id)) {
+          ds.sessionIds.add(s.id);
+          ds.sessionsCount += 1;
+        }
       }
       if (r.bestLap > 0) {
         if (ds.bestLap === 0 || r.bestLap < ds.bestLap) {
@@ -756,6 +767,7 @@ function renderDriversOverview() {
           ds.bestMode = s.mode;
           ds.bestTrackId = tId;
           ds.bestTrackName = tName;
+          ds.bestCarId = cid;
         }
         if (!ds.trackBests[tId] || r.bestLap < ds.trackBests[tId].bestLap) {
           ds.trackBests[tId] = {
@@ -763,7 +775,8 @@ function renderDriversOverview() {
             trackName: tName,
             bestLap: r.bestLap,
             sessionId: s.id,
-            mode: s.mode
+            mode: s.mode,
+            carId: cid
           };
         }
       }
@@ -784,7 +797,7 @@ function renderDriversOverview() {
       let vB = b.bestLap > 0 ? b.bestLap : 99999999;
       res = vA - vB;
     }
-    if (res === 0) res = a.id - b.id;
+    if (res === 0) res = a.driver.localeCompare(b.driver);
     return (driversSortDir === 'asc') ? res : -res;
   });
 
@@ -811,21 +824,24 @@ function renderDriversOverview() {
       trackPillsHtml = '<div style="margin-top:6px;">';
       tbValues.forEach(tb => {
         let tSec = formatLapTime(tb.bestLap);
-        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${ds.id})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${tb.trackName}: <strong>${tSec}</strong> 🔗</span>`;
+        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.carId})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${escapeHtml(tb.trackName)}: <strong>${tSec}</strong> 🔗</span>`;
       });
       trackPillsHtml += '</div>';
     }
 
-    cardsHtml += `<div class="driver-select-card" onclick="openDriverStats(${ds.id})">
+    let driverArg = encodeURIComponent(ds.driver).replace(/'/g, '%27');
+    let carSummary = [...ds.carNames].sort().join(', ');
+    let idSummary = [...ds.carIds].sort((a, b) => a - b).join(', ');
+    cardsHtml += `<div class="driver-select-card" onclick="openDriverStats(decodeURIComponent('${driverArg}'))">
       <div style="flex:1; min-width:0;">
-        <strong style="color:var(--neon-cyan); font-size:16px;">${ds.driver}</strong>
-        <small style="color:var(--text-muted);">(${ds.car} - ID ${ds.id})</small><br>
+        <strong style="color:var(--neon-cyan); font-size:16px;">${escapeHtml(ds.driver)}</strong>
+        <small style="color:var(--text-muted);">(${escapeHtml(carSummary || 'Fahrzeug unbekannt')} · ID ${idSummary || '?'})</small><br>
         <span style="font-size:12px; color:var(--text-muted);">Gefahrene Runden: <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
         ${trackPillsHtml}
       </div>
       <div style="text-align:right; margin-left:12px; flex-shrink:0;">
         <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestDisp}</span><br>
-        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + ds.bestTrackName) : 'Bestzeit'}</span><br>
+        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + escapeHtml(ds.bestTrackName)) : 'Bestzeit'}</span><br>
         <span style="font-size:11px; color:var(--neon-cyan);">Profil öffnen ▶</span>
       </div>
     </div>`;
@@ -972,8 +988,8 @@ function renderSessionsByMode(mode, containerId) {
 
       html += `<tr>
         <td><strong>P${r.pos}</strong></td>
-        <td><span class="driver-name" onclick="openDriverStats(${r.id})" style="color:var(--neon-cyan); font-weight:bold; cursor:pointer;">${dName}</span></td>
-        <td style="color:var(--text-muted);">${cName}</td>
+        <td><span class="driver-name" onclick="openDriverStats(decodeURIComponent('${driverArg}'))" style="color:var(--neon-cyan); font-weight:bold; cursor:pointer;">${escapeHtml(dName)}</span></td>
+        <td style="color:var(--text-muted);">${escapeHtml(cName)}</td>
         <td>${r.laps}</td>
         <td style="color:${bestColor}; font-weight:bold;">${bestStr}</td>
         <td style="color:var(--text-muted);">${avgStr}</td>
@@ -1022,17 +1038,9 @@ async function fetchSessionFileData(filePath) {
   if (sessionFileCache[filePath]) return sessionFileCache[filePath];
   let res = await fetch('/api/sessionfile?file=' + encodeURIComponent(filePath) + '&_t=' + Date.now(), { cache: 'no-store' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  let data = await res.json();
-  if (data && Array.isArray(data.laps)) {
-    data.laps = data.laps.map(normalizeLap).map(lap => {
-      let historical = getHistoricalCarNames(lap.carId, lap.ts);
-      return historical ? {
-        ...lap,
-        driver: historical.driver,
-        car: historical.car
-      } : lap;
-    });
-  }
+  let data = normalizeSessionFile(await res.json(), filePath);
+  let session = allSessionsCache.find(item => item.file === filePath);
+  data.laps = resolveSessionLapNames(data.laps, session);
   sessionFileCache[filePath] = data;
   return data;
 }
@@ -1433,16 +1441,13 @@ async function jumpToSessionInStats(sessionId, mode, trackId, carId = null) {
   }
 }
 
-async function openDriverStats(carId) {
-  activeStatsCarId = carId;
-  let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
-  let carName = carNamesMap[carId]?.car || ("Auto " + carId);
-
+async function openDriverStats(driverName) {
+  activeStatsDriverName = String(driverName || '').trim();
   let titleElem = document.getElementById('statsModalTitle');
-  if (titleElem) titleElem.innerText = `${driverName} (${carName} - ID ${carId})`;
+  if (titleElem) titleElem.innerText = activeStatsDriverName;
 
   let delBtn = document.getElementById('deleteDriverStatsBtn');
-  if (delBtn) delBtn.innerText = "Alle Einträge von " + driverName + " löschen";
+  if (delBtn) delBtn.innerText = "Alle Einträge von " + activeStatsDriverName + " löschen";
 
   closeStatsOverviewModal();
   let modal = document.getElementById('statsModal');
@@ -1453,13 +1458,12 @@ async function openDriverStats(carId) {
 
   await Promise.all([
     typeof loadCarNames === 'function' ? loadCarNames() : Promise.resolve(),
-    typeof loadCarNamesHistory === 'function' ? loadCarNamesHistory() : Promise.resolve(),
     typeof loadTracks === 'function' ? loadTracks() : Promise.resolve(),
     fetchSessionsAndStorageInfo()
   ]);
 
   driverProfileAllLapsState = null;
-  renderDriverProfile(carId);
+  renderDriverProfile(activeStatsDriverName);
 }
 
 function sortDriverProfileSessions(col) {
@@ -1469,8 +1473,8 @@ function sortDriverProfileSessions(col) {
     driverProfileSessionSort.col = col;
     driverProfileSessionSort.dir = (col === 'ts' || col === 'laps') ? 'desc' : 'asc';
   }
-  if (activeStatsCarId) {
-    renderDriverProfile(activeStatsCarId);
+  if (activeStatsDriverName) {
+    renderDriverProfile(activeStatsDriverName);
   }
 }
 
@@ -1485,7 +1489,7 @@ function sortDriverProfileAllLaps(col) {
   renderDriverProfileAllLapsTable();
 }
 
-async function toggleDriverProfileAllLaps(carId) {
+async function toggleDriverProfileAllLaps() {
   let box = document.getElementById('driverAllLapsBox');
   let btn = document.getElementById('driverAllLapsToggleBtn');
   if (!box) return;
@@ -1503,26 +1507,28 @@ async function toggleDriverProfileAllLaps(carId) {
 
   try {
     let allLaps = [];
+    let driverKey = activeStatsDriverName.toLocaleLowerCase();
     for (let s of allSessionsCache) {
-      let r = (s.results || []).find(item => item.id === carId);
-      if (r && s.file) {
-        try {
-          let sData = await fetchSessionFileData(s.file);
-          if (sData && sData.laps) {
-            let carLaps = sData.laps.filter(l => l.carId === carId);
-            carLaps.forEach(l => {
-              allLaps.push({
-                ...l,
-                sessionId: s.id,
-                sessionFile: s.file,
-                mode: s.mode,
-                modeName: s.modeName || 'Durchgang',
-                trackId: s.trackId || 'standard',
-                trackName: getTrackNameById(s.trackId, s.trackName)
-              });
-            });
-          }
-        } catch (e) {}
+      let driverResults = (s.results || []).filter(item =>
+        String(item.driver || '').trim().toLocaleLowerCase() === driverKey
+      );
+      if (driverResults.length === 0 || !s.file) continue;
+
+      try {
+        let sData = await fetchSessionFileData(s.file);
+        if (!sData || !sData.laps) continue;
+        sData.laps.filter(l => String(l.driver || '').trim().toLocaleLowerCase() === driverKey)
+          .forEach(l => allLaps.push({
+            ...l,
+            sessionId: s.id,
+            sessionFile: s.file,
+            mode: s.mode,
+            modeName: s.modeName || 'Durchgang',
+            trackId: s.trackId || 'standard',
+            trackName: getTrackNameById(s.trackId, s.trackName)
+          }));
+      } catch (e) {
+        console.warn("Fahrerrunden konnten nicht geladen werden:", s.file, e);
       }
     }
 
@@ -1620,7 +1626,7 @@ function renderDriverProfileAllLapsTable() {
       <td><span class="session-track-pill">📍 ${l.trackName}</span></td>
       <td style="font-size:11px;">${l.modeName}</td>
       <td style="font-size:11px; color:var(--text-muted);">${formatTimestamp(l.ts)}</td>
-      <td><button class="btn btn-purple" style="padding:2px 6px; font-size:10px; margin:0;" onclick="jumpToSessionInStats('${l.sessionId}', ${l.mode}, '${l.trackId}', ${activeStatsCarId})">🔗</button></td>
+      <td><button class="btn btn-purple" style="padding:2px 6px; font-size:10px; margin:0;" onclick="jumpToSessionInStats('${l.sessionId}', ${l.mode}, '${l.trackId}', ${l.carId})">🔗</button></td>
     </tr>`;
   });
 
@@ -1628,7 +1634,7 @@ function renderDriverProfileAllLapsTable() {
   box.innerHTML = html;
 }
 
-function renderDriverProfile(carId) {
+function renderDriverProfile(driverName) {
   let container = document.getElementById('driverProfileContent');
   if (!container) return;
 
@@ -1636,61 +1642,70 @@ function renderDriverProfile(carId) {
   let participatedSessions = [];
   let trackBestsMap = {};
   let overallBest = null;
+  let driverKey = String(driverName || '').trim().toLocaleLowerCase();
 
   allSessionsCache.forEach(s => {
-    let r = (s.results || []).find(item => item.id === carId);
-    if (!r || (r.laps === 0 && !r.bestLap)) return;
-
     let tId = s.trackId || 'standard';
     let tName = getTrackNameById(tId, s.trackName);
+    let driverResults = (s.results || []).filter(r =>
+      String(r.driver || '').trim().toLocaleLowerCase() === driverKey
+    );
 
-    totalLaps += (r.laps || 0);
-    participatedSessions.push({
-      session: s,
-      result: r,
-      trackId: tId,
-      trackName: tName
-    });
-
-    if (!trackBestsMap[tId]) {
-      trackBestsMap[tId] = {
+    driverResults.forEach(r => {
+      if (r.laps === 0 && !r.bestLap) return;
+      totalLaps += r.laps || 0;
+      participatedSessions.push({
+        session: s,
+        result: r,
+        carId: Number(r.id) || 0,
+        carName: r.car || getCarCarName(r.id),
         trackId: tId,
-        trackName: tName,
-        bestLap: 0,
-        sessionId: s.id,
-        mode: s.mode,
-        modeName: s.modeName || 'Durchgang',
-        ts: s.endTs || s.startTs,
-        totalTrackLaps: 0,
-        trackSessionsCount: 0
-      };
-    }
+        trackName: tName
+      });
 
-    let tb = trackBestsMap[tId];
-    tb.totalTrackLaps += (r.laps || 0);
-    tb.trackSessionsCount += 1;
-
-    if (r.bestLap > 0) {
-      if (tb.bestLap === 0 || r.bestLap < tb.bestLap) {
-        tb.bestLap = r.bestLap;
-        tb.sessionId = s.id;
-        tb.mode = s.mode;
-        tb.modeName = s.modeName || 'Durchgang';
-        tb.ts = s.endTs || s.startTs;
-      }
-
-      if (!overallBest || r.bestLap < overallBest.bestLap) {
-        overallBest = {
-          bestLap: r.bestLap,
+      if (!trackBestsMap[tId]) {
+        trackBestsMap[tId] = {
+          trackId: tId,
+          trackName: tName,
+          bestLap: 0,
           sessionId: s.id,
           mode: s.mode,
           modeName: s.modeName || 'Durchgang',
-          trackId: tId,
-          trackName: tName,
-          ts: s.endTs || s.startTs
+          ts: s.endTs || s.startTs,
+          totalTrackLaps: 0,
+          trackSessions: new Set(),
+          bestCarId: Number(r.id) || 0
         };
       }
-    }
+
+      let tb = trackBestsMap[tId];
+      tb.totalTrackLaps += r.laps || 0;
+      tb.trackSessions.add(s.id);
+
+      if (r.bestLap > 0) {
+        if (tb.bestLap === 0 || r.bestLap < tb.bestLap) {
+          tb.bestLap = r.bestLap;
+          tb.sessionId = s.id;
+          tb.mode = s.mode;
+          tb.modeName = s.modeName || 'Durchgang';
+          tb.ts = s.endTs || s.startTs;
+          tb.bestCarId = Number(r.id) || 0;
+        }
+
+        if (!overallBest || r.bestLap < overallBest.bestLap) {
+          overallBest = {
+            bestLap: r.bestLap,
+            sessionId: s.id,
+            mode: s.mode,
+            modeName: s.modeName || 'Durchgang',
+            trackId: tId,
+            trackName: tName,
+            ts: s.endTs || s.startTs,
+            carId: Number(r.id) || 0
+          };
+        }
+      }
+    });
   });
 
   participatedSessions.sort((a, b) => {
@@ -1729,7 +1744,7 @@ function renderDriverProfile(carId) {
   if (overallBest) {
     let obSec = formatLapTime(overallBest.bestLap);
     overallCardHtml = `
-      <div style="background:rgba(181,50,255,0.1); border:1px solid var(--neon-purple); border-radius:8px; padding:12px; text-align:center; cursor:pointer;" onclick="jumpToSessionInStats('${overallBest.sessionId}', ${overallBest.mode}, '${overallBest.trackId}', ${carId})" title="Klicken, um direkt zur Session dieser Bestzeit zu springen">
+      <div style="background:rgba(181,50,255,0.1); border:1px solid var(--neon-purple); border-radius:8px; padding:12px; text-align:center; cursor:pointer;" onclick="jumpToSessionInStats('${overallBest.sessionId}', ${overallBest.mode}, '${overallBest.trackId}', ${overallBest.carId})" title="Klicken, um direkt zur Session dieser Bestzeit zu springen">
         <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Schnellste Runde (Gesamt)</div>
         <div style="font-size:22px; font-weight:bold; color:var(--neon-purple); margin:4px 0;">${obSec} 🔗</div>
         <div style="font-size:11px; color:var(--neon-cyan);">📍 ${overallBest.trackName} (${overallBest.modeName})</div>
@@ -1747,7 +1762,7 @@ function renderDriverProfile(carId) {
       <div style="background:rgba(0,240,255,0.07); border:1px solid rgba(0,240,255,0.3); border-radius:8px; padding:12px; text-align:center;">
         <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Gefahrene Runden</div>
         <div style="font-size:22px; font-weight:bold; color:var(--neon-cyan); margin:4px 0;">${totalLaps}</div>
-        <div style="font-size:11px; color:var(--text-muted);">in ${participatedSessions.length} Sessions</div>
+        <div style="font-size:11px; color:var(--text-muted);">in ${new Set(participatedSessions.map(item => item.session.id)).size} Sessions</div>
       </div>
       ${overallCardHtml}
       <div style="background:rgba(57,255,20,0.07); border:1px solid rgba(57,255,20,0.3); border-radius:8px; padding:12px; text-align:center;">
@@ -1764,22 +1779,22 @@ function renderDriverProfile(carId) {
     let bestStr = formatLapTime(tb.bestLap);
     let dateStr = formatTimestamp(tb.ts);
     html += `
-      <div class="driver-pb-track-card" onclick="jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${carId})">
+      <div class="driver-pb-track-card" onclick="jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.bestCarId})">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <strong style="color:var(--neon-cyan); font-size:14px;">📍 ${tb.trackName}</strong>
+          <strong style="color:var(--neon-cyan); font-size:14px;">📍 ${escapeHtml(tb.trackName)}</strong>
           <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestStr} 🔗</span>
         </div>
         <div style="font-size:11px; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
           <span>🏁 ${tb.modeName} (${dateStr})</span>
-          <span>🔄 ${tb.totalTrackLaps} Rnd. (${tb.trackSessionsCount} Sess.)</span>
+          <span>🔄 ${tb.totalTrackLaps} Rnd. (${tb.trackSessions.size} Sess.)</span>
         </div>
       </div>`;
   });
 
   html += `</div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 8px 0; flex-wrap:wrap; gap:8px;">
-      <h3 style="font-size:14px; color:var(--neon-cyan); margin:0;">📋 Teilgenommene Sessions (${participatedSessions.length})</h3>
-      <button id="driverAllLapsToggleBtn" class="btn btn-purple" style="padding:4px 10px; font-size:11px; margin:0;" onclick="toggleDriverProfileAllLaps(${carId})">${(driverProfileAllLapsState ? '⏱️ Rundenzeiten ausblenden 🔼' : '⏱️ Alle Runden & Sektorzeiten anzeigen 🔽')}</button>
+      <h3 style="font-size:14px; color:var(--neon-cyan); margin:0;">📋 Teilnahmen (${participatedSessions.length} Fahrzeugläufe)</h3>
+      <button id="driverAllLapsToggleBtn" class="btn btn-purple" style="padding:4px 10px; font-size:11px; margin:0;" onclick="toggleDriverProfileAllLaps()">${(driverProfileAllLapsState ? '⏱️ Rundenzeiten ausblenden 🔼' : '⏱️ Alle Runden & Sektorzeiten anzeigen 🔽')}</button>
     </div>
 
     <div id="driverAllLapsBox" style="display:${driverProfileAllLapsState ? 'block' : 'none'}; margin-bottom:15px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(181,50,255,0.3); padding:8px;"></div>
@@ -1791,6 +1806,7 @@ function renderDriverProfile(carId) {
             <th class="sortable" onclick="sortDriverProfileSessions('ts')">Datum & Uhrzeit ${getSortIconHtml(driverProfileSessionSort, 'ts')}</th>
             <th class="sortable" onclick="sortDriverProfileSessions('track')">Strecke ${getSortIconHtml(driverProfileSessionSort, 'track')}</th>
             <th class="sortable" onclick="sortDriverProfileSessions('mode')">Modus ${getSortIconHtml(driverProfileSessionSort, 'mode')}</th>
+            <th>Fahrzeug / ID</th>
             <th class="sortable" onclick="sortDriverProfileSessions('pos')">Platz ${getSortIconHtml(driverProfileSessionSort, 'pos')}</th>
             <th class="sortable" onclick="sortDriverProfileSessions('laps')">Runden ${getSortIconHtml(driverProfileSessionSort, 'laps')}</th>
             <th class="sortable" onclick="sortDriverProfileSessions('bestLap')">Bestzeit ${getSortIconHtml(driverProfileSessionSort, 'bestLap')}</th>
@@ -1811,14 +1827,15 @@ function renderDriverProfile(carId) {
     else if (s.mode === 4) modeCol = 'var(--neon-orange)';
     else if (s.mode === 5) modeCol = '#e056fd';
 
-    html += `<tr style="cursor:pointer;" onclick="jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${carId})">
+    html += `<tr style="cursor:pointer;" onclick="jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${item.carId})">
       <td style="font-size:12px; color:var(--text-muted);">${dateStr}</td>
-      <td><span class="session-track-pill">📍 ${item.trackName}</span></td>
+      <td><span class="session-track-pill">📍 ${escapeHtml(item.trackName)}</span></td>
       <td style="color:${modeCol}; font-weight:bold; font-size:12px;">${s.modeName || 'Durchgang'}</td>
+      <td>${escapeHtml(item.carName)} / ID ${item.carId}</td>
       <td><strong style="color:var(--neon-orange);">P${r.pos}</strong></td>
       <td>${r.laps}</td>
       <td style="color:var(--neon-green); font-weight:bold;">${bestStr}</td>
-      <td><button class="btn btn-purple" style="padding:2px 8px; font-size:11px; margin:0;" onclick="event.stopPropagation(); jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${carId})">🔗 Öffnen</button></td>
+      <td><button class="btn btn-purple" style="padding:2px 8px; font-size:11px; margin:0;" onclick="event.stopPropagation(); jumpToSessionInStats('${s.id}', ${s.mode}, '${item.trackId}', ${item.carId})">🔗 Öffnen</button></td>
     </tr>`;
   });
 
@@ -1829,7 +1846,7 @@ function renderDriverProfile(carId) {
 function closeStatsModal() {
   let m = document.getElementById('statsModal');
   if (m) m.style.display = 'none';
-  activeStatsCarId = null;
+  activeStatsDriverName = '';
 }
 
 function closeStatsOverviewModal() {
@@ -1858,24 +1875,25 @@ function formatTimestamp(ts) {
 }
 
 async function confirmDeleteDriverStats() {
-  if (!activeStatsCarId) return;
-  let driverName = carNamesMap[activeStatsCarId]?.driver || ("Fahrer " + activeStatsCarId);
+  if (!activeStatsDriverName) return;
+  let driverName = activeStatsDriverName;
   let ok = await showConfirm({
     title: "🗑️ FAHRER-DATEN LÖSCHEN",
     theme: "danger",
     boxLabel: "Fahrer:",
-    boxContent: `${driverName} (Auto ${activeStatsCarId})`,
+    boxContent: driverName,
     message: `Möchtest du wirklich <strong>ALLE gespeicherten Einträge</strong> von <strong>${driverName}</strong> aus allen Sessions dauerhaft löschen?<br><span style="color:var(--neon-red); font-size:12px; display:block; margin-top:6px;">⚠️ Diese Aktion kann nicht rückgängig gemacht werden!</span>`,
     confirmText: "LÖSCHEN 🗑️",
     cancelText: "ABBRECHEN"
   });
   if (!ok) return;
   try {
-    await fetch('/api/deletedriverstats?id=' + activeStatsCarId, { method: 'POST' });
+    let response = await fetch('/api/deletedriverstats?driver=' + encodeURIComponent(driverName), { method: 'POST' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
     sessionFileCache = {};
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();
-    renderDriverProfile(activeStatsCarId);
+    renderDriverProfile(activeStatsDriverName);
   } catch (err) {
     console.error(err);
   }
@@ -1920,11 +1938,10 @@ async function downloadStatsBackup() {
   }
 
   let backupData = {
-    version: 4,
+  version: 5,
     exportedAt: Math.floor(Date.now() / 1000),
     tracks: [],
     names: {},
-    namesHistory: '',
     sessions: [],
     sessionFiles: {}
   };
@@ -1942,10 +1959,6 @@ async function downloadStatsBackup() {
     let nRes = await fetch('/api/names');
     if (!nRes.ok) throw new Error("Fahrernamen konnten nicht geladen werden (HTTP " + nRes.status + ").");
     backupData.names = await nRes.json();
-
-    let historyRes = await fetch('/api/names-history', { cache: 'no-store' });
-    if (!historyRes.ok) throw new Error("Namenshistorie konnte nicht geladen werden (HTTP " + historyRes.status + ").");
-    backupData.namesHistory = await historyRes.text();
 
     for (let s of backupData.sessions) {
       if (s.file) {
@@ -1982,22 +1995,6 @@ function triggerRestoreBackup() {
   if (inp) inp.click();
 }
 
-function serializeNameHistoryForRestore(history) {
-  if (typeof history === 'string') return history;
-  if (!Array.isArray(history)) {
-    throw new Error("Die Namenshistorie hat kein gültiges Format.");
-  }
-
-  return history.map((entry, index) => {
-    if (!entry || !Number.isInteger(entry.id) || entry.id < 1 || entry.id > MAX_CARS ||
-        !Number.isFinite(entry.ts) || entry.ts <= 0 ||
-        typeof entry.driver !== 'string' || typeof entry.car !== 'string') {
-      throw new Error(`Ungültiger Eintrag in der Namenshistorie (Eintrag ${index + 1}).`);
-    }
-    return JSON.stringify(entry);
-  }).join('\n');
-}
-
 async function handleRestoreBackup(event) {
   let file = event.target.files[0];
   if (!file) return;
@@ -2022,7 +2019,7 @@ async function handleRestoreBackup(event) {
     let text = await file.text();
     let parsed = JSON.parse(text);
 
-    if ((parsed.version === 3 || parsed.version === 4) && parsed.sessionFiles) {
+    if ([3, 4, 5].includes(parsed.version) && parsed.sessionFiles) {
       async function uploadBackupJson(path, data) {
         let blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         let formData = new FormData();
@@ -2038,15 +2035,6 @@ async function handleRestoreBackup(event) {
       if (parsed.names) {
         await uploadBackupJson('/names.json', parsed.names);
       }
-      if (Object.prototype.hasOwnProperty.call(parsed, 'namesHistory')) {
-        let historyText = serializeNameHistoryForRestore(parsed.namesHistory);
-        let historyBlob = new Blob([historyText], { type: 'application/x-ndjson' });
-        let historyForm = new FormData();
-        historyForm.append('data', historyBlob, '/names_history.jsonl');
-        let historyResponse = await fetch('/api/upload', { method: 'POST', body: historyForm });
-        if (!historyResponse.ok) throw new Error("Namenshistorie konnte nicht wiederhergestellt werden (HTTP " + historyResponse.status + ").");
-      }
-
       let fileKeys = Object.keys(parsed.sessionFiles);
       for (let fPath of fileKeys) {
         await uploadBackupJson(fPath, parsed.sessionFiles[fPath]);
@@ -2149,7 +2137,7 @@ async function rebuildSessionsIndexUI() {
       try {
         let sRes = await fetch('/api/sessionfile?file=' + encodeURIComponent(rawName));
         if (!sRes.ok) continue;
-        let sData = await sRes.json();
+        let sData = normalizeSessionFile(await sRes.json(), rawName);
 
         let sId = sData.id;
         if (!sId) {
@@ -2159,7 +2147,8 @@ async function rebuildSessionsIndexUI() {
         }
 
         let laps = sData.laps || [];
-        let normalizedLaps = laps.map(normalizeLap);
+        let priorSession = allSessionsCache.find(session => session.file === rawName);
+        let normalizedLaps = resolveSessionLapNames(laps, priorSession);
         let carLapsMap = {};
         let carBestMap = {};
         let carBestLapObjMap = {};
@@ -2169,8 +2158,7 @@ async function rebuildSessionsIndexUI() {
         let carCarNameMap = {};
         let maxTs = sData.startTs || 0;
 
-        normalizedLaps.forEach((l, idx) => {
-          let origL = laps[idx] || {};
+        normalizedLaps.forEach(l => {
           let c = l.carId;
           if (c >= 1 && c <= MAX_CARS) {
             if (!carLapsMap[c]) {
@@ -2179,9 +2167,8 @@ async function rebuildSessionsIndexUI() {
               carTimeSumMap[c] = 0;
               carValidMap[c] = 0;
             }
-            let historical = getHistoricalCarNames(c, l.ts);
-            if (historical?.driver || origL.driver) carDriverNameMap[c] = historical?.driver || origL.driver;
-            if (historical?.car || origL.car) carCarNameMap[c] = historical?.car || origL.car;
+            if (l.driver) carDriverNameMap[c] = l.driver;
+            if (l.car) carCarNameMap[c] = l.car;
 
             if (l.lap > carLapsMap[c]) carLapsMap[c] = l.lap;
             else carLapsMap[c]++;
@@ -2220,15 +2207,13 @@ async function rebuildSessionsIndexUI() {
         let results = activeCarIds.map((c, idx) => {
           let avg = (carValidMap[c] > 0) ? Math.round(carTimeSumMap[c] / carValidMap[c]) : 0;
           let bestLapObj = carBestLapObjMap[c] || {};
-          let historical = getHistoricalCarNames(c, bestLapObj.ts);
           return {
             pos: idx + 1,
             id: c,
-            driver: historical?.driver || carDriverNameMap[c] || getCarDriverName(c),
-            car: historical?.car || carCarNameMap[c] || getCarCarName(c),
+            driver: carDriverNameMap[c] || getCarDriverName(c),
+            car: carCarNameMap[c] || getCarCarName(c),
             laps: carLapsMap[c] || 0,
             bestLap: carBestMap[c] || 0,
-            bestTs: (carBestLapObjMap[c] || {}).ts || 0,
             avgLap: avg,
             sz1: bestLapObj.sz1 || 0,
             sz2: bestLapObj.sz2 || 0,
@@ -2237,45 +2222,49 @@ async function rebuildSessionsIndexUI() {
           };
         });
 
-        let pathParts = rawName.split('/');
-        let trackFolderSlug = (pathParts.length > 2 && pathParts[1]) ? decodeURIComponent(pathParts[1]) : "standard";
-        let trackId = sData.trackId || trackFolderSlug;
-        let trackName = sData.trackName || (trackFolderSlug !== "standard" ? trackFolderSlug : "Standard");
-
-        let modeNames = ["Freies Training", "Qualifying", "Rennen (Runden)", "Rennen (Zeit)", "Dragrace", "Ghost Battle"];
+        let trackId = sData.trackId || "standard";
+        let trackName = sData.trackName || (trackId !== "standard" ? trackId : "Standard");
         builtSessions.push({
           id: sId,
           file: rawName,
           trackId: trackId,
           trackName: trackName,
           mode: mode,
-          modeName: sData.modeName || modeNames[mode] || "Freies Training",
+          modeName: sData.modeName,
           startTs: sData.startTs || 0,
           endTs: maxTs || sData.startTs || 0,
           results: results
         });
 
         // 3b. Telemetrie-Optimierung (Alte Session-Dateien auf kompaktes Min-Schema schrumpfen)
-        let needsCompression = laps.some(l => l.driver !== undefined || l.car !== undefined || l.sz1 !== undefined || l.time !== undefined || (l.outlap !== undefined && l.o === undefined));
+        let needsCompression = !sData.i || !sData.l || laps.some(l =>
+          l.driver !== undefined || l.car !== undefined || l.sz1 !== undefined ||
+          l.time !== undefined || l.s1 !== undefined || (l.outlap !== undefined && l.o === undefined)
+        );
         if (needsCompression && normalizedLaps.length > 0) {
           if (btn) btn.innerText = `⏳ Optimiere ${i + 1}/${sessionFiles.length}...`;
+          let identityWritten = {};
           let minLaps = normalizedLaps.map(nl => {
             let cl = { c: nl.carId, l: nl.lap, t: nl.time, p: nl.pos, s: nl.ts };
-            if (nl.sz1 > 0) cl.s1 = nl.sz1;
-            if (nl.sz2 > 0) cl.s2 = nl.sz2;
-            if (nl.sz3 > 0) cl.s3 = nl.sz3;
-            if (nl.sz4 > 0) cl.s4 = nl.sz4;
+            if (nl.driver && !identityWritten[nl.carId]) {
+              cl.d = nl.driver;
+              if (nl.car) cl.v = nl.car;
+              identityWritten[nl.carId] = true;
+            }
+            if (nl.sz1 > 0) cl['1'] = nl.sz1;
+            if (nl.sz2 > 0) cl['2'] = nl.sz2;
+            if (nl.sz3 > 0) cl['3'] = nl.sz3;
+            if (nl.sz4 > 0) cl['4'] = nl.sz4;
             if (nl.outlap) cl.o = 1;
             return cl;
           });
           let minSession = {
-            id: sData.id || sId,
-            trackId: sData.trackId || "standard",
-            trackName: sData.trackName || "Standard",
-            mode: mode,
-            modeName: sData.modeName || modeNames[mode] || "Freies Training",
-            startTs: sData.startTs || 0,
-            laps: minLaps
+            i: sId,
+            t: trackId,
+            n: trackName,
+            m: mode,
+            s: sData.startTs || 0,
+            l: minLaps
           };
           try {
             let compBlob = new Blob([JSON.stringify(minSession)], { type: 'application/json' });

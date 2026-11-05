@@ -641,7 +641,6 @@ void initNetworkAndServer() {
   server.on("/api/deadtime", HTTP_GET, handleGetDeadtime);
   server.on("/api/filter", HTTP_GET, handleGetFilter);
   server.on("/api/names", HTTP_GET, handleGetNames);
-  server.on("/api/names-history", HTTP_GET, handleGetNameHistory);
   server.on("/api/version", HTTP_GET, handleGetVersion);
   server.on("/api/setfilter", HTTP_POST, handlePostSetFilter);
   server.on("/api/setdeadtime", HTTP_POST, handlePostSetDeadtime);

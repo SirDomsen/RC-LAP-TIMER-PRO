@@ -302,23 +302,6 @@ void handleGetNames(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
-void handleGetNameHistory(AsyncWebServerRequest *request) {
-  if (isHeapCriticalForFileTransfer()) {
-    AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
-    res->addHeader("Retry-After", "2");
-    res->addHeader("Connection", "close");
-    request->send(res);
-    return;
-  }
-  if (!LittleFS.exists("/names_history.jsonl")) {
-    request->send(200, "application/x-ndjson", "");
-    return;
-  }
-  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/names_history.jsonl", "application/x-ndjson");
-  response->addHeader("Cache-Control", "public, max-age=30");
-  request->send(response);
-}
-
 void handleGetVersion(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   String json;
@@ -348,29 +331,26 @@ void handlePostSetDeadtime(AsyncWebServerRequest *request) {
 }
 
 void handlePostRename(AsyncWebServerRequest *request) {
-  if (request->hasParam("id")) {
-    int id = request->getParam("id")->value().toInt();
-    String driver = request->hasParam("driver") ? request->getParam("driver")->value() : driverNames[id];
-    String car = request->hasParam("car") ? request->getParam("car")->value() : carNames[id];
-    
-    if (id >= 1 && id <= MAX_CARS) {
-      if (!saveNamesToEEPROM(id, driver, car)) {
-        request->send(500, "text/plain", "Fahrer-/Auto-Zuordnung konnte nicht dauerhaft gespeichert werden.");
-        return;
-      }
-      if (dailyBestCarId == id || allTimeBestCarId == id) {
-        if (dailyBestCarId == id) {
-          dailyBestDriver = driver;
-          dailyBestCar = car;
-        }
-        if (allTimeBestCarId == id) {
-          allTimeBestDriver = driver;
-          allTimeBestCar = car;
-        }
-        saveDailyBest();
-      }
-    }
+  if (!request->hasParam("names", true)) {
+    request->send(400, "text/plain", "Fahrernamen fehlen.");
+    return;
   }
+
+  String namesJson = request->getParam("names", true)->value();
+  if (!saveNamesToEEPROM(namesJson)) {
+    request->send(500, "text/plain", "Fahrer-/Auto-Zuordnungen konnten nicht gespeichert werden.");
+    return;
+  }
+
+  if (dailyBestCarId > 0) {
+    dailyBestDriver = driverNames[dailyBestCarId];
+    dailyBestCar = carNames[dailyBestCarId];
+  }
+  if (allTimeBestCarId > 0) {
+    allTimeBestDriver = driverNames[allTimeBestCarId];
+    allTimeBestCar = carNames[allTimeBestCarId];
+  }
+  saveDailyBest();
   request->send(200, "text/plain", "OK");
 }
 
@@ -452,9 +432,9 @@ void handlePostDeleteLap(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {
-  if (request->hasParam("id")) {
-    uint8_t id = request->getParam("id")->value().toInt();
-    deleteDriverHistory(id);
+  if (request->hasParam("driver")) {
+    String driverName = request->getParam("driver")->value();
+    deleteDriverHistory(driverName);
     request->send(200, "text/plain", "OK");
   } else {
     request->send(400, "text/plain", "Bad Request");
