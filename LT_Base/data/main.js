@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.9';
+window.UI_VERSION = '4.7.10';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -67,6 +67,11 @@ let currentFsTotal = 0;
 let isStorageFull = false; 
 
 let currentMode = 0;
+
+// Waehrend eines laufenden Rennens (Modus 2-4) wird nicht geloescht: Flash-Schreiben und Rennbetrieb vertragen sich auf dem ESP8266 nicht
+function isRaceDeleteLocked() {
+  return currentMode >= 2 && currentMode <= 4 && typeof isSessionActive !== 'undefined' && isSessionActive && !isSessionFinished;
+}
 let targetLaps = 0;
 let maxLapInRace = 0;
 let isSessionActive = false;
@@ -357,7 +362,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.9');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.10');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1511,7 +1516,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.9');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.10');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -1746,7 +1751,7 @@ function renderTrackRecordsModalContent(trackId) {
         ? `<span style="font-size:10px; color:var(--neon-cyan); margin-left:6px;" title="Session vorhanden">🔍</span>`
         : '';
 
-      let delBtn = isAdmin
+      let delBtn = (isAdmin && !isRaceDeleteLocked())
         ? `<button class="top5-del-btn" onclick="event.stopPropagation(); deleteTrackRecordEntryUI('${trackObj.id}', '${typeKey}', ${idx})" title="Eintrag löschen${entry.prevLap > 0 ? ' (stellt vorherige Bestzeit wieder her)' : ''}">✕</button>`
         : '';
 
@@ -1775,10 +1780,10 @@ function renderTrackRecordsModalContent(trackId) {
     return rowsHtml;
   };
 
-  let allTimeClearBtn = (isAdmin && allTimeArr.length > 0)
+  let allTimeClearBtn = (isAdmin && !isRaceDeleteLocked() && allTimeArr.length > 0)
     ? `<button class="btn btn-danger" style="padding:2px 8px; font-size:10px; margin:0;" onclick="deleteTrackRecordEntryUI('${trackObj.id}', 'alltime', -1)">Alle löschen</button>`
     : '';
-  let dailyClearBtn = (isAdmin && dailyArr.length > 0)
+  let dailyClearBtn = (isAdmin && !isRaceDeleteLocked() && dailyArr.length > 0)
     ? `<button class="btn btn-danger" style="padding:2px 8px; font-size:10px; margin:0;" onclick="deleteTrackRecordEntryUI('${trackObj.id}', 'daily', -1)">Alle löschen</button>`
     : '';
 
@@ -1951,14 +1956,24 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
             }
           } catch (err) {}
         }
+
+        // Runde fehlt in der Datei, der Index nennt sie aber noch: veralteter Index.
+        // Der Geraete-Loeschpfad bereinigt dann Index und Rekord aus den echten Dateiinhalten.
+        if (!matchedLap) {
+          let stale = searchSessionsList.find(s => s.file && hasExactResult(s));
+          if (stale) {
+            matchedSession = stale;
+            matchedLap = { carId: targetEntry.carId || 0, lap: 0, time: targetEntry.lap };
+          }
+        }
       }
     }
   }
 
   if (index < 0) {
     desc = isDaily
-      ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?'
-      : 'Wirklich <strong>ALLE All-Time Streckenrekorde</strong> dieser Strecke löschen?';
+      ? 'Wirklich <strong>ALLE heutigen Tagesbestzeiten</strong> dieser Strecke löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">⚠️ Die Liste wird anschließend aus den gespeicherten Sessions neu aufgebaut. Zum endgültigen Entfernen die Runden bzw. Sessions löschen.</span>'
+      : 'Wirklich <strong>ALLE All-Time Streckenrekorde</strong> dieser Strecke löschen?<br><span style="color:var(--neon-gold); font-size:12px; display:block; margin-top:6px;">⚠️ Die Liste wird anschließend aus den gespeicherten Sessions neu aufgebaut. Zum endgültigen Entfernen die Runden bzw. Sessions löschen.</span>';
     boxInfo = isDaily ? 'Alle Tagesbestzeiten' : 'Alle All-Time Rekorde';
   } else {
     let targetEntry = isDaily ? dailyArr[index] : allTimeArr[index];

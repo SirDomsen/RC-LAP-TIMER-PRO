@@ -662,7 +662,7 @@ function renderRecordsOverview() {
       ? `<span style="font-size:10px; color:var(--neon-cyan); margin-left:4px;" title="Session verfügbar">🔍</span>`
       : '';
 
-    let delBtnHtml = (isAdmin && r.source === 'official' && typeof deleteTrackRecordEntryUI === 'function')
+    let delBtnHtml = (isAdmin && !(typeof isRaceDeleteLocked === 'function' && isRaceDeleteLocked()) && r.source === 'official' && typeof deleteTrackRecordEntryUI === 'function')
       ? `<button class="top5-del-btn" onclick="event.stopPropagation(); deleteTrackRecordEntryUI('${r.trackId}', '${recordsTimeScope === 'daily' ? 'daily' : 'alltime'}', ${r.index})" title="Diesen Rekordeintrag löschen">✕</button>`
       : '';
 
@@ -1271,7 +1271,9 @@ function renderEmbeddedLapsTable(elemId, containerElem) {
     let sz4Content = showSz4Col ? formatCell(l.sz4, 0, styleSz4) : '';
 
     let delCol = isAdmin
-      ? `<td><button class="btn-icon" title="Runde löschen" onclick="deleteSingleLapFromSession('${sessionId}', '${sessionFile}', ${carId}, ${l.lap})">🗑</button></td>`
+      ? ((typeof isRaceDeleteLocked === 'function' && isRaceDeleteLocked())
+          ? `<td></td>`
+          : `<td><button class="btn-icon" title="Runde löschen" onclick="deleteSingleLapFromSession('${sessionId}', '${sessionFile}', ${carId}, ${l.lap})">🗑</button></td>`)
       : '';
     let assignment = [l.driver, l.car].filter(Boolean).map(escapeHtml).join(' / ') || '—';
 

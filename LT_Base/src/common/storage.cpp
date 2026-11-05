@@ -1812,6 +1812,9 @@ static void processFileDeletion(const String& filename) {
   updateFsUsageCache();
 }
 
+static bool lapDeleteResume = false;
+static void writeLapDeletePending(const String& sessionId, const String& file, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t attempts);
+
 static struct {
   char sessionId[40];
   char file[DELETE_PATH_MAX];
@@ -1841,6 +1844,36 @@ void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
 
   updateResetLogClock();
+
+  // Nach einem Absturz mitten im Loeschen: Phase 2 (Session/Index) genau einmal wiederholen
+  static bool resumeChecked = false;
+  if (!resumeChecked && millis() > 8000 && lapDeleteState != LAP_DELETE_PENDING) {
+    resumeChecked = true;
+    if (LittleFS.exists("/pending_del.json")) {
+      File pf = LittleFS.open("/pending_del.json", "r");
+      JsonDocument pd;
+      bool okParse = pf && !deserializeJson(pd, pf);
+      if (pf) pf.close();
+      uint8_t attempts = okParse ? (pd["a"] | 0) : 9;
+      if (!okParse || attempts >= 1) {
+        LittleFS.remove("/pending_del.json");
+      } else {
+        String pSid = pd["s"].as<String>();
+        String pFile = pd["f"].as<String>();
+        uint8_t pCar = pd["c"] | 0;
+        uint16_t pLap = pd["l"] | 0;
+        uint32_t pMs = pd["t"] | 0;
+        writeLapDeletePending(pSid, pFile, pCar, pLap, pMs, 1);
+        lapDeleteResume = true;
+        // Rundennummer bevorzugen, damit keine andere Runde mit gleicher Zeit getroffen wird
+        deleteLapFromSession(pSid, pFile, pCar, pLap, pLap > 0 ? 0 : pMs);
+        lapDeleteResume = false;
+        updateFsUsageCache();
+      }
+      lastStorageWrite = millis();
+      return;
+    }
+  }
 
   if (lapDeleteState == LAP_DELETE_PENDING) {
     LapDeleteState result = deleteLapFromSession(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
@@ -2183,7 +2216,16 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
     idx++;
     yield(); // nur aus loop() aufgerufen
   }
-  if (overflow || parseError || targetIdx < 0) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
+  if (overflow || parseError) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
+
+  // Runde steht nicht (mehr) in der Datei: Index/Rekord sind veraltet. Datei bleibt unveraendert,
+  // der Aufrufer bereinigt Rekordlisten und Index anhand der tatsaechlichen Dateiinhalte.
+  if (targetIdx < 0) {
+    r.deletedLapTimeMs = lapTimeMs;
+    in.close();
+    free(buf);
+    return LAP_DELETE_OK;
+  }
 
   // Letzte Runde der Session: es gibt nichts umzuschreiben, der Aufrufer loescht die ganze Session
   if (r.remaining == 0) { in.close(); free(buf); return LAP_DELETE_OK; }
@@ -2234,6 +2276,77 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
   return LAP_DELETE_OK;
 }
 
+static void writeLapDeletePending(const String& sessionId, const String& file, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t attempts) {
+  File f = LittleFS.open("/pending_del.json", "w");
+  if (!f) return;
+  f.printf("{\"s\":\"%s\",\"f\":\"%s\",\"c\":%u,\"l\":%u,\"t\":%lu,\"a\":%u}",
+           sessionId.c_str(), file.c_str(), (unsigned)carId, (unsigned)lapNum, (unsigned long)lapTimeMs, (unsigned)attempts);
+  f.close();
+}
+
+// Liest nur den Header-Anfang der Session-Datei (Track-ID), ohne JSON-Dokument
+static String readSessionHeaderTrackId(const String& file) {
+  File f = LittleFS.open(file, "r");
+  if (!f) return "";
+  char hdr[200];
+  size_t n = f.readBytes(hdr, sizeof(hdr) - 1);
+  f.close();
+  hdr[n] = 0;
+  const char* p = strstr(hdr, "\"t\":\"");
+  if (!p) return "";
+  p += 5;
+  const char* e = strchr(p, '"');
+  if (!e) return "";
+  return String(p).substring(0, e - p);
+}
+
+// Phase 1: Rekordeintrag (Daily zuerst, sonst All-Time) der geloeschten Runde entfernen.
+// deleteTrackRecordEntry uebernimmt die Kaskadierung Daily <-> All-Time.
+static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t lapMs) {
+  if (lapMs == 0) return;
+  if (trackId == activeTrackId) {
+    for (uint8_t i = 0; i < activeDailyCount; i++) {
+      if (activeDailyRecords[i].lapMs == lapMs && activeDailyRecords[i].carId == carId) {
+        deleteTrackRecordEntry(activeTrackId, true, (int8_t)i);
+        return;
+      }
+    }
+    for (uint8_t i = 0; i < activeAllTimeCount; i++) {
+      if (activeAllTimeRecords[i].lapMs == lapMs && activeAllTimeRecords[i].carId == carId) {
+        deleteTrackRecordEntry(activeTrackId, false, (int8_t)i);
+        return;
+      }
+    }
+    return;
+  }
+  // Andere (nicht aktive) Strecke: passenden Eintrag in tracks.json suchen
+  if (!LittleFS.exists("/tracks.json")) return;
+  File f = LittleFS.open("/tracks.json", "r");
+  if (!f) return;
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+  if (err) return;
+  JsonArray arr = doc["tracks"].as<JsonArray>();
+  for (JsonObject t : arr) {
+    if (t["id"].as<String>() != trackId) continue;
+    RecordEntry dList[MAX_TRACK_RECORDS];
+    uint8_t dCount = 0;
+    loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
+    int8_t dIdx = findMatchingRecordIndex(dList, dCount, lapMs, carId, "", "");
+    if (dIdx >= 0) {
+      deleteTrackRecordEntry(trackId, true, dIdx);
+    } else {
+      RecordEntry aList[MAX_TRACK_RECORDS];
+      uint8_t aCount = 0;
+      loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
+      int8_t aIdx = findMatchingRecordIndex(aList, aCount, lapMs, carId, "", "");
+      if (aIdx >= 0) deleteTrackRecordEntry(trackId, false, aIdx);
+    }
+    break;
+  }
+}
+
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
   if (sessionId.length() == 0 && filePath.length() == 0) return LAP_DELETE_NOT_FOUND;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
@@ -2273,72 +2386,27 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
 
   if (PlatformRuntime::isHeapCritical(4000, 100, 0)) return LAP_DELETE_NO_HEAP;
   markLapDeleteStep(1);
+
+  // Phase 1: Merker schreiben, dann nur die Rekordlisten korrigieren (kleine Dateien).
+  // Phase 2 (Session umschreiben + Index) folgt danach; nach einem Absturz setzt der Boot sie fort.
+  if (!lapDeleteResume) {
+    writeLapDeletePending(sessionId, targetFile, carId, lapNum, lapTimeMs, 0);
+    String recTrackId = readSessionHeaderTrackId(targetFile);
+    removeRecordsForLap(recTrackId.length() > 0 ? recTrackId : activeTrackId, carId, lapTimeMs);
+  }
+  markLapDeleteStep(3);
+
   LapRewriteResult r;
   LapDeleteState rewriteState = rewriteSessionWithoutLap(targetFile, carId, lapNum, lapTimeMs, r);
   if (rewriteState != LAP_DELETE_OK) { markLapDeleteStep(0); return rewriteState; }
   markLapDeleteStep(2);
 
-  uint32_t deletedLapTimeMs = r.deletedLapTimeMs;
   String sessTrackId = r.trackId.length() > 0 ? r.trackId : activeTrackId;
-  // Falls die gelöschte Runde in der Top-5 Rekordliste stand, auch dort automatisch korrigieren.
-  // deleteTrackRecordEntry übernimmt die automatische Kaskadierung (Daily <-> All-Time falls Datum heute).
-  if (deletedLapTimeMs > 0) {
-    bool handled = false;
-    if (sessTrackId == activeTrackId) {
-      for (uint8_t i = 0; i < activeDailyCount; i++) {
-        if (activeDailyRecords[i].lapMs == deletedLapTimeMs && activeDailyRecords[i].carId == carId) {
-          deleteTrackRecordEntry(activeTrackId, true, (int8_t)i);
-          handled = true;
-          break;
-        }
-      }
-      if (!handled) {
-        for (uint8_t i = 0; i < activeAllTimeCount; i++) {
-          if (activeAllTimeRecords[i].lapMs == deletedLapTimeMs && activeAllTimeRecords[i].carId == carId) {
-            deleteTrackRecordEntry(activeTrackId, false, (int8_t)i);
-            break;
-          }
-        }
-      }
-    } else {
-      // Session auf einer anderen (nicht aktiven) Strecke: passenden Eintrag in tracks.json suchen
-      if (LittleFS.exists("/tracks.json")) {
-        File f = LittleFS.open("/tracks.json", "r");
-        if (f) {
-          JsonDocument doc;
-          DeserializationError err = deserializeJson(doc, f);
-          f.close();
-          if (!err) {
-            JsonArray arr = doc["tracks"].as<JsonArray>();
-            for (JsonObject t : arr) {
-              if (t["id"].as<String>() == sessTrackId) {
-                RecordEntry dList[MAX_TRACK_RECORDS];
-                uint8_t dCount = 0;
-                loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
-                int8_t dIdx = findMatchingRecordIndex(dList, dCount, deletedLapTimeMs, carId, "", "");
-                if (dIdx >= 0) {
-                  deleteTrackRecordEntry(sessTrackId, true, dIdx);
-                } else {
-                  RecordEntry aList[MAX_TRACK_RECORDS];
-                  uint8_t aCount = 0;
-                  loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
-                  int8_t aIdx = findMatchingRecordIndex(aList, aCount, deletedLapTimeMs, carId, "", "");
-                  if (aIdx >= 0) {
-                    deleteTrackRecordEntry(sessTrackId, false, aIdx);
-                  }
-                }
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 
   markLapDeleteStep(3);
   if (r.remaining == 0) {
     deleteSessionById(sessionId);
+    LittleFS.remove("/pending_del.json");
     markLapDeleteStep(0);
     return LAP_DELETE_OK;
   }
@@ -2376,6 +2444,7 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
 
   markLapDeleteStep(4);
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
+  LittleFS.remove("/pending_del.json");
   markLapDeleteStep(0);
   return LAP_DELETE_OK;
 }
