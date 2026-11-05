@@ -592,7 +592,6 @@ static bool streamTracks(const String* activeId, Fn visit) {
         first = false;
       }
     }
-    yield();
   }
   free(buf);
   in.close();
@@ -1235,7 +1234,6 @@ void saveTracksToFS() {
           activeWritten = true;
         }
       }
-      yield();
     }
     in.close();
   }
