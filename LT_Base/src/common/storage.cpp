@@ -1931,8 +1931,8 @@ void deleteSessionById(const String& sessionId) {
   filterSessionsIndexFile(sessionId, "", "", "");
 }
 
-void deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
-  if (sessionId.length() == 0 && filePath.length() == 0) return;
+bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (sessionId.length() == 0 && filePath.length() == 0) return false;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
   // 1. Dateipfad der Session ermitteln
@@ -1966,22 +1966,23 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
     }
   }
 
-  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return;
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return false;
 
   JsonDocument doc;
   File fRead = LittleFS.open(targetFile, "r");
-  if (!fRead) return;
+  if (!fRead) return false;
   DeserializationError err = deserializeJson(doc, fRead);
   fRead.close();
-  if (err) return;
+  if (err) return false;
 
   JsonArray laps = doc["l"].as<JsonArray>();
-  if (!laps) return;
+  if (!laps) return false;
   String sessionDrivers[MAX_CARS + 1];
   String sessionCars[MAX_CARS + 1];
   readSessionNames(laps, sessionDrivers, sessionCars);
 
   uint32_t deletedLapTimeMs = 0;
+  bool lapRemoved = false;
   for (size_t i = 0; i < laps.size(); i++) {
     uint8_t cId = laps[i]["c"] | (laps[i]["carId"] | 0);
     uint16_t lNum = laps[i]["l"] | (laps[i]["lap"] | 0);
@@ -1994,9 +1995,11 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
     if (carMatch && (lapMatch || timeMatch)) {
       deletedLapTimeMs = lTime;
       laps.remove(i);
+      lapRemoved = true;
       break;
     }
   }
+  if (!lapRemoved) return false;
 
   String sessTrackId = doc["t"] | (doc["trackId"] | activeTrackId);
 
@@ -2058,7 +2061,7 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
 
   if (laps.size() == 0) {
     deleteSessionById(sessionId);
-    return;
+    return true;
   }
 
   // Ergebnisse aus verbleibenden Runden neu berechnen
@@ -2112,6 +2115,7 @@ void deleteLapFromSession(const String& sessionId, const String& filePath, uint8
   );
 
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
+  return true;
 }
 
 void deleteDriverHistory(const String& driverName) {

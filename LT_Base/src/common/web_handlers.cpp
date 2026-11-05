@@ -424,8 +424,11 @@ void handlePostDeleteLap(AsyncWebServerRequest *request) {
     uint8_t id = request->hasParam("id") ? (uint8_t)request->getParam("id")->value().toInt() : 0;
     uint16_t lap = request->hasParam("lap") ? (uint16_t)request->getParam("lap")->value().toInt() : 0;
     uint32_t lapTime = request->hasParam("time") ? (uint32_t)request->getParam("time")->value().toInt() : 0;
-    deleteLapFromSession(sessionId, filePath, id, lap, lapTime);
-    request->send(200, "text/plain", "OK");
+    if (deleteLapFromSession(sessionId, filePath, id, lap, lapTime)) {
+      request->send(200, "text/plain", "OK");
+    } else {
+      request->send(404, "text/plain", "Runde nicht gefunden");
+    }
   } else {
     request->send(400, "text/plain", "Bad Request");
   }

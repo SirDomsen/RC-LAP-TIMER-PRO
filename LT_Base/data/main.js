@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.2';
+window.UI_VERSION = '4.7.5';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -356,7 +356,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.2');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.5');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1510,7 +1510,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.2');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.5');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -1814,6 +1814,11 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
   let cascadeInfo = '';
 
   await ensureStatsLoaded();
+  // Frische Session-Daten: ein veralteter Cache fuehrt zu falschem Treffer bzw. zum Wiederauftauchen des Rekords
+  sessionFileCache = {};
+  if (typeof fetchSessionsAndStorageInfo === 'function') {
+    await fetchSessionsAndStorageInfo();
+  }
 
   let allTimeArr = Array.isArray(trackObj?.allTimeRecords) ? trackObj.allTimeRecords : [];
   if (allTimeArr.length === 0 && trackObj?.recordLap > 0) {
@@ -1855,6 +1860,13 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
           if (!searchSessionsList.includes(s)) searchSessionsList.push(s);
         }
 
+        // Sessions, deren Index-Ergebnis exakt zur Rekordzeit passt, zuerst pruefen (meist nur 1 Dateiabruf)
+        let hasExactResult = s => Array.isArray(s.results) && s.results.some(r =>
+          r.bestLap === targetEntry.lap &&
+          ((targetEntry.carId && r.id === targetEntry.carId) ||
+           (targetEntry.driver && r.driver && r.driver.toLowerCase() === targetEntry.driver.toLowerCase())));
+        searchSessionsList.sort((a, b) => (hasExactResult(b) ? 1 : 0) - (hasExactResult(a) ? 1 : 0));
+
         // 3. Durchsuche die Sessions nach der konkreten Runde mit Zeit == targetEntry.lap
         for (let s of searchSessionsList) {
           if (!s.file) continue;
@@ -1874,7 +1886,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
                 let lDriver = (l.driver || '').trim();
                 let matchCar = (!targetEntry.carId || lCar === targetEntry.carId);
                 let matchDriver = (!targetEntry.driver || !lDriver || lDriver.toLowerCase() === targetEntry.driver.toLowerCase());
-                let timeMatch = (lTime === targetEntry.lap) || (Math.abs(lTime - targetEntry.lap) <= 5);
+                let timeMatch = (lTime === targetEntry.lap);
                 return (matchCar || matchDriver) && timeMatch;
               });
               if (found) {
@@ -1957,9 +1969,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         let lapRes = await fetch(lapUrl, { method: 'POST' });
         if (lapRes.ok) success = true;
 
-        if (typeof sessionFileCache !== 'undefined' && matchedSession.file) {
-          delete sessionFileCache[matchedSession.file];
-        }
+        sessionFileCache = {};
         let safeId = (typeof sanitizeDomId === 'function') ? sanitizeDomId(matchedSession.id) : String(matchedSession.id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
         let elemId = `s_${safeId}_driver_${matchedLap.carId}`;
         if (typeof embeddedLapsState !== 'undefined' && embeddedLapsState[elemId]) {
@@ -1967,6 +1977,13 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         }
       } catch (lapErr) {
         console.warn("Fehler beim Löschen via /api/deletelap:", lapErr);
+      }
+      // Runde konnte nicht aus der Session entfernt werden: Rekord wenigstens aus der Liste nehmen
+      if (!success) {
+        try {
+          let recRes = await fetch(`/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`, { method: 'POST' });
+          if (recRes.ok) success = true;
+        } catch (recErr) {}
       }
     } else {
       // Kein Session-Match (z.B. manueller Rekord) oder 'Alle löschen' (index < 0)
@@ -1993,6 +2010,12 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         } catch (e) {}
       }
 
+      // Session-Cache VOR dem Auffuellen neu laden: Sonst baut refill die Rekorde aus veralteten
+      // Session-Ergebnissen (inkl. der gerade geloeschten Runde) wieder auf.
+      if (typeof fetchSessionsAndStorageInfo === 'function') {
+        await fetchSessionsAndStorageInfo();
+      }
+
       // Top-5 Rekorde sofort wieder aus den verbleibenden Sessions auf bis zu 5 Plätze auffüllen
       try {
         await refillTrackRecordsFromSessions(targetId);
@@ -2002,9 +2025,6 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
 
       await loadTracks();
       await updateData(true);
-      if (typeof fetchSessionsAndStorageInfo === 'function') {
-        await fetchSessionsAndStorageInfo();
-      }
       if (typeof renderTrackRecordsModalContent === 'function') {
         renderTrackRecordsModalContent(trackId);
       }

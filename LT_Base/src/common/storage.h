@@ -103,7 +103,7 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 void processStorageQueue();
 bool queueFileDeletion(const String& path);
 
-void deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
+bool deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
 void deleteDriverHistory(const String& driverName);
 void deleteAllHistory();
 
