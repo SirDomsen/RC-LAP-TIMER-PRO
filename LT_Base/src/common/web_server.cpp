@@ -520,17 +520,16 @@ void initNetworkAndServer() {
       filename.replace("%2f", "/");
       if (!filename.startsWith("/")) filename = "/" + filename;
 
-      // Falls es eine Session-Datei aus einem Unterordner ist, auch sauber aus /sessions.json entfernen
-      int lastSlash = filename.lastIndexOf('/');
-      if (lastSlash > 0 && filename.endsWith(".json")) {
-        String baseName = filename.substring(lastSlash + 1, filename.length() - 5);
-        deleteSessionById(baseName);
+      if (filename.indexOf("..") >= 0) {
+        request->send(400, "text/plain", "Ungueltiger Pfad");
+        return;
       }
 
-      if (LittleFS.exists(filename)) {
-        LittleFS.remove(filename);
+      // Loeschen (inkl. Eintrag in /sessions.json) laeuft im loop(), nicht im Webserver-Callback
+      if (!queueFileDeletion(filename)) {
+        request->send(503, "text/plain", "Busy");
+        return;
       }
-      updateFsUsageCache();
       request->send(200, "text/plain", "Geloescht");
       return;
     }

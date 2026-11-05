@@ -1319,10 +1319,11 @@
         let f = filesToDelete[i];
         if (prog) prog.innerText = `Lösche (${i + 1}/${filesToDelete.length}): ${f.name}...`;
         try {
-          await fetch('/api/deletefile?file=' + encodeURIComponent(f.name), { method: 'POST' });
+          await deleteFileRequest(f.name);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, 25));
+        await new Promise(r => setTimeout(r, 120));
       }
+      await new Promise(r => setTimeout(r, 600));
 
       if (prog) {
         prog.style.color = 'var(--neon-green)';
@@ -1688,6 +1689,16 @@
       }
     }
 
+    // Der ESP loescht im Hintergrund; bei voller Warteschlange (503) kurz warten und erneut senden
+    async function deleteFileRequest(name) {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const res = await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
+        if (res.status !== 503) return res;
+        await new Promise(r => setTimeout(r, 150));
+      }
+      throw new Error('ESP ausgelastet');
+    }
+
     async function deleteFile(name) {
       let ok = await showConfirm({
         title: "🗑️ DATEI LÖSCHEN",
@@ -1701,7 +1712,8 @@
       if (!ok) return;
 
       try {
-        await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
+        await deleteFileRequest(name);
+        await new Promise(r => setTimeout(r, 600));
         loadStorageInfo();
         loadFilesList();
       } catch(e) {

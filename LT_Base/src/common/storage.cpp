@@ -1123,7 +1123,8 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
 
   while (fIn.available()) {
     char c = (char)fIn.read();
-    if ((++bytesProcessed & 0x3FF) == 0) yield();
+    // Kein yield(): Aufrufer laufen teils im Async-Webserver-Kontext (yield dort = Panic)
+    ++bytesProcessed;
     if (braceDepth == 0) {
       if (c == '[') {
         braceDepth = 1;
@@ -1675,8 +1676,45 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
   }
 }
 
+// Loeschauftraege aus dem Webserver-Callback; Abarbeitung im loop()
+#define DELETE_QUEUE_MAX 4
+#define DELETE_PATH_MAX 64
+static char deleteQueue[DELETE_QUEUE_MAX][DELETE_PATH_MAX];
+static volatile uint8_t deleteQueueHead = 0;
+static volatile uint8_t deleteQueueTail = 0;
+
+bool queueFileDeletion(const String& path) {
+  if (path.length() == 0 || path.length() >= DELETE_PATH_MAX) return false;
+  uint8_t nextHead = (deleteQueueHead + 1) % DELETE_QUEUE_MAX;
+  if (nextHead == deleteQueueTail) return false;
+  strlcpy(deleteQueue[deleteQueueHead], path.c_str(), DELETE_PATH_MAX);
+  deleteQueueHead = nextHead;
+  return true;
+}
+
+static void processFileDeletion(const String& filename) {
+  int lastSlash = filename.lastIndexOf('/');
+  if (lastSlash > 0 && filename.endsWith(".json")) {
+    String baseName = filename.substring(lastSlash + 1, filename.length() - 5);
+    deleteSessionById(baseName);
+  }
+  if (LittleFS.exists(filename)) {
+    LittleFS.remove(filename);
+  }
+  updateFsUsageCache();
+}
+
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
+
+  if (deleteQueueHead != deleteQueueTail) {
+    String path = String(deleteQueue[deleteQueueTail]);
+    deleteQueueTail = (deleteQueueTail + 1) % DELETE_QUEUE_MAX;
+    processFileDeletion(path);
+    lastStorageWrite = millis();
+    return;
+  }
+
   if (millis() - lastStorageWrite < 120) return;
 
   if (queueHead != queueTail) { 

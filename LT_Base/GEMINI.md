@@ -81,6 +81,7 @@ Diese Regeln resultieren aus einem fatalen OTA-Brick und sind **absolut unverhan
    - Im ESP-NOW Empfangs-Callback (`onDataRecv`) dürfen **niemals** mehrere `esp_now_send()` direkt hintereinander aufgerufen werden!
    - Kaskadierende Sends (z. B. Unicast + Broadcast direkt nacheinander) oder blockierende Delays im Callback führen sofort zum Heap-Crash oder Watchdog-Reset (WDT).
    - **Lösung:** Im Callback werden *ausschließlich* Flags gesetzt (z. B. `pendingOtaAck = true`). Das tatsächliche Senden der Antwortpakete passiert asynchron und sicher im `loop()`.
+   - **Kein `yield()`/`delay()` in Async-Webserver-Handlern:** Diese laufen im `ctx: sys`; ein `yield()` löst dort `Panic core_esp8266_main.cpp:191 __yield` aus (Crashlog nur „Software/System restart“, Ursache nur seriell sichtbar). Das war der Reset beim Löschen von Dateien/Ordnern und Runden (`filterSessionsIndexFile`). `/api/deletefile` reiht Pfade in eine 4er-Queue (`queueFileDeletion`), `processStorageQueue()` löscht im `loop()`; bei voller Queue antwortet der ESP mit 503 und `update.html` wiederholt.
 
 2. **Die 4-stufige OTA-Rettungskaskade (100% DHCP, Kein Restart!):**
    - Wenn eine Sektorstation den Wartungsmodus (`connectOtaNetwork()`) betritt, darf sie bei einem fehlgeschlagenen WLAN-Verbindungsversuch **niemals** über `ESP.restart()` neustarten. Ein Restart wirft sie zurück in den Rennbetrieb und sperrt sie dauerhaft aus, wenn die Basis falsche Credentials sendet.
