@@ -284,6 +284,7 @@ function handleLiveEvent(msg) {
     if (typeof handleCountdownEvent === 'function') handleCountdownEvent(msg);
   } else if (msg.type === 'countdown_cancel') {
     if (typeof cancelRaceCountdown === 'function') cancelRaceCountdown(false);
+    if (typeof clearRaceStartTimeout === 'function') clearRaceStartTimeout();
   } else if (msg.type === 'reset') {
     let now = Date.now();
     if (now - lastResetTimestamp > 3000) {

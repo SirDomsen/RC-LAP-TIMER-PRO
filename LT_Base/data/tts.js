@@ -173,6 +173,7 @@ function cancelRaceCountdown(notifyBackend = false) {
     isSpeaking = false;
   }
   if (notifyBackend) {
+    if (typeof clearRaceStartTimeout === 'function') clearRaceStartTimeout();
     fetch('/api/countdown?cmd=cancel', { method: 'POST' }).catch(() => {});
   }
 }

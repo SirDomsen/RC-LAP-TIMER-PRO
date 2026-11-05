@@ -1,16 +1,26 @@
+function clearRaceStartTimeout() {
+  if (window.raceStartTimeout) {
+    clearTimeout(window.raceStartTimeout);
+    window.raceStartTimeout = null;
+  }
+}
+
 function startRaceCountdown(onComplete) {
   cancelRaceCountdown(false);
+  clearRaceStartTimeout();
 
   // Countdown und Startampel zentral ueber Basis triggern (synchronisiert Sprache fuer alle Clients)
   let muteParam = (typeof muteCountdownTts !== 'undefined' && muteCountdownTts) ? "1" : "0";
   fetch('/api/countdown?cmd=start&muteTts=' + muteParam, { method: 'POST' }).catch(() => {});
 
-  let tComplete = setTimeout(() => {
+  // Eigener Timer: das eigene 'countdown'-WebSocket-Event ruft cancelRaceCountdown(false) auf
+  // und darf den Sessionstart des Rennleiters nicht verwerfen.
+  window.raceStartTimeout = setTimeout(() => {
+    window.raceStartTimeout = null;
     if (typeof onComplete === 'function') {
       onComplete();
     }
   }, 8000);
-  countdownTimeouts.push(tComplete);
 }
 
 function hidePoleBanner() {
