@@ -51,6 +51,8 @@ Vorgehen bei einer Statistikänderung:
 
 So bleibt die Statistiklogik möglichst gemeinsam und konsistent. Eine Aufteilung in getrennte Online- und Offline-Statistikimplementierungen ist nicht der Standard; sie wäre nur sinnvoll, falls klar abgegrenzte Datenadapter nötig werden.
 
+Hinweis zur Platzierung (v4.7.13): Die `pos`-Werte im Index stammen für Rundenrennen aus Rundenzahl, dann Zielankunft (Zeitstempel der letzten Runde), dann Bestzeit. Ältere importierte Indizes können noch die frühere Bestzeit-Reihenfolge enthalten; sie werden erst nach einem Index-Rebuild korrekt. Die Offline-App wurde dafür nicht versioniert.
+
 ## Versionierung
 
 Die Offline-App hat eine eigene Versionsnummer, unabhängig von Firmware und Geräte-Frontend:
