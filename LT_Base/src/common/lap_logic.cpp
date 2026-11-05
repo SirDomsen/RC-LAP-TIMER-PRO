@@ -10,6 +10,7 @@
 #include <ArduinoJson.h>
 
 uint32_t lastCrossTime[MAX_CARS + 1]   = {0};
+uint32_t lastCrossMs[MAX_CARS + 1]     = {0};
 uint32_t lastLapDuration[MAX_CARS + 1] = {0};
 uint32_t bestLapDuration[MAX_CARS + 1] = {0};
 uint16_t lapCounter[MAX_CARS + 1]      = {0};
@@ -263,6 +264,7 @@ void resetAllLaps(bool isHardReset) {
 
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     lastCrossTime[i] = 0;
+    lastCrossMs[i] = 0;
     lastLapDuration[i] = 0;
     bestLapDuration[i] = 0;
     lapCounter[i] = 0;
@@ -315,7 +317,7 @@ void resetAllLaps(bool isHardReset) {
 uint8_t getCurrentPosition(uint8_t carId) {
   return RaceRules::getPosition(
       carId, MAX_CARS, RaceRules::ranksByBestLap(currentMode),
-      bestLapDuration, lapCounter, lastCrossTime);
+      bestLapDuration, lapCounter, lastCrossMs);
 }
 
 bool areAllActiveCarsFinished() {
@@ -324,7 +326,7 @@ bool areAllActiveCarsFinished() {
 
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
     if (RaceRules::isTimedEventCarPendingFinish(
-            modeEndTimeMs, millis(), lapCounter[i], lastCrossTime[i] / 1000UL,
+            modeEndTimeMs, millis(), lapCounter[i], lastCrossMs[i],
             lastSeenMs[i], finishedFinalLap[i], inPitOrPause[i], 60000UL)) {
       return false;
     }
@@ -395,9 +397,10 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
     return;
   }
 
-  uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
-  if (timestampMs < lapStartMs) {
-    if (lapStartMs - timestampMs < 150) timestampMs = lapStartMs + 1;
+  uint32_t lapStartMs = lastCrossMs[carId];
+  int32_t timestampDeltaMs = (int32_t)(timestampMs - lapStartMs);
+  if (timestampDeltaMs < 0) {
+    if (timestampDeltaMs > -150) timestampMs = lapStartMs + 1;
     else return;
   }
 
@@ -704,7 +707,8 @@ void processSectorPacket(uint8_t stationId, uint8_t carId, uint32_t timestampMs)
 
 void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   uint32_t exactMicros = (uint32_t)exactSignalTimeMicros;
-  uint32_t nowMs = exactMicros / 1000UL;
+  uint32_t signalAgeMs = (micros() - exactMicros) / 1000UL;
+  uint32_t nowMs = millis() - signalAgeMs;
 
   if (currentMode == MODE_DRAGRACE) {
     if (dragTrackOccupied) return;
@@ -719,6 +723,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
     lapCounter[carId] = (lapCounter[carId] == 0) ? 1 : lapCounter[carId];
     lastCrossTime[carId] = exactMicros;
+    lastCrossMs[carId] = nowMs;
     lastSectorTimeMs[carId] = nowMs;
     currentExpectedSector[carId] = 1;
     sz1TimeMs[carId] = 0; sz2TimeMs[carId] = 0; sz3TimeMs[carId] = 0; sz4TimeMs[carId] = 0;
@@ -745,6 +750,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     sectorPassedInLap[carId] = 0;
     lapCounter[carId] = 1;
     lastCrossTime[carId] = exactMicros;
+    lastCrossMs[carId] = nowMs;
     lastSectorTimeMs[carId] = nowMs;
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
@@ -760,7 +766,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
   }
 
   if (RaceRules::isTimedMode(currentMode)) {
-    const uint32_t lapStartMs = lastCrossTime[carId] / 1000UL;
+    const uint32_t lapStartMs = lastCrossMs[carId];
     if (!RaceRules::canAcceptTimedEventCross(
             modeEndTimeMs, millis(), lapCounter[carId], lapStartMs, finishedFinalLap[carId])) return;
   }
@@ -791,7 +797,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
 
     uint8_t finalSectorNum = RaceRules::getFinalSectorNumber(useSz1, useSz2, useSz3);
 
-    if (finalSectorNum > 0 && lastSectorTimeMs[carId] > (lastCrossTime[carId] / 1000UL)) {
+    if (finalSectorNum > 0 && (uint32_t)(lastSectorTimeMs[carId] - lastCrossMs[carId]) > 0) {
       uint32_t lastSplit = 0;
       if (finalSectorNum == 4 && (sectorPassedInLap[carId] & (1 << 3))) lastSplit = split3TimeMs[carId];
       else if (finalSectorNum == 3 && (sectorPassedInLap[carId] & (1 << 2))) lastSplit = split2TimeMs[carId];
@@ -890,6 +896,7 @@ void processValidLap(uint8_t carId, uint64_t exactSignalTimeMicros) {
     uint16_t completedLap = lapCounter[carId];
     lapCounter[carId]++;
     lastCrossTime[carId] = exactMicros;
+    lastCrossMs[carId] = nowMs;
     lastSectorTimeMs[carId] = nowMs;
     readyForNextLap[carId] = false;
     currentExpectedSector[carId] = 1;
@@ -973,15 +980,12 @@ void updateLapLogicTasks() {
 
     if (currentMode != MODE_DRAGRACE && lapCounter[i] > 0 && !finishedFinalLap[i] && !inPitOrPause[i] && !isOutLap[i]) {
       uint32_t avgMs = getAverageLapTimeMs(i);
-      if (avgMs > 0 && lastCrossTime[i] > 0) {
-        uint32_t lapStartMs = lastCrossTime[i] / 1000UL;
-        if (now > lapStartMs) {
-          uint32_t currentElapsedMs = now - lapStartMs;
-          if (RaceRules::exceedsOutLapThreshold(avgMs, currentElapsedMs, PIT_PAUSE_FACTOR_PERCENT)) {
-            inPitOrPause[i] = true;
-            if (pitEnteredMs[i] == 0) {
-              pitEnteredMs[i] = now;
-            }
+      if (avgMs > 0) {
+        uint32_t currentElapsedMs = now - lastCrossMs[i];
+        if (RaceRules::exceedsOutLapThreshold(avgMs, currentElapsedMs, PIT_PAUSE_FACTOR_PERCENT)) {
+          inPitOrPause[i] = true;
+          if (pitEnteredMs[i] == 0) {
+            pitEnteredMs[i] = now;
           }
         }
       }

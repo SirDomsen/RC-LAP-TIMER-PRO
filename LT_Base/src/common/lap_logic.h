@@ -58,6 +58,8 @@ extern uint32_t overallBestSz4Ms;
 extern uint32_t lastSectorTimeMs[MAX_CARS + 1];
 
 extern uint32_t lastCrossTime[MAX_CARS + 1];
+// Millisecond-clock timestamp for inactivity checks; never compare it with the wrapping micros() clock.
+extern uint32_t lastCrossMs[MAX_CARS + 1];
 extern uint32_t lastLapDuration[MAX_CARS + 1];
 extern uint32_t bestLapDuration[MAX_CARS + 1];
 extern uint16_t lapCounter[MAX_CARS + 1];
