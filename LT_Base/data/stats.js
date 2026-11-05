@@ -981,6 +981,7 @@ function renderSessionsByMode(mode, containerId) {
       let names = getSessionResultNames(s, r);
       let dName = names.driver;
       let cName = names.car;
+      let driverArg = encodeURIComponent(dName).replace(/'/g, '%27');
 
       let isDriverOpen = !!openDriverDetailsMap[driverDetailId];
       let driverBtnText = isDriverOpen ? 'Details 🔼' : 'Details 🔽';
