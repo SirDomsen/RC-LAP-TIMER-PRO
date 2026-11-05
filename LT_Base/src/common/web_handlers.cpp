@@ -32,39 +32,104 @@ void handleGetLaps(AsyncWebServerRequest *request) {
     request->send(res);
     return;
   }
-  AsyncResponseStream *response = request->beginResponseStream("application/json");
-  response->print("[");
-  bool first = true;
-  for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0 || !awaitingBaseCross[i]) {
-      if (!first) response->print(",");
-      
-      const char* stateStr = "normal";
-      if (currentMode == MODE_DRAGRACE) {
-        stateStr = dragRunActive[i] ? "drag_running" : "normal";
-      } else if (isOutLap[i]) {
-        stateStr = "outlap";
-      } else if (inPitOrPause[i]) {
-        stateStr = (currentMode == MODE_PRACTICE) ? "pause" : "box";
-      } else if (lapCounter[i] == 0 && !awaitingBaseCross[i]) {
-        stateStr = "outlap";
+  // Chunked-Antwort: pro Auto wird nur ein kleiner Stack-Puffer gerendert,
+  // es waechst kein Gesamtpuffer im Heap (verhindert OOM bei knappem Heap).
+  static bool lapsStreamBusy = false;
+  static uint32_t lapsStreamStartMs = 0;
+  if (lapsStreamBusy && millis() - lapsStreamStartMs < 3000UL) {
+    AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
+    res->addHeader("Retry-After", "1");
+    res->addHeader("Connection", "close");
+    request->send(res);
+    return;
+  }
+  lapsStreamBusy = true;
+  lapsStreamStartMs = millis();
+
+  AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
+    [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+      static char pending[560];
+      static size_t pendingLen = 0;
+      static size_t pendingOff = 0;
+      static uint8_t nextCar = 1;
+      static uint8_t phase = 0; // 0=Start, 1=Autos, 2=Ende, 3=fertig
+      static bool first = true;
+
+      if (index == 0) {
+        pendingLen = pendingOff = 0;
+        nextCar = 1;
+        phase = 0;
+        first = true;
       }
 
-      response->printf("{\"id\":%d,\"driver\":\"%s\",\"car\":\"%s\",\"completedLaps\":%d,",
-                       i, driverNames[i].c_str(), carNames[i].c_str(), (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0));
-      response->printf("\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,", 
-                       (unsigned long)sz1TimeMs[i], (unsigned long)sz2TimeMs[i], (unsigned long)sz3TimeMs[i], (unsigned long)sz4TimeMs[i]);
-      response->printf("\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,", 
-                       (unsigned long)bestSz1TimeMs[i], (unsigned long)bestSz2TimeMs[i], (unsigned long)bestSz3TimeMs[i], (unsigned long)bestSz4TimeMs[i]);
-      response->printf("\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,", 
-                       (unsigned long)split1TimeMs[i], (unsigned long)split2TimeMs[i], (unsigned long)split3TimeMs[i]);
-      response->printf("\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastLapIsOutLap\":%s,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
-                       (unsigned long)lastLapDuration[i], (unsigned long)bestLapDuration[i], (unsigned long)getAverageLapTimeMs(i), lastLapIsOutLap[i] ? "true" : "false", (unsigned long)lastSeenMs[i], stateStr);
-      first = false;
-    }
-  }
-  response->print("]");
+      size_t written = 0;
+      while (written < maxLen) {
+        if (pendingOff < pendingLen) {
+          size_t n = pendingLen - pendingOff;
+          if (n > maxLen - written) n = maxLen - written;
+          memcpy(buffer + written, pending + pendingOff, n);
+          pendingOff += n;
+          written += n;
+          continue;
+        }
+        pendingLen = pendingOff = 0;
+
+        if (phase == 0) {
+          pending[0] = '[';
+          pendingLen = 1;
+          phase = 1;
+        } else if (phase == 1) {
+          if (nextCar > MAX_CARS) {
+            phase = 2;
+            continue;
+          }
+          uint8_t i = nextCar++;
+          if (!(lapCounter[i] > 0 || sz1TimeMs[i] > 0 || sz2TimeMs[i] > 0 || sz3TimeMs[i] > 0 || sz4TimeMs[i] > 0 || bestSz1TimeMs[i] > 0 || bestSz2TimeMs[i] > 0 || bestSz3TimeMs[i] > 0 || bestSz4TimeMs[i] > 0 || !awaitingBaseCross[i])) {
+            continue;
+          }
+
+          const char* stateStr = "normal";
+          if (currentMode == MODE_DRAGRACE) {
+            stateStr = dragRunActive[i] ? "drag_running" : "normal";
+          } else if (isOutLap[i]) {
+            stateStr = "outlap";
+          } else if (inPitOrPause[i]) {
+            stateStr = (currentMode == MODE_PRACTICE) ? "pause" : "box";
+          } else if (lapCounter[i] == 0 && !awaitingBaseCross[i]) {
+            stateStr = "outlap";
+          }
+
+          int n = snprintf(pending, sizeof(pending),
+            "%s{\"id\":%d,\"driver\":\"%s\",\"car\":\"%s\",\"completedLaps\":%d,"
+            "\"sz1\":%lu,\"sz2\":%lu,\"sz3\":%lu,\"sz4\":%lu,"
+            "\"bestSz1\":%lu,\"bestSz2\":%lu,\"bestSz3\":%lu,\"bestSz4\":%lu,"
+            "\"split1\":%lu,\"split2\":%lu,\"split3\":%lu,"
+            "\"lastLap\":%lu,\"bestLap\":%lu,\"avgLap\":%lu,\"lastLapIsOutLap\":%s,\"lastSeenMs\":%lu,\"state\":\"%s\"}",
+            first ? "" : ",", i, driverNames[i].c_str(), carNames[i].c_str(), (lapCounter[i] > 0 ? (lapCounter[i] - 1) : 0),
+            (unsigned long)sz1TimeMs[i], (unsigned long)sz2TimeMs[i], (unsigned long)sz3TimeMs[i], (unsigned long)sz4TimeMs[i],
+            (unsigned long)bestSz1TimeMs[i], (unsigned long)bestSz2TimeMs[i], (unsigned long)bestSz3TimeMs[i], (unsigned long)bestSz4TimeMs[i],
+            (unsigned long)split1TimeMs[i], (unsigned long)split2TimeMs[i], (unsigned long)split3TimeMs[i],
+            (unsigned long)lastLapDuration[i], (unsigned long)bestLapDuration[i], (unsigned long)getAverageLapTimeMs(i),
+            lastLapIsOutLap[i] ? "true" : "false", (unsigned long)lastSeenMs[i], stateStr);
+          if (n < 0) n = 0;
+          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
+          pendingLen = (size_t)n;
+          first = false;
+        } else if (phase == 2) {
+          pending[0] = ']';
+          pendingLen = 1;
+          phase = 3;
+        } else {
+          break;
+        }
+      }
+
+      if (written == 0) lapsStreamBusy = false;
+      return written;
+    });
+  response->addHeader("Cache-Control", "no-cache");
   request->send(response);
+  request->onDisconnect([]() { lapsStreamBusy = false; });
 }
 
 void handleGetStationsStatus(AsyncWebServerRequest *request) {

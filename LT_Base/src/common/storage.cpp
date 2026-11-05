@@ -777,6 +777,91 @@ String lastResetReason = "Unbekannt";
 String lastResetInfo = "";
 bool lastResetIsCrash = false;
 
+#if defined(ESP8266)
+// Letzte Browser-Uhrzeit im RTC-Speicher (ueberlebt Software-Resets/Crashes, nicht Power-On)
+struct RtcClockBlock {
+  uint32_t magic;
+  uint32_t epochSec;
+  int32_t tzSec;
+  uint32_t check;
+};
+static const uint32_t RTC_CLOCK_MAGIC = 0x4C54434B;
+static const uint32_t RTC_CLOCK_SLOT = 64;
+
+static uint32_t rtcClockCheck(const RtcClockBlock& b) {
+  return b.magic ^ b.epochSec ^ (uint32_t)b.tzSec ^ 0xA5A5A5A5UL;
+}
+
+static String formatClockText(uint32_t epochSec, int32_t tzSec) {
+  time_t localT = (time_t)((int64_t)epochSec + tzSec);
+  struct tm *tm_info = gmtime(&localT);
+  if (!tm_info) return "?";
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%02d.%02d. %02d:%02d", tm_info->tm_mday, tm_info->tm_mon + 1,
+           tm_info->tm_hour, tm_info->tm_min);
+  return String(buf);
+}
+
+static void rtcClockSave() {
+  if (baseUnixTimestampSec == 0) return;
+  RtcClockBlock b;
+  b.magic = RTC_CLOCK_MAGIC;
+  b.epochSec = (uint32_t)(baseUnixTimestampSec + ((millis() - baseMillis) / 1000UL));
+  b.tzSec = clientTzOffsetSec;
+  b.check = rtcClockCheck(b);
+  ESP.rtcUserMemoryWrite(RTC_CLOCK_SLOT, (uint32_t*)&b, sizeof(b));
+}
+
+static bool rtcClockLoad(RtcClockBlock& b) {
+  if (!ESP.rtcUserMemoryRead(RTC_CLOCK_SLOT, (uint32_t*)&b, sizeof(b))) return false;
+  return b.magic == RTC_CLOCK_MAGIC && b.check == rtcClockCheck(b);
+}
+
+// Diagnose: letzter Schritt des Rundenloeschens, bleibt nach einem Crash im RTC-Speicher erhalten
+static const uint32_t RTC_STEP_MAGIC = 0x4C445354;
+static const uint32_t RTC_STEP_SLOT = 72;
+#endif
+
+static bool lapStepActive = false;
+
+static void markLapDeleteStep(uint32_t step) {
+  lapStepActive = (step != 0);
+#if defined(ESP8266)
+  uint32_t blk[3] = { RTC_STEP_MAGIC, step, (uint32_t)ESP.getFreeHeap() };
+  ESP.rtcUserMemoryWrite(RTC_STEP_SLOT, blk, sizeof(blk));
+#endif
+}
+
+// Feinschritte nur waehrend eines laufenden Rundenloeschens protokollieren
+static void markLapDeleteSubStep(uint32_t step) {
+  if (lapStepActive) markLapDeleteStep(step);
+}
+
+// Alle 30 s die Uhrzeit sichern und nach dem ersten Zeitsync eine Zeile im Reset-Log ablegen
+static void updateResetLogClock() {
+#if defined(ESP8266)
+  static uint32_t lastTickMs = 0;
+  static bool syncLogged = false;
+  if (baseUnixTimestampSec == 0) return;
+  if (millis() - lastTickMs < 30000UL && syncLogged) return;
+  lastTickMs = millis();
+  rtcClockSave();
+  if (!syncLogged) {
+    syncLogged = true;
+    File f = LittleFS.open("/crash.log", "a");
+    if (f) {
+      uint32_t nowSec = (uint32_t)(baseUnixTimestampSec + ((millis() - baseMillis) / 1000UL));
+      f.print("[ZEITSYNC] ");
+      f.print(formatClockText(nowSec, clientTzOffsetSec));
+      f.print(" | Uptime ");
+      f.print(millis() / 1000UL);
+      f.println(" s");
+      f.close();
+    }
+  }
+#endif
+}
+
 void recordBootResetReason() {
 #if defined(ESP8266)
   lastResetReason = ESP.getResetReason();
@@ -812,11 +897,29 @@ void recordBootResetReason() {
       }
 
       f.print(tag);
+      RtcClockBlock rtcBlock;
+      if (rtcClockLoad(rtcBlock)) {
+        f.print(" zuletzt aktiv ca. ");
+        f.print(formatClockText(rtcBlock.epochSec, rtcBlock.tzSec));
+      } else {
+        f.print(" Zeit unbekannt");
+      }
+      f.print(" |");
       f.print(" Grund: ");
       f.print(lastResetReason);
       f.print(" | Details: ");
-      f.println(lastResetInfo);
+      f.print(lastResetInfo);
+      uint32_t stepBlk[3];
+      if (ESP.rtcUserMemoryRead(RTC_STEP_SLOT, stepBlk, sizeof(stepBlk)) &&
+          stepBlk[0] == RTC_STEP_MAGIC && stepBlk[1] != 0) {
+        f.print(" | Loeschschritt ");
+        f.print(stepBlk[1]);
+        f.print(" Heap ");
+        f.print(stepBlk[2]);
+      }
+      f.println();
       f.close();
+      markLapDeleteStep(0);
     }
   }
 #elif defined(ESP32)
@@ -916,6 +1019,7 @@ void loadTracksFromFS() {
 }
 
 void saveTracksToFS() {
+  markLapDeleteSubStep(10);
   JsonDocument doc;
   if (LittleFS.exists("/tracks.json")) {
     File f = LittleFS.open("/tracks.json", "r");
@@ -924,6 +1028,7 @@ void saveTracksToFS() {
       f.close();
     }
   }
+  markLapDeleteSubStep(11);
 
   doc["active"] = activeTrackId;
   JsonArray arr = doc["tracks"].as<JsonArray>();
@@ -983,11 +1088,13 @@ void saveTracksToFS() {
     saveRecordArrayToJson(t, "dailyRecords", activeDailyRecords, activeDailyCount);
   }
 
+  markLapDeleteSubStep(12);
   File fWrite = LittleFS.open("/tracks.json", "w");
   if (fWrite) {
     serializeJson(doc, fWrite);
     fWrite.close();
   }
+  markLapDeleteSubStep(13);
   updateFsUsageCache();
 }
 
@@ -1733,6 +1840,8 @@ LapDeleteState getLapDeletionState() {
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
 
+  updateResetLogClock();
+
   if (lapDeleteState == LAP_DELETE_PENDING) {
     LapDeleteState result = deleteLapFromSession(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
                                                  lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs);
@@ -2163,9 +2272,11 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
   if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return LAP_DELETE_NOT_FOUND;
 
   if (PlatformRuntime::isHeapCritical(4000, 100, 0)) return LAP_DELETE_NO_HEAP;
+  markLapDeleteStep(1);
   LapRewriteResult r;
   LapDeleteState rewriteState = rewriteSessionWithoutLap(targetFile, carId, lapNum, lapTimeMs, r);
-  if (rewriteState != LAP_DELETE_OK) return rewriteState;
+  if (rewriteState != LAP_DELETE_OK) { markLapDeleteStep(0); return rewriteState; }
+  markLapDeleteStep(2);
 
   uint32_t deletedLapTimeMs = r.deletedLapTimeMs;
   String sessTrackId = r.trackId.length() > 0 ? r.trackId : activeTrackId;
@@ -2225,8 +2336,10 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     }
   }
 
+  markLapDeleteStep(3);
   if (r.remaining == 0) {
     deleteSessionById(sessionId);
+    markLapDeleteStep(0);
     return LAP_DELETE_OK;
   }
 
@@ -2261,7 +2374,9 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     sessionCars
   );
 
+  markLapDeleteStep(4);
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
+  markLapDeleteStep(0);
   return LAP_DELETE_OK;
 }
 
