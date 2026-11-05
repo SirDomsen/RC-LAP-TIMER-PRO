@@ -533,6 +533,79 @@ static int8_t findMatchingRecordIndex(const RecordEntry* list, uint8_t count, ui
   return -1;
 }
 
+#define TRACK_OBJ_MAX 3072
+
+// Streamt /tracks.json Strecke fuer Strecke (hoechstens ein Streckenobjekt im RAM).
+// activeId != nullptr: Schreibmodus, Ergebnis nach /tracks.json.tmp, danach rename. visit: 0 behalten, 1 verwerfen, 2 abbrechen
+// (Schreibmodus: Datei bleibt unveraendert; Lesemodus: Suche beendet, kein Fehler).
+template <typename Fn>
+static bool streamTracks(const String* activeId, Fn visit) {
+  if (!LittleFS.exists("/tracks.json")) return false;
+  File in = LittleFS.open("/tracks.json", "r");
+  if (!in) return false;
+  char* buf = (char*)malloc(TRACK_OBJ_MAX);
+  if (!buf) { in.close(); return false; }
+
+  const char* tmpPath = "/tracks.json.tmp";
+  File out;
+  bool writing = (activeId != nullptr);
+  if (writing) {
+    if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
+    out = LittleFS.open(tmpPath, "w");
+    if (!out) { free(buf); in.close(); return false; }
+    out.print("{\"active\":\"");
+    out.print(*activeId);
+    out.print("\",\"tracks\":[");
+  }
+
+  bool first = true, ok = true, stopped = false;
+  bool inTracks = false, inQuotes = false, escaped = false, overflow = false;
+  int depth = 0;
+  size_t len = 0;
+  while (ok && in.available()) {
+    char c = (char)in.read();
+    if (!inTracks) { if (c == '[') inTracks = true; continue; }
+    if (depth == 0) {
+      if (c == '{') { depth = 1; len = 0; overflow = false; inQuotes = false; escaped = false; buf[len++] = c; }
+      else if (c == ']') break;
+      continue;
+    }
+    if (len + 1 < TRACK_OBJ_MAX) buf[len++] = c; else overflow = true;
+    if (escaped) { escaped = false; continue; }
+    if (inQuotes) {
+      if (c == '\\') escaped = true;
+      else if (c == '"') inQuotes = false;
+      continue;
+    }
+    if (c == '"') inQuotes = true;
+    else if (c == '{') depth++;
+    else if (c == '}' && --depth == 0) {
+      if (overflow) { if (writing) ok = false; continue; }
+      buf[len] = '\0';
+      JsonDocument d;
+      if (deserializeJson(d, buf)) { if (writing) ok = false; continue; }
+      int r = visit(d);
+      if (r == 2) { stopped = true; break; }
+      if (writing && r == 0) {
+        if (!first) out.print(",");
+        serializeJson(d, out);
+        first = false;
+      }
+    }
+    yield();
+  }
+  free(buf);
+  in.close();
+  if (!writing) return ok;
+
+  out.print("]}");
+  out.close();
+  if (!ok || stopped) { LittleFS.remove(tmpPath); return false; }
+  LittleFS.remove("/tracks.json");
+  if (!LittleFS.rename(tmpPath, "/tracks.json")) { LittleFS.remove(tmpPath); return false; }
+  return true;
+}
+
 bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
   String targetId = trackId.length() > 0 ? trackId : activeTrackId;
   uint32_t deletedLap = 0;
@@ -586,20 +659,13 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
     syncTopRecordVars();
     saveTracksToFS();
   } else {
-    if (!LittleFS.exists("/tracks.json")) return false;
-    File f = LittleFS.open("/tracks.json", "r");
-    if (!f) return false;
-    JsonDocument doc;
-    if (deserializeJson(doc, f)) {
-      f.close();
-      return false;
-    }
-    f.close();
-
-    JsonArray arr = doc["tracks"].as<JsonArray>();
     bool found = false;
-    for (JsonObject t : arr) {
-      if (t["id"].as<String>() == targetId) {
+    bool failed = false;
+    String activeCopy = activeTrackId;
+    bool written = streamTracks(&activeCopy, [&](JsonDocument& d) -> int {
+      JsonObject t = d.as<JsonObject>();
+      if (t["id"].as<String>() != targetId) return 0;
+      {
         RecordEntry allTimeList[MAX_TRACK_RECORDS];
         uint8_t allTimeCount = 0;
         loadRecordArrayFromJson(t, "allTimeRecords", allTimeList, allTimeCount);
@@ -611,7 +677,7 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
         bool ok = false;
         if (isDaily) {
           ok = removeEntryFromList(dailyList, dailyCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-          if (!ok) return false;
+          if (!ok) { failed = true; return 2; }
 
           if (index >= 0 && deletedLap > 0) {
             String matchDate = deletedDate.length() > 0 ? deletedDate : today;
@@ -624,7 +690,7 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
           }
         } else {
           ok = removeEntryFromList(allTimeList, allTimeCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-          if (!ok) return false;
+          if (!ok) { failed = true; return 2; }
 
           bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
           if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
@@ -667,18 +733,11 @@ bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
           t["recordCar"] = "";
           t["recordDate"] = "";
         }
-
-        found = true;
-        break;
       }
-    }
-    if (!found) return false;
-
-    File fW = LittleFS.open("/tracks.json", "w");
-    if (fW) {
-      serializeJson(doc, fW);
-      fW.close();
-    }
+      found = true;
+      return 0;
+    });
+    if (failed || !found || !written) return false;
   }
 
   char buf[160];
@@ -1018,60 +1077,47 @@ void loadTracksFromFS() {
   }
 }
 
-void saveTracksToFS() {
-  markLapDeleteSubStep(10);
-  JsonDocument doc;
-  if (LittleFS.exists("/tracks.json")) {
-    File f = LittleFS.open("/tracks.json", "r");
-    if (f) {
-      deserializeJson(doc, f);
-      f.close();
+// Schreibt eine Rekordliste direkt in den Stream (je Eintrag nur ein kleines JsonDocument)
+static void writeRecordArrayStream(File& out, const char* key, const RecordEntry* list, uint8_t count) {
+  out.print(",\"");
+  out.print(key);
+  out.print("\":[");
+  bool first = true;
+  for (uint8_t i = 0; i < count && i < MAX_TRACK_RECORDS; i++) {
+    if (list[i].lapMs == 0) continue;
+    JsonDocument item;
+    item["lap"] = list[i].lapMs;
+    item["carId"] = list[i].carId;
+    item["driver"] = list[i].driver;
+    item["car"] = list[i].car;
+    item["date"] = list[i].date;
+    if (list[i].prevLapMs > 0) {
+      item["prevLap"] = list[i].prevLapMs;
+      item["prevDate"] = list[i].prevDate;
     }
-  }
-  markLapDeleteSubStep(11);
-
-  doc["active"] = activeTrackId;
-  JsonArray arr = doc["tracks"].as<JsonArray>();
-  if (!arr) {
-    arr = doc["tracks"].to<JsonArray>();
-  }
-
-  String today = getCurrentLocalDateStr();
-  syncTopRecordVars();
-
-  bool found = false;
-  for (JsonObject t : arr) {
-    if (t["id"].as<String>() == activeTrackId) {
-      t["name"] = activeTrackName;
-      t["recordLap"] = allTimeBestLapMs;
-      t["recordCarId"] = allTimeBestCarId;
-      t["recordDriver"] = allTimeBestDriver;
-      t["recordCar"] = allTimeBestCar;
-      t["recordDate"] = allTimeBestDate;
-      t["bestLap"] = dailyBestLapMs;
-      t["bestCarId"] = dailyBestCarId;
-      t["bestDriver"] = dailyBestDriver;
-      t["bestCar"] = dailyBestCar;
-      t["bestDate"] = dailyBestDate;
-      saveRecordArrayToJson(t, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
-      saveRecordArrayToJson(t, "dailyRecords", activeDailyRecords, activeDailyCount);
-      found = true;
-    } else if (today.length() > 0) {
-      // Auch bei inaktiven Strecken abgelaufene Tagesbestzeiten von gestern bereinigen
-      String tDate = t["bestDate"] | "";
-      if (tDate.length() > 0 && tDate != today) {
-        t["bestLap"] = 0;
-        t["bestCarId"] = 0;
-        t["bestDriver"] = "";
-        t["bestCar"] = "";
-        t["bestDate"] = today;
-        t["dailyRecords"].to<JsonArray>();
-      }
+    if (list[i].szMask > 0 || list[i].s1 > 0) {
+      item["s1"] = list[i].s1;
+      item["s2"] = list[i].s2;
+      item["s3"] = list[i].s3;
+      item["s4"] = list[i].s4;
+      item["szMask"] = list[i].szMask;
     }
+    if (!first) out.print(",");
+    serializeJson(item, out);
+    first = false;
   }
+  out.print("]");
+}
 
-  if (!found) {
-    JsonObject t = arr.add<JsonObject>();
+#ifndef TRACK_OBJ_MAX
+#define TRACK_OBJ_MAX 3072
+#endif
+
+// Aktive Strecke komplett aus den RAM-Listen als ein Streckenobjekt schreiben
+static void writeActiveTrackStream(File& out) {
+  String head;
+  {
+    JsonDocument t;
     t["id"] = activeTrackId;
     t["name"] = activeTrackName;
     t["recordLap"] = allTimeBestLapMs;
@@ -1084,16 +1130,132 @@ void saveTracksToFS() {
     t["bestDriver"] = dailyBestDriver;
     t["bestCar"] = dailyBestCar;
     t["bestDate"] = dailyBestDate;
-    saveRecordArrayToJson(t, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
-    saveRecordArrayToJson(t, "dailyRecords", activeDailyRecords, activeDailyCount);
+    serializeJson(t, head);
   }
+  head.remove(head.length() - 1);  // schliessende Klammer entfernen
+  out.print(head);
+  writeRecordArrayStream(out, "allTimeRecords", activeAllTimeRecords, activeAllTimeCount);
+  writeRecordArrayStream(out, "dailyRecords", activeDailyRecords, activeDailyCount);
+  out.print("}");
+}
 
-  markLapDeleteSubStep(12);
-  File fWrite = LittleFS.open("/tracks.json", "w");
-  if (fWrite) {
-    serializeJson(doc, fWrite);
-    fWrite.close();
+// Streaming: tracks.json wird Strecke fuer Strecke nach /tracks.json.tmp kopiert (hoechstens ein Streckenobjekt im RAM),
+// die aktive Strecke kommt direkt aus den RAM-Listen. Erst danach ersetzt rename das Original.
+void saveTracksToFS() {
+  markLapDeleteSubStep(10);
+  syncTopRecordVars();
+  String today = getCurrentLocalDateStr();
+
+  char* buf = (char*)malloc(TRACK_OBJ_MAX);
+  if (!buf) return;
+
+  const char* tmpPath = "/tracks.json.tmp";
+  if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
+  File out = LittleFS.open(tmpPath, "w");
+  if (!out) { free(buf); return; }
+
+  out.print("{\"active\":\"");
+  out.print(activeTrackId);
+  out.print("\",\"tracks\":[");
+  bool firstOut = true;
+
+  markLapDeleteSubStep(11);
+  File in;
+  if (LittleFS.exists("/tracks.json")) in = LittleFS.open("/tracks.json", "r");
+  String idKey = "\"id\":\"" + activeTrackId + "\"";
+  bool okWrite = true;
+  bool activeWritten = false;
+  if (in) {
+    int depth = 0;
+    bool inQuotes = false, escaped = false, inTracks = false;
+    size_t len = 0;
+    bool overflow = false;   // Objekt zu gross: roh durchreichen
+    bool isActive = false;
+    while (okWrite && in.available()) {
+      char c = (char)in.read();
+      if (!inTracks) {
+        if (c == '[') inTracks = true;
+        continue;
+      }
+      if (depth == 0) {
+        if (c == '{') {
+          depth = 1; len = 0; overflow = false; isActive = false; inQuotes = false; escaped = false;
+          buf[len++] = c;
+          if (!firstOut) out.print(",");
+          firstOut = false;
+        } else if (c == ']') {
+          break;
+        }
+        continue;
+      }
+
+      if (!overflow) {
+        if (len + 1 < TRACK_OBJ_MAX) {
+          buf[len++] = c;
+        } else {
+          // Ueberlauf: ID pruefen, Puffer roh ausgeben und ab jetzt durchreichen
+          buf[len] = '\0';
+          isActive = strstr(buf, idKey.c_str()) != nullptr;
+          if (!isActive) okWrite = out.write((const uint8_t*)buf, len) == len;
+          overflow = true;
+        }
+      }
+      if (overflow && !isActive) out.write((const uint8_t*)&c, 1);
+
+      if (escaped) { escaped = false; continue; }
+      if (inQuotes) {
+        if (c == '\\') escaped = true;
+        else if (c == '"') inQuotes = false;
+        continue;
+      }
+      if (c == '"') inQuotes = true;
+      else if (c == '{') depth++;
+      else if (c == '}' && --depth == 0) {
+        if (!overflow) {
+          buf[len] = '\0';
+          JsonDocument d;
+          bool parsed = !deserializeJson(d, buf);
+          if (parsed && d["id"].as<String>() == activeTrackId) {
+            writeActiveTrackStream(out);
+            activeWritten = true;
+          } else if (parsed && today.length() > 0 && (d["bestDate"] | "")[0] != 0 && String(d["bestDate"] | "") != today) {
+            // Auch bei inaktiven Strecken abgelaufene Tagesbestzeiten von gestern bereinigen
+            d["bestLap"] = 0;
+            d["bestCarId"] = 0;
+            d["bestDriver"] = "";
+            d["bestCar"] = "";
+            d["bestDate"] = today;
+            d["dailyRecords"].to<JsonArray>();
+            serializeJson(d, out);
+          } else {
+            okWrite = out.write((const uint8_t*)buf, len) == len;
+          }
+        } else if (isActive) {
+          writeActiveTrackStream(out);
+          activeWritten = true;
+        }
+      }
+      yield();
+    }
+    in.close();
   }
+  free(buf);
+  markLapDeleteSubStep(12);
+
+  if (!activeWritten) {
+    if (!firstOut) out.print(",");
+    writeActiveTrackStream(out);
+  }
+  out.print("]}");
+  size_t outSize = out.size();
+  out.close();
+
+  if (!okWrite || outSize < 20) {
+    LittleFS.remove(tmpPath);
+    return;
+  }
+  if (LittleFS.exists("/tracks.json")) LittleFS.remove("/tracks.json");
+  if (!LittleFS.rename(tmpPath, "/tracks.json")) LittleFS.remove(tmpPath);
   markLapDeleteSubStep(13);
   updateFsUsageCache();
 }
@@ -1103,29 +1265,23 @@ void saveActiveTrackBestToFS() {
 }
 
 bool selectTrackById(const String& trackId) {
-  if (!LittleFS.exists("/tracks.json")) return false;
-  File f = LittleFS.open("/tracks.json", "r");
-  if (!f) return false;
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, f);
-  f.close();
-  if (err) return false;
+  JsonDocument found;
+  bool hit = false;
+  streamTracks(nullptr, [&](JsonDocument& t) -> int {
+    if (t["id"].as<String>() == trackId) { found = t; hit = true; return 2; }
+    return 0;
+  });
+  if (!hit) return false;
 
-  JsonArray arr = doc["tracks"].as<JsonArray>();
-  for (JsonObject t : arr) {
-    if (t["id"].as<String>() == trackId) {
-      startNewSessionFrame((uint8_t)currentMode);
-      activeTrackId = t["id"].as<String>();
-      activeTrackName = t["name"].as<String>();
-      bool dummy = false;
-      loadActiveTrackRecordsFromJsonObj(t, dummy);
-      doc["active"] = activeTrackId;
-      saveTracksToFS();
-      resetAllLaps(false);
-      return true;
-    }
-  }
-  return false;
+  startNewSessionFrame((uint8_t)currentMode);
+  JsonObject t = found.as<JsonObject>();
+  activeTrackId = t["id"].as<String>();
+  activeTrackName = t["name"].as<String>();
+  bool dummy = false;
+  loadActiveTrackRecordsFromJsonObj(t, dummy);
+  saveTracksToFS();
+  resetAllLaps(false);
+  return true;
 }
 
 bool addOrSelectTrack(const String& rawName) {
@@ -1136,35 +1292,24 @@ bool addOrSelectTrack(const String& rawName) {
 
   String slug = sanitizeTrackSlug(cleanName);
 
-  JsonDocument doc;
-  if (LittleFS.exists("/tracks.json")) {
-    File f = LittleFS.open("/tracks.json", "r");
-    if (f) {
-      deserializeJson(doc, f);
-      f.close();
-    }
-  }
-
-  JsonArray arr = doc["tracks"].as<JsonArray>();
-  if (!arr) arr = doc["tracks"].to<JsonArray>();
+  JsonDocument found;
+  bool exists = false;
+  int trackCount = 0;
+  streamTracks(nullptr, [&](JsonDocument& t) -> int {
+    trackCount++;
+    if (!exists && t["id"].as<String>() == slug) { found = t; exists = true; }
+    return 0;
+  });
 
   startNewSessionFrame((uint8_t)currentMode);
 
-  bool exists = false;
-  for (JsonObject t : arr) {
-    if (t["id"].as<String>() == slug) {
-      t["name"] = cleanName;
-      activeTrackId = slug;
-      activeTrackName = cleanName;
-      bool dummy = false;
-      loadActiveTrackRecordsFromJsonObj(t, dummy);
-      exists = true;
-      break;
-    }
-  }
-
-  if (!exists) {
-    if (arr.size() >= 20) return false; // Schutz vor Überlauf
+  if (exists) {
+    activeTrackId = slug;
+    activeTrackName = cleanName;
+    bool dummy = false;
+    loadActiveTrackRecordsFromJsonObj(found.as<JsonObject>(), dummy);
+  } else {
+    if (trackCount >= 20) return false; // Schutz vor Überlauf
     String today = getCurrentLocalDateStr();
     activeTrackId = slug;
     activeTrackName = cleanName;
@@ -1332,26 +1477,18 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
 
 bool deleteTrackById(const String& trackId) {
   if (!LittleFS.exists("/tracks.json")) return false;
-  File f = LittleFS.open("/tracks.json", "r");
-  if (!f) return false;
-  JsonDocument doc;
-  if (deserializeJson(doc, f)) {
-    f.close();
-    return false;
-  }
-  f.close();
-
-  JsonArray arr = doc["tracks"].as<JsonArray>();
-  if (!arr) return false;
 
   startNewSessionFrame((uint8_t)currentMode);
 
-  for (size_t i = 0; i < arr.size(); i++) {
-    if (arr[i]["id"].as<String>() == trackId) {
-      arr.remove(i);
-      break;
-    }
-  }
+  String firstRemainingId = "";
+  String activeCopy = activeTrackId;
+  bool written = streamTracks(&activeCopy, [&](JsonDocument& t) -> int {
+    String id = t["id"].as<String>();
+    if (id == trackId) return 1;
+    if (firstRemainingId.length() == 0) firstRemainingId = id;
+    return 0;
+  });
+  if (!written) return false;
 
   // Alle Dateien & Ordner dieser Strecke entfernen
   String trackDir = "/" + trackId;
@@ -1360,28 +1497,30 @@ bool deleteTrackById(const String& trackId) {
   }
   filterSessionsIndexFile("", trackId, "", "");
 
-  if (arr.size() == 0) {
-    JsonObject def = arr.add<JsonObject>();
-    def["id"] = "standard";
-    def["name"] = "Test-Strecke";
-    def["recordLap"] = 0;
-    def["bestLap"] = 0;
-    def["allTimeRecords"].to<JsonArray>();
-    def["dailyRecords"].to<JsonArray>();
+  JsonDocument next;
+  bool haveNext = false;
+  if (firstRemainingId.length() > 0) {
+    streamTracks(nullptr, [&](JsonDocument& t) -> int {
+      if (t["id"].as<String>() == firstRemainingId) { next = t; haveNext = true; return 2; }
+      return 0;
+    });
   }
 
-  JsonObject nextActive = arr[0];
-  activeTrackId = nextActive["id"].as<String>();
-  activeTrackName = nextActive["name"].as<String>();
-  bool dummy = false;
-  loadActiveTrackRecordsFromJsonObj(nextActive, dummy);
-  doc["active"] = activeTrackId;
-
-  File fWrite = LittleFS.open("/tracks.json", "w");
-  if (fWrite) {
-    serializeJson(doc, fWrite);
-    fWrite.close();
+  if (haveNext) {
+    JsonObject nextActive = next.as<JsonObject>();
+    activeTrackId = nextActive["id"].as<String>();
+    activeTrackName = nextActive["name"].as<String>();
+    bool dummy = false;
+    loadActiveTrackRecordsFromJsonObj(nextActive, dummy);
+  } else {
+    // Keine Strecke mehr: Standardstrecke wird von saveTracksToFS neu angelegt
+    activeTrackId = "standard";
+    activeTrackName = "Test-Strecke";
+    clearRecordList(activeAllTimeRecords, activeAllTimeCount);
+    clearRecordList(activeDailyRecords, activeDailyCount);
+    syncTopRecordVars();
   }
+
   saveTracksToFS();
   resetAllLaps(false);
   return true;
@@ -2319,32 +2458,28 @@ static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t l
     }
     return;
   }
-  // Andere (nicht aktive) Strecke: passenden Eintrag in tracks.json suchen
-  if (!LittleFS.exists("/tracks.json")) return;
-  File f = LittleFS.open("/tracks.json", "r");
-  if (!f) return;
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, f);
-  f.close();
-  if (err) return;
-  JsonArray arr = doc["tracks"].as<JsonArray>();
-  for (JsonObject t : arr) {
-    if (t["id"].as<String>() != trackId) continue;
-    RecordEntry dList[MAX_TRACK_RECORDS];
-    uint8_t dCount = 0;
+  // Andere (nicht aktive) Strecke: passenden Eintrag aus tracks.json suchen (gestreamt)
+  RecordEntry dList[MAX_TRACK_RECORDS];
+  uint8_t dCount = 0;
+  RecordEntry aList[MAX_TRACK_RECORDS];
+  uint8_t aCount = 0;
+  bool hit = false;
+  streamTracks(nullptr, [&](JsonDocument& d) -> int {
+    JsonObject t = d.as<JsonObject>();
+    if (t["id"].as<String>() != trackId) return 0;
     loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
-    int8_t dIdx = findMatchingRecordIndex(dList, dCount, lapMs, carId, "", "");
-    if (dIdx >= 0) {
-      deleteTrackRecordEntry(trackId, true, dIdx);
-    } else {
-      RecordEntry aList[MAX_TRACK_RECORDS];
-      uint8_t aCount = 0;
-      loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
-      int8_t aIdx = findMatchingRecordIndex(aList, aCount, lapMs, carId, "", "");
-      if (aIdx >= 0) deleteTrackRecordEntry(trackId, false, aIdx);
-    }
-    break;
+    loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
+    hit = true;
+    return 2;
+  });
+  if (!hit) return;
+  int8_t dIdx = findMatchingRecordIndex(dList, dCount, lapMs, carId, "", "");
+  if (dIdx >= 0) {
+    deleteTrackRecordEntry(trackId, true, dIdx);
+    return;
   }
+  int8_t aIdx = findMatchingRecordIndex(aList, aCount, lapMs, carId, "", "");
+  if (aIdx >= 0) deleteTrackRecordEntry(trackId, false, aIdx);
 }
 
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
@@ -2635,31 +2770,21 @@ void deleteAllHistory() {
   syncTopRecordVars();
 
   if (LittleFS.exists("/tracks.json")) {
-    File f = LittleFS.open("/tracks.json", "r");
-    if (f) {
-      JsonDocument doc;
-      if (!deserializeJson(doc, f)) {
-        f.close();
-        JsonArray arr = doc["tracks"].as<JsonArray>();
-        for (JsonObject t : arr) {
-          t["recordLap"] = 0;
-          t["recordCarId"] = 0;
-          t["recordDriver"] = "";
-          t["recordCar"] = "";
-          t["recordDate"] = "";
-          t["bestLap"] = 0;
-          t["bestCarId"] = 0;
-          t["bestDriver"] = "";
-          t["bestCar"] = "";
-          t["allTimeRecords"].to<JsonArray>();
-          t["dailyRecords"].to<JsonArray>();
-        }
-        File fW = LittleFS.open("/tracks.json", "w");
-        if (fW) { serializeJson(doc, fW); fW.close(); }
-      } else {
-        f.close();
-      }
-    }
+    String activeCopy = activeTrackId;
+    streamTracks(&activeCopy, [&](JsonDocument& t) -> int {
+      t["recordLap"] = 0;
+      t["recordCarId"] = 0;
+      t["recordDriver"] = "";
+      t["recordCar"] = "";
+      t["recordDate"] = "";
+      t["bestLap"] = 0;
+      t["bestCarId"] = 0;
+      t["bestDriver"] = "";
+      t["bestCar"] = "";
+      t["allTimeRecords"].to<JsonArray>();
+      t["dailyRecords"].to<JsonArray>();
+      return 0;
+    });
   }
 
   updateFsUsageCache();
