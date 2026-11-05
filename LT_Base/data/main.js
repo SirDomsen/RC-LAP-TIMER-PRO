@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.5';
+window.UI_VERSION = '4.7.6';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -356,7 +356,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.5');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.6');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1510,7 +1510,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.5');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.6');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -1978,12 +1978,13 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
       } catch (lapErr) {
         console.warn("Fehler beim Löschen via /api/deletelap:", lapErr);
       }
-      // Runde konnte nicht aus der Session entfernt werden: Rekord wenigstens aus der Liste nehmen
       if (!success) {
-        try {
-          let recRes = await fetch(`/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`, { method: 'POST' });
-          if (recRes.ok) success = true;
-        } catch (recErr) {}
+        await showAlert({
+          title: "❌ NICHT GELÖSCHT",
+          theme: "danger",
+          message: "Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert."
+        });
+        return;
       }
     } else {
       // Kein Session-Match (z.B. manueller Rekord) oder 'Alle löschen' (index < 0)
