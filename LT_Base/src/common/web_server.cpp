@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "web_handlers.h"
+#include "lap_logic.h"
 #include "storage.h"
 #include "esp_now_base.h"
 #include <status_leds.h>
@@ -514,6 +515,10 @@ void initNetworkAndServer() {
   });
 
   server.on("/api/deletefile", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (isRaceDeleteLocked()) {
+      request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Dateiloeschen waehrend eines laufenden Rennens gesperrt\"}");
+      return;
+    }
     if (request->hasParam("file")) {
       String filename = request->getParam("file")->value();
       filename.replace("%2F", "/");

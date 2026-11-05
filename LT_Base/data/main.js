@@ -1830,6 +1830,7 @@ async function deleteLapOnDevice(url) {
   setLapDeleteNotice(true);
   try {
     let res = await fetch(url, { method: 'POST' });
+    if (res.status === 423) return 'locked';
     if (res.status === 503) {
       let txt = await res.text();
       return txt.indexOf('Speicher') >= 0 ? 'noheap' : 'busy';
@@ -1852,6 +1853,7 @@ async function deleteLapOnDevice(url) {
 }
 
 function deleteLapFailText(state) {
+  if (state === 'locked') return 'Löschen ist während eines laufenden Rennens gesperrt.';
   if (state === 'noheap') return 'Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.';
   if (state === 'nospace') return 'Kein Platz im Dateisystem für das sichere Umschreiben der Session (Flash fast voll). Es wurde nichts verändert.';
   if (state === 'busy') return 'Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.';
@@ -1860,6 +1862,14 @@ function deleteLapFailText(state) {
 }
 
 async function deleteTrackRecordEntryUI(trackId, type, index) {
+  if (typeof isRaceDeleteLocked === 'function' && isRaceDeleteLocked()) {
+    await showAlert({
+      title: "🔒 GESPERRT",
+      theme: "warning",
+      message: "Löschen ist während eines laufenden Rennens gesperrt."
+    });
+    return;
+  }
   let targetId = trackId || activeTrackId;
   let trackObj = allTracksList.find(t => t.id === targetId);
   let isDaily = (type === 'daily');
@@ -2057,6 +2067,14 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
       try {
         let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`;
         let res = await fetch(url, { method: 'POST' });
+        if (res.status === 423) {
+          await showAlert({
+            title: "🔒 GESPERRT",
+            theme: "warning",
+            message: "Löschen ist während eines laufenden Rennens gesperrt."
+          });
+          return;
+        }
         if (res.ok) success = true;
       } catch (recErr) {
         console.warn("Fehler beim Löschen des Rekordeintrags:", recErr);

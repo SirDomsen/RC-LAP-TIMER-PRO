@@ -135,4 +135,7 @@ uint32_t getAverageLapTimeMs(uint8_t carId);
 void syncClockOnce(uint64_t clientTsSec);
 uint64_t getCurrentTimestampMs();
 
+extern bool raceSessionActive;
+bool isRaceDeleteLocked();
+
 #endif

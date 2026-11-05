@@ -69,6 +69,7 @@ uint32_t lastSectorTimeMs[MAX_CARS + 1] = {0};
 static uint8_t currentExpectedSector[MAX_CARS + 1] = {0};
 
 RaceMode currentMode = MODE_PRACTICE;
+bool raceSessionActive = false;
 uint32_t modeEndTimeMs = 0;
 uint16_t durationMinutes = 0;
 
@@ -260,6 +261,7 @@ void addRecentID(uint8_t newId) {
 }
 
 void resetAllLaps(bool isHardReset) {
+  raceSessionActive = false;
   startNewSessionFrame((uint8_t)currentMode);
 
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
@@ -332,6 +334,31 @@ bool areAllActiveCarsFinished() {
     }
   }
   return true;
+}
+
+bool isRaceDeleteLocked() {
+  if (currentMode != MODE_RACE_LAPS && currentMode != MODE_RACE_TIME && currentMode != MODE_DRAGRACE) {
+    return false;
+  }
+  if (!raceSessionActive) return false;
+
+  if (currentMode == MODE_RACE_TIME) {
+    if (modeEndTimeMs > 0 && millis() > modeEndTimeMs && areAllActiveCarsFinished()) {
+      raceSessionActive = false;
+      return false;
+    }
+  } else if (currentMode == MODE_RACE_LAPS) {
+    if (targetRounds > 0) {
+      for (uint8_t i = 1; i <= MAX_CARS; i++) {
+        if (lapCounter[i] >= targetRounds) {
+          raceSessionActive = false;
+          return false;
+        }
+      }
+    }
+  }
+
+  return raceSessionActive;
 }
 
 uint8_t getActiveCarsCount(uint32_t timeoutMs) {
@@ -1011,6 +1038,7 @@ void updateLapLogicTasks() {
       if (!sessionEndBroadcasted && areAllActiveCarsFinished()) {
         sessionEndBroadcasted = true;
         flushCurrentSessionToIndex();
+        raceSessionActive = false;
         broadcastWebSocket("{\"type\":\"session_completed\"}");
       }
     } else {

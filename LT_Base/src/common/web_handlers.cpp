@@ -162,6 +162,7 @@ void handlePostSession(AsyncWebServerRequest *request) {
     
     uint16_t duration = request->hasParam("duration") ? request->getParam("duration")->value().toInt() : 0;
     targetRounds = request->hasParam("laps") ? request->getParam("laps")->value().toInt() : 0;
+    raceSessionActive = (newMode == MODE_RACE_LAPS || newMode == MODE_RACE_TIME || newMode == MODE_DRAGRACE);
 
     if (duration > 0) {
       modeEndTimeMs = millis() + ((uint32_t)duration * 60000UL);
@@ -484,6 +485,10 @@ void handleGetSessionFile(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteLap(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Rundenloeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   if (request->hasParam("sessionId") || request->hasParam("file")) {
     String sessionId = request->hasParam("sessionId") ? request->getParam("sessionId")->value() : "";
     String filePath = request->hasParam("file") ? request->getParam("file")->value() : "";
@@ -518,6 +523,10 @@ void handleGetDeleteLapStatus(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   if (request->hasParam("driver")) {
     String driverName = request->getParam("driver")->value();
     deleteDriverHistory(driverName);
@@ -528,11 +537,19 @@ void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteAllStats(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   deleteAllHistory();
   request->send(200, "text/plain", "OK");
 }
 
 void handlePostDeleteSession(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   if (request->hasParam("id")) {
     String sessionId = request->getParam("id")->value();
     deleteSessionById(sessionId);
@@ -584,6 +601,10 @@ void handlePostAddTrack(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteTrack(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   if (request->hasParam("id")) {
     String id = request->getParam("id")->value();
     if (deleteTrackById(id)) {
@@ -595,6 +616,10 @@ void handlePostDeleteTrack(AsyncWebServerRequest *request) {
 }
 
 void handlePostDeleteTrackRecord(AsyncWebServerRequest *request) {
+  if (isRaceDeleteLocked()) {
+    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    return;
+  }
   String trackId = request->hasParam("trackId") ? request->getParam("trackId")->value() : activeTrackId;
   String typeStr = request->hasParam("type") ? request->getParam("type")->value() : "daily";
   int8_t idx = request->hasParam("index") ? (int8_t)request->getParam("index")->value().toInt() : 0;

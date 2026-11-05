@@ -1033,36 +1033,64 @@ String sanitizeTrackSlug(const String& rawName) {
   return slug;
 }
 
-void loadTracksFromFS() {
-  bool loaded = false;
-  bool needsSaveBack = false;
-  if (LittleFS.exists("/tracks.json")) {
-    File f = LittleFS.open("/tracks.json", "r");
-    if (f) {
-      JsonDocument doc;
-      DeserializationError err = deserializeJson(doc, f);
-      f.close();
-      if (!err && doc["tracks"].is<JsonArray>()) {
-        String act = doc["active"] | "standard";
-        JsonArray arr = doc["tracks"].as<JsonArray>();
-        if (arr.size() > 0) {
-          JsonObject foundObj;
-          for (JsonObject t : arr) {
-            if (t["id"].as<String>() == act) {
-              foundObj = t;
-              break;
-            }
-          }
-          if (foundObj.isNull()) {
-            foundObj = arr[0];
-          }
-          activeTrackId = foundObj["id"] | "standard";
-          activeTrackName = foundObj["name"] | "Test-Strecke";
-          loadActiveTrackRecordsFromJsonObj(foundObj, needsSaveBack);
-          loaded = true;
+static String getActiveTrackIdFromFS() {
+  if (!LittleFS.exists("/tracks.json")) return "standard";
+  File f = LittleFS.open("/tracks.json", "r");
+  if (!f) return "standard";
+  char hdr[128];
+  size_t len = 0;
+  while (f.available() && len + 1 < sizeof(hdr)) {
+    char c = (char)f.read();
+    if (c == '[') break;
+    hdr[len++] = c;
+  }
+  f.close();
+  hdr[len] = '\0';
+  char* p = strstr(hdr, "\"active\"");
+  if (p) {
+    p = strchr(p, ':');
+    if (p) {
+      p = strchr(p, '"');
+      if (p) {
+        p++;
+        char* end = strchr(p, '"');
+        if (end) {
+          *end = '\0';
+          return String(p);
         }
       }
     }
+  }
+  return "standard";
+}
+
+void loadTracksFromFS() {
+  bool loaded = false;
+  bool needsSaveBack = false;
+  String act = getActiveTrackIdFromFS();
+  bool firstTrack = true;
+
+  streamTracks(nullptr, [&](JsonDocument& t) -> int {
+    String tid = t["id"] | "";
+    if (tid == act) {
+      activeTrackId = tid.length() > 0 ? tid : "standard";
+      activeTrackName = t["name"] | "Test-Strecke";
+      loadActiveTrackRecordsFromJsonObj(t.as<JsonObject>(), needsSaveBack);
+      loaded = true;
+      return 2; // Gefunden: Sofort abbrechen! Early exit!
+    }
+    if (firstTrack) {
+      firstTrack = false;
+      activeTrackId = tid.length() > 0 ? tid : "standard";
+      activeTrackName = t["name"] | "Test-Strecke";
+      loadActiveTrackRecordsFromJsonObj(t.as<JsonObject>(), needsSaveBack);
+      needsSaveBack = true;
+    }
+    return 0;
+  });
+
+  if (!firstTrack) {
+    loaded = true;
   }
 
   if (!loaded) {
