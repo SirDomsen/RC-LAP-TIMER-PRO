@@ -7,6 +7,8 @@
 - Wir kürzen nichts ungefragt!
 - Wenn wir wichtige Dinge umgebaut, integriert oder verändert haben, gleiche mit der aktuellen gemini.md ab und ergänze/ändere ab. Besprich diese Änderungen immer mit mir! 
 - Sei dabei IMMER EHRLICH und gib keine unrealistischen prognosen und rede nichts schön. Auch wenn die Wahrheit hart ist.
+- **Bastelkiste & Hardware-Improvisation (Hands-on Debugging):** Wenn wir bei Funkverhalten (ESP-NOW, Beacons, Kanalwechsel), IR-Timing, Netzwerk oder Statusfragen im Nebel stochern oder Tests vereinfachen können, weist Antigravity proaktiv darauf hin und fragt nach vorhandener Hardware in der Bastelkiste (z. B. ESP-01S, Wemos D1 Mini, NodeMCU, FTDI, Test-Transponder). Wir nutzen bei Bedarf kurzfristig improvisierte Helfer (z. B. ESP-NOW-Sniffer, künstliche Paket-/Durchfahrts-Injektoren, serielle Logger), um das Debugging spürbar zu beschleunigen und zu vereinfachen.
+- **Direkter Zugriff / Live-Status:** Wann immer sinnvoll, schlägt Antigravity vor, den Ist-Status oder Live-Logs direkt über den Entwicklungsrechner abzurufen (z. B. per USB/PlatformIO Serial Monitor oder per WLAN/REST-API/WebSocket).
 
 ---
 
