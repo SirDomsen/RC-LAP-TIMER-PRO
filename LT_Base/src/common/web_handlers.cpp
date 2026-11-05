@@ -4,6 +4,7 @@
 #include "esp_now_base.h"
 #include "web_server.h"
 #include "buzzer.h"
+#include "platform_runtime.h"
 #include <ir_decoder.h>
 #include <network_platform.h>
 
@@ -424,14 +425,30 @@ void handlePostDeleteLap(AsyncWebServerRequest *request) {
     uint8_t id = request->hasParam("id") ? (uint8_t)request->getParam("id")->value().toInt() : 0;
     uint16_t lap = request->hasParam("lap") ? (uint16_t)request->getParam("lap")->value().toInt() : 0;
     uint32_t lapTime = request->hasParam("time") ? (uint32_t)request->getParam("time")->value().toInt() : 0;
-    if (deleteLapFromSession(sessionId, filePath, id, lap, lapTime)) {
-      request->send(200, "text/plain", "OK");
+    if (PlatformRuntime::isHeapCritical(12000, 100, 0)) {
+      request->send(503, "text/plain", "Zu wenig freier Speicher");
+    } else if (queueLapDeletion(sessionId, filePath, id, lap, lapTime)) {
+      request->send(202, "text/plain", "PENDING");
     } else {
-      request->send(404, "text/plain", "Runde nicht gefunden");
+      request->send(503, "text/plain", "Loeschauftrag laeuft bereits");
     }
   } else {
     request->send(400, "text/plain", "Bad Request");
   }
+}
+
+void handleGetDeleteLapStatus(AsyncWebServerRequest *request) {
+  const char* s = "idle";
+  switch (getLapDeletionState()) {
+    case LAP_DELETE_PENDING: s = "pending"; break;
+    case LAP_DELETE_OK: s = "ok"; break;
+    case LAP_DELETE_NOT_FOUND: s = "notfound"; break;
+    case LAP_DELETE_NO_HEAP: s = "noheap"; break;
+    default: break;
+  }
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", s);
+  response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  request->send(response);
 }
 
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {

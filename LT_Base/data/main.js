@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.7';
+window.UI_VERSION = '4.7.8';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -357,7 +357,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.7');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.8');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1511,7 +1511,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.7');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.8');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -1805,6 +1805,33 @@ function renderTrackRecordsModalContent(trackId) {
   `;
 }
 
+// Rundenloeschung: POST reiht den Auftrag ein, der ESP arbeitet im loop(); Ergebnis per Status-Abfrage
+async function deleteLapOnDevice(url) {
+  let res = await fetch(url, { method: 'POST' });
+  if (res.status === 503) {
+    let txt = await res.text();
+    return txt.indexOf('Speicher') >= 0 ? 'noheap' : 'busy';
+  }
+  if (res.status !== 202) return 'error';
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 400));
+    let st = 'pending';
+    try {
+      let sres = await fetch('/api/deletelapstatus?_=' + Date.now(), { cache: 'no-store' });
+      st = (await sres.text()).trim();
+    } catch (e) { continue; }
+    if (st !== 'pending') return st;
+  }
+  return 'timeout';
+}
+
+function deleteLapFailText(state) {
+  if (state === 'noheap') return 'Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.';
+  if (state === 'busy') return 'Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.';
+  if (state === 'timeout') return 'Keine Rückmeldung vom Basisgerät. Bitte Zustand prüfen.';
+  return 'Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert.';
+}
+
 async function deleteTrackRecordEntryUI(trackId, type, index) {
   let targetId = trackId || activeTrackId;
   let trackObj = allTracksList.find(t => t.id === targetId);
@@ -1965,10 +1992,11 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
     let success = false;
     if (index >= 0 && matchedSession && matchedLap) {
       // Exakt dieselbe Routine wie im Statistiken-Modal: /api/deletelap
+      let lapState = 'error';
       try {
         let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}${matchedSession.file ? `&file=${encodeURIComponent(matchedSession.file)}` : ''}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
-        let lapRes = await fetch(lapUrl, { method: 'POST' });
-        if (lapRes.ok) success = true;
+        lapState = await deleteLapOnDevice(lapUrl);
+        if (lapState === 'ok') success = true;
 
         sessionFileCache = {};
         let safeId = (typeof sanitizeDomId === 'function') ? sanitizeDomId(matchedSession.id) : String(matchedSession.id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1983,7 +2011,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         await showAlert({
           title: "❌ NICHT GELÖSCHT",
           theme: "danger",
-          message: "Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert."
+          message: deleteLapFailText(lapState)
         });
         return;
       }

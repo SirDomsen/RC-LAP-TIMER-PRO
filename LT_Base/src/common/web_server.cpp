@@ -650,6 +650,7 @@ void initNetworkAndServer() {
   server.on("/api/sessions", HTTP_GET, handleGetSessions);
   server.on("/api/sessionfile", HTTP_GET, handleGetSessionFile);
   server.on("/api/deletelap", HTTP_POST, handlePostDeleteLap);
+  server.on("/api/deletelapstatus", HTTP_GET, handleGetDeleteLapStatus);
   server.on("/api/deletedriverstats", HTTP_POST, handlePostDeleteDriverStats);
   server.on("/api/deleteallstats", HTTP_POST, handlePostDeleteAllStats);
   server.on("/api/deletesession", HTTP_POST, handlePostDeleteSession);

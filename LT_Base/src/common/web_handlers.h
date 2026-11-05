@@ -21,6 +21,7 @@ void handlePostSyncTime(AsyncWebServerRequest *request);
 void handleGetSessions(AsyncWebServerRequest *request);
 void handleGetSessionFile(AsyncWebServerRequest *request);
 void handlePostDeleteLap(AsyncWebServerRequest *request);
+void handleGetDeleteLapStatus(AsyncWebServerRequest *request);
 void handlePostDeleteDriverStats(AsyncWebServerRequest *request);
 void handlePostDeleteAllStats(AsyncWebServerRequest *request);
 void handlePostDeleteSession(AsyncWebServerRequest *request);

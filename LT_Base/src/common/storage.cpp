@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "lap_logic.h"
 #include "web_server.h"
+#include "platform_runtime.h"
 #include <ir_decoder.h>
 #include <EEPROM.h>
 #include <LittleFS.h>
@@ -1704,8 +1705,42 @@ static void processFileDeletion(const String& filename) {
   updateFsUsageCache();
 }
 
+static struct {
+  char sessionId[40];
+  char file[DELETE_PATH_MAX];
+  uint8_t carId;
+  uint16_t lapNum;
+  uint32_t lapTimeMs;
+} lapDeleteJob;
+static volatile LapDeleteState lapDeleteState = LAP_DELETE_IDLE;
+
+bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (lapDeleteState == LAP_DELETE_PENDING) return false;
+  if (sessionId.length() >= sizeof(lapDeleteJob.sessionId) || filePath.length() >= DELETE_PATH_MAX) return false;
+  strlcpy(lapDeleteJob.sessionId, sessionId.c_str(), sizeof(lapDeleteJob.sessionId));
+  strlcpy(lapDeleteJob.file, filePath.c_str(), DELETE_PATH_MAX);
+  lapDeleteJob.carId = carId;
+  lapDeleteJob.lapNum = lapNum;
+  lapDeleteJob.lapTimeMs = lapTimeMs;
+  lapDeleteState = LAP_DELETE_PENDING;
+  return true;
+}
+
+LapDeleteState getLapDeletionState() {
+  return lapDeleteState;
+}
+
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
+
+  if (lapDeleteState == LAP_DELETE_PENDING) {
+    LapDeleteState result = deleteLapFromSession(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
+                                                 lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs);
+    updateFsUsageCache();
+    lapDeleteState = result;
+    lastStorageWrite = millis();
+    return;
+  }
 
   if (deleteQueueHead != deleteQueueTail) {
     String path = String(deleteQueue[deleteQueueTail]);
@@ -1931,8 +1966,8 @@ void deleteSessionById(const String& sessionId) {
   filterSessionsIndexFile(sessionId, "", "", "");
 }
 
-bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
-  if (sessionId.length() == 0 && filePath.length() == 0) return false;
+LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (sessionId.length() == 0 && filePath.length() == 0) return LAP_DELETE_NOT_FOUND;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
   // 1. Dateipfad der Session ermitteln
@@ -1966,17 +2001,23 @@ bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8
     }
   }
 
-  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return false;
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return LAP_DELETE_NOT_FOUND;
 
   JsonDocument doc;
   File fRead = LittleFS.open(targetFile, "r");
-  if (!fRead) return false;
+  if (!fRead) return LAP_DELETE_NOT_FOUND;
+  // Das JSON-Dokument braucht grob das Dreifache der Dateigroesse; sonst lieber ablehnen als abstuerzen
+  size_t needHeap = (size_t)fRead.size() * 3 + 6000;
+  if (PlatformRuntime::isHeapCritical(needHeap, 100, 0)) {
+    fRead.close();
+    return LAP_DELETE_NO_HEAP;
+  }
   DeserializationError err = deserializeJson(doc, fRead);
   fRead.close();
-  if (err) return false;
+  if (err) return LAP_DELETE_NOT_FOUND;
 
   JsonArray laps = doc["l"].as<JsonArray>();
-  if (!laps) return false;
+  if (!laps) return LAP_DELETE_NOT_FOUND;
   String sessionDrivers[MAX_CARS + 1];
   String sessionCars[MAX_CARS + 1];
   readSessionNames(laps, sessionDrivers, sessionCars);
@@ -1999,7 +2040,7 @@ bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8
       break;
     }
   }
-  if (!lapRemoved) return false;
+  if (!lapRemoved) return LAP_DELETE_NOT_FOUND;
 
   String sessTrackId = doc["t"] | (doc["trackId"] | activeTrackId);
 
@@ -2061,7 +2102,7 @@ bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8
 
   if (laps.size() == 0) {
     deleteSessionById(sessionId);
-    return true;
+    return LAP_DELETE_OK;
   }
 
   // Ergebnisse aus verbleibenden Runden neu berechnen
@@ -2115,7 +2156,7 @@ bool deleteLapFromSession(const String& sessionId, const String& filePath, uint8
   );
 
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
-  return true;
+  return LAP_DELETE_OK;
 }
 
 void deleteDriverHistory(const String& driverName) {

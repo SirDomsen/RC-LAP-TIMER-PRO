@@ -1306,8 +1306,11 @@ async function deleteSingleLapFromSession(sessionId, sessionFile, carId, lapNum)
   if (!ok) return;
   try {
     let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(sessionId)}${sessionFile ? `&file=${encodeURIComponent(sessionFile)}` : ''}&id=${carId}&lap=${lapNum}`;
-    await fetch(lapUrl, { method: 'POST' });
-    delete sessionFileCache[sessionFile];
+    let lapState = await deleteLapOnDevice(lapUrl);
+    if (lapState !== 'ok') {
+      await showAlert({ title: "❌ NICHT GELÖSCHT", theme: "danger", message: deleteLapFailText(lapState) });
+      return;
+    }
     let safeId = sanitizeDomId(sessionId);
     let elemId = `s_${safeId}_driver_${carId}`;
     if (embeddedLapsState[elemId]) {

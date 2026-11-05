@@ -103,7 +103,18 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 void processStorageQueue();
 bool queueFileDeletion(const String& path);
 
-bool deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
+enum LapDeleteState : uint8_t {
+  LAP_DELETE_IDLE = 0,
+  LAP_DELETE_PENDING = 1,
+  LAP_DELETE_OK = 2,
+  LAP_DELETE_NOT_FOUND = 3,
+  LAP_DELETE_NO_HEAP = 4
+};
+
+LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
+// Einzel-Rundenloeschung: Webserver reiht nur ein, die Arbeit laeuft in processStorageQueue() im loop()
+bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs);
+LapDeleteState getLapDeletionState();
 void deleteDriverHistory(const String& driverName);
 void deleteAllHistory();
 
