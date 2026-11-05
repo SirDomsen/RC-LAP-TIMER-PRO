@@ -108,7 +108,8 @@ enum LapDeleteState : uint8_t {
   LAP_DELETE_PENDING = 1,
   LAP_DELETE_OK = 2,
   LAP_DELETE_NOT_FOUND = 3,
-  LAP_DELETE_NO_HEAP = 4
+  LAP_DELETE_NO_HEAP = 4,
+  LAP_DELETE_NO_SPACE = 5
 };
 
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);

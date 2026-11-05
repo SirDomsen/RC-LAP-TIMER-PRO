@@ -1966,6 +1966,165 @@ void deleteSessionById(const String& sessionId) {
   filterSessionsIndexFile(sessionId, "", "", "");
 }
 
+#define LAP_OBJ_MAX 640
+
+// Liest das naechste Runden-Objekt "{...}" aus dem Stream; false bei Arrayende, Dateiende oder Ueberlauf
+static bool readNextLapObject(File& f, char* buf, size_t cap, bool& overflow) {
+  size_t len = 0;
+  int depth = 0;
+  bool inQuotes = false;
+  bool escaped = false;
+  while (f.available()) {
+    char c = (char)f.read();
+    if (depth == 0) {
+      if (c == '{') { depth = 1; buf[len++] = c; }
+      else if (c == ']') return false;
+      continue;
+    }
+    if (len + 1 >= cap) { overflow = true; return false; }
+    buf[len++] = c;
+    if (escaped) { escaped = false; continue; }
+    if (inQuotes) {
+      if (c == '\\') escaped = true;
+      else if (c == '"') inQuotes = false;
+      continue;
+    }
+    if (c == '"') inQuotes = true;
+    else if (c == '{') depth++;
+    else if (c == '}' && --depth == 0) { buf[len] = '\0'; return true; }
+  }
+  return false;
+}
+
+struct LapRewriteResult {
+  String trackId;
+  String trackName;
+  uint8_t mode = 0;
+  uint32_t startTs = 0;
+  uint32_t deletedLapTimeMs = 0;
+  uint16_t remaining = 0;
+  uint16_t calcLaps[MAX_CARS + 1] = {0};
+  uint32_t calcBest[MAX_CARS + 1] = {0};
+  uint64_t maxTsSec = 0;
+  String drivers[MAX_CARS + 1];
+  String cars[MAX_CARS + 1];
+};
+
+// Schreibt die Session ohne die Zielrunde in eine Temp-Datei und ersetzt dann atomar das Original.
+// Es liegt immer nur ein Runden-Objekt im RAM; bei jedem Fehler bleibt das Original unveraendert.
+static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, LapRewriteResult& r) {
+  char* buf = (char*)malloc(LAP_OBJ_MAX * 2);
+  if (!buf) return LAP_DELETE_NO_HEAP;
+  char* outBuf = buf + LAP_OBJ_MAX;
+
+  File in = LittleFS.open(file, "r");
+  if (!in) { free(buf); return LAP_DELETE_NOT_FOUND; }
+
+  // Header bis einschliesslich "l":[ einlesen
+  String head;
+  head.reserve(160);
+  bool headFound = false;
+  while (in.available() && head.length() < 600) {
+    head += (char)in.read();
+    if (head.endsWith("\"l\":[")) { headFound = true; break; }
+  }
+  if (!headFound) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
+  {
+    String hdrJson = head.substring(0, head.length() - 5);
+    if (hdrJson.endsWith(",")) hdrJson.remove(hdrJson.length() - 1);
+    hdrJson += "}";
+    JsonDocument hdr;
+    if (deserializeJson(hdr, hdrJson)) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
+    r.trackId = hdr["t"] | (hdr["trackId"] | "");
+    r.trackName = hdr["n"] | (hdr["trackName"] | "");
+    r.mode = hdr["m"] | (hdr["mode"] | 0);
+    r.startTs = hdr["s"] | (hdr["startTs"] | 0);
+    r.maxTsSec = r.startTs;
+  }
+
+  // Durchlauf 1: Zielrunde finden, Ergebnisse und Namen der verbleibenden Runden sammeln
+  bool overflow = false;
+  bool parseError = false;
+  int idx = 0;
+  int targetIdx = -1;
+  while (readNextLapObject(in, buf, LAP_OBJ_MAX, overflow)) {
+    JsonDocument d;
+    if (deserializeJson(d, buf)) { parseError = true; break; }
+    uint8_t c = d["c"] | (d["carId"] | 0);
+    uint16_t lNum = d["l"] | (d["lap"] | 0);
+    uint32_t tMs = d["t"] | (d["time"] | 0);
+    if (c >= 1 && c <= MAX_CARS) {
+      if (r.drivers[c].length() == 0 && d["d"].is<const char*>()) r.drivers[c] = d["d"].as<String>();
+      if (r.cars[c].length() == 0 && d["v"].is<const char*>()) r.cars[c] = d["v"].as<String>();
+    }
+    bool isTarget = targetIdx < 0 && (carId == 0 || c == carId) &&
+                    ((lapNum > 0 && lNum == lapNum) || (lapTimeMs > 0 && tMs == lapTimeMs));
+    if (isTarget) {
+      targetIdx = idx;
+      r.deletedLapTimeMs = tMs;
+    } else {
+      r.remaining++;
+      uint64_t tsMs = d["s"] | (d["ts"] | 0);
+      if (c >= 1 && c <= MAX_CARS) {
+        r.calcLaps[c]++;
+        if (tMs > 0 && (r.calcBest[c] == 0 || tMs < r.calcBest[c])) r.calcBest[c] = tMs;
+        if (tsMs / 1000ULL > r.maxTsSec) r.maxTsSec = tsMs / 1000ULL;
+      }
+    }
+    idx++;
+    yield(); // nur aus loop() aufgerufen
+  }
+  if (overflow || parseError || targetIdx < 0) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
+
+  // Letzte Runde der Session: es gibt nichts umzuschreiben, der Aufrufer loescht die ganze Session
+  if (r.remaining == 0) { in.close(); free(buf); return LAP_DELETE_OK; }
+
+  // Durchlauf 2: Temp-Datei ohne Zielrunde schreiben
+  String tmpPath = file + ".tmp";
+  if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
+  File out = LittleFS.open(tmpPath, "w");
+  if (!out) { in.close(); free(buf); return LAP_DELETE_NO_SPACE; }
+
+  bool ok = out.print(head) == head.length();
+  in.seek(head.length(), SeekSet);
+  bool seen[MAX_CARS + 1] = {false};
+  bool firstOut = true;
+  idx = 0;
+  while (ok && readNextLapObject(in, buf, LAP_OBJ_MAX, overflow)) {
+    if (idx++ == targetIdx) continue;
+    JsonDocument d;
+    if (deserializeJson(d, buf)) { ok = false; break; }
+    uint8_t c = d["c"] | (d["carId"] | 0);
+    if (c >= 1 && c <= MAX_CARS && !seen[c]) {
+      seen[c] = true;
+      if (r.drivers[c].length() > 0) d["d"] = r.drivers[c];
+      if (r.cars[c].length() > 0) d["v"] = r.cars[c];
+    }
+    size_t n = serializeJson(d, outBuf, LAP_OBJ_MAX);
+    if (n == 0 || n >= LAP_OBJ_MAX) { ok = false; break; }
+    if (!firstOut && out.write((const uint8_t*)",", 1) != 1) { ok = false; break; }
+    if (out.write((const uint8_t*)outBuf, n) != n) { ok = false; break; }
+    firstOut = false;
+    yield(); // nur aus loop() aufgerufen
+  }
+  if (ok && out.print("]}") != 2) ok = false;
+  if (overflow) ok = false;
+  out.close();
+  in.close();
+  free(buf);
+
+  if (!ok) {
+    LittleFS.remove(tmpPath);
+    return LAP_DELETE_NO_SPACE;
+  }
+  // rename ersetzt das Original atomar (LittleFS)
+  if (!LittleFS.rename(tmpPath, file)) {
+    LittleFS.remove(tmpPath);
+    return LAP_DELETE_NO_SPACE;
+  }
+  return LAP_DELETE_OK;
+}
+
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
   if (sessionId.length() == 0 && filePath.length() == 0) return LAP_DELETE_NOT_FOUND;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
@@ -2003,47 +2162,13 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
 
   if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return LAP_DELETE_NOT_FOUND;
 
-  JsonDocument doc;
-  File fRead = LittleFS.open(targetFile, "r");
-  if (!fRead) return LAP_DELETE_NOT_FOUND;
-  // Das JSON-Dokument braucht grob das Dreifache der Dateigroesse; sonst lieber ablehnen als abstuerzen
-  size_t needHeap = (size_t)fRead.size() * 3 + 6000;
-  if (PlatformRuntime::isHeapCritical(needHeap, 100, 0)) {
-    fRead.close();
-    return LAP_DELETE_NO_HEAP;
-  }
-  DeserializationError err = deserializeJson(doc, fRead);
-  fRead.close();
-  if (err) return LAP_DELETE_NOT_FOUND;
+  if (PlatformRuntime::isHeapCritical(4000, 100, 0)) return LAP_DELETE_NO_HEAP;
+  LapRewriteResult r;
+  LapDeleteState rewriteState = rewriteSessionWithoutLap(targetFile, carId, lapNum, lapTimeMs, r);
+  if (rewriteState != LAP_DELETE_OK) return rewriteState;
 
-  JsonArray laps = doc["l"].as<JsonArray>();
-  if (!laps) return LAP_DELETE_NOT_FOUND;
-  String sessionDrivers[MAX_CARS + 1];
-  String sessionCars[MAX_CARS + 1];
-  readSessionNames(laps, sessionDrivers, sessionCars);
-
-  uint32_t deletedLapTimeMs = 0;
-  bool lapRemoved = false;
-  for (size_t i = 0; i < laps.size(); i++) {
-    uint8_t cId = laps[i]["c"] | (laps[i]["carId"] | 0);
-    uint16_t lNum = laps[i]["l"] | (laps[i]["lap"] | 0);
-    uint32_t lTime = laps[i]["t"] | (laps[i]["time"] | 0);
-
-    bool carMatch = (carId == 0 || cId == carId);
-    bool lapMatch = (lapNum > 0 && lNum == lapNum);
-    bool timeMatch = (lapTimeMs > 0 && lTime == lapTimeMs);
-
-    if (carMatch && (lapMatch || timeMatch)) {
-      deletedLapTimeMs = lTime;
-      laps.remove(i);
-      lapRemoved = true;
-      break;
-    }
-  }
-  if (!lapRemoved) return LAP_DELETE_NOT_FOUND;
-
-  String sessTrackId = doc["t"] | (doc["trackId"] | activeTrackId);
-
+  uint32_t deletedLapTimeMs = r.deletedLapTimeMs;
+  String sessTrackId = r.trackId.length() > 0 ? r.trackId : activeTrackId;
   // Falls die gelöschte Runde in der Top-5 Rekordliste stand, auch dort automatisch korrigieren.
   // deleteTrackRecordEntry übernimmt die automatische Kaskadierung (Daily <-> All-Time falls Datum heute).
   if (deletedLapTimeMs > 0) {
@@ -2100,35 +2225,16 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     }
   }
 
-  if (laps.size() == 0) {
+  if (r.remaining == 0) {
     deleteSessionById(sessionId);
     return LAP_DELETE_OK;
   }
 
-  // Ergebnisse aus verbleibenden Runden neu berechnen
-  uint16_t calcLaps[MAX_CARS + 1] = {0};
-  uint32_t calcBest[MAX_CARS + 1] = {0};
-  uint64_t maxTsSec = doc["s"] | (doc["startTs"] | 0);
-
-  for (JsonObject l : laps) {
-    uint8_t c = l["c"] | (l["carId"] | 0);
-    uint32_t tMs = l["t"] | (l["time"] | 0);
-    uint64_t tsMs = l["s"] | (l["ts"] | 0);
-    if (c >= 1 && c <= MAX_CARS) {
-      calcLaps[c]++;
-      if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) {
-        calcBest[c] = tMs;
-      }
-      if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
-    }
-  }
-
-  preserveSessionNamesOnFirstLaps(laps, sessionDrivers, sessionCars);
-  File fWrite = LittleFS.open(targetFile, "w");
-  if (fWrite) {
-    serializeJson(doc, fWrite);
-    fWrite.close();
-  }
+  uint16_t* calcLaps = r.calcLaps;
+  uint32_t* calcBest = r.calcBest;
+  String* sessionDrivers = r.drivers;
+  String* sessionCars = r.cars;
+  uint64_t maxTsSec = r.maxTsSec;
 
   if (currentSessionActive && currentSessionId == sessionId) {
     for (uint8_t c = 1; c <= MAX_CARS; c++) {
@@ -2144,9 +2250,9 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     sessionId,
     targetFile,
     sessTrackId,
-    doc["n"] | (doc["trackName"] | activeTrackName),
-    doc["m"] | (doc["mode"] | 0),
-    doc["s"] | (doc["startTs"] | 0),
+    r.trackName.length() > 0 ? r.trackName : activeTrackName,
+    r.mode,
+    r.startTs,
     maxTsSec,
     calcLaps,
     calcBest,

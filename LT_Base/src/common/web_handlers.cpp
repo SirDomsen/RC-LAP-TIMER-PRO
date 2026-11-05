@@ -444,6 +444,7 @@ void handleGetDeleteLapStatus(AsyncWebServerRequest *request) {
     case LAP_DELETE_OK: s = "ok"; break;
     case LAP_DELETE_NOT_FOUND: s = "notfound"; break;
     case LAP_DELETE_NO_HEAP: s = "noheap"; break;
+    case LAP_DELETE_NO_SPACE: s = "nospace"; break;
     default: break;
   }
   AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", s);

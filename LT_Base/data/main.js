@@ -1,7 +1,7 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.8';
+window.UI_VERSION = '4.7.9';
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -357,7 +357,7 @@ if (typeof openStatsOverviewModal !== 'function') {
       let orig = btn ? btn.innerText : '';
       if (btn) btn.innerText = "⏳ Lade...";
       let s = document.createElement('script');
-      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.8');
+      s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.9');
       s.onload = async () => {
         statsLoading = false;
         if (btn) btn.innerText = orig;
@@ -1511,7 +1511,7 @@ async function ensureStatsLoaded() {
   }
   await new Promise((resolve) => {
     let s = document.createElement('script');
-    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.8');
+    s.src = 'stats.js?v=' + (window.UI_VERSION || '4.7.9');
     s.onload = () => resolve();
     s.onerror = () => resolve();
     document.body.appendChild(s);
@@ -1806,27 +1806,49 @@ function renderTrackRecordsModalContent(trackId) {
 }
 
 // Rundenloeschung: POST reiht den Auftrag ein, der ESP arbeitet im loop(); Ergebnis per Status-Abfrage
+let lapDeleteBusy = false;
+
+function setLapDeleteNotice(show) {
+  let el = document.getElementById('lapDeleteNotice');
+  if (!show) { if (el) el.remove(); return; }
+  if (el) return;
+  el = document.createElement('div');
+  el.id = 'lapDeleteNotice';
+  el.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;background:#2a1a00;color:#ffb300;border:1px solid #ffb300;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:bold;box-shadow:0 0 12px rgba(255,179,0,.5);';
+  el.textContent = '⏳ Runde wird gelöscht – bitte Seite nicht neu laden und das Gerät nicht trennen.';
+  document.body.appendChild(el);
+}
+
 async function deleteLapOnDevice(url) {
-  let res = await fetch(url, { method: 'POST' });
-  if (res.status === 503) {
-    let txt = await res.text();
-    return txt.indexOf('Speicher') >= 0 ? 'noheap' : 'busy';
+  if (lapDeleteBusy) return 'busy';
+  lapDeleteBusy = true;
+  setLapDeleteNotice(true);
+  try {
+    let res = await fetch(url, { method: 'POST' });
+    if (res.status === 503) {
+      let txt = await res.text();
+      return txt.indexOf('Speicher') >= 0 ? 'noheap' : 'busy';
+    }
+    if (res.status !== 202) return 'error';
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 400));
+      let st = 'pending';
+      try {
+        let sres = await fetch('/api/deletelapstatus?_=' + Date.now(), { cache: 'no-store' });
+        st = (await sres.text()).trim();
+      } catch (e) { continue; }
+      if (st !== 'pending') return st;
+    }
+    return 'timeout';
+  } finally {
+    lapDeleteBusy = false;
+    setLapDeleteNotice(false);
   }
-  if (res.status !== 202) return 'error';
-  for (let i = 0; i < 40; i++) {
-    await new Promise(r => setTimeout(r, 400));
-    let st = 'pending';
-    try {
-      let sres = await fetch('/api/deletelapstatus?_=' + Date.now(), { cache: 'no-store' });
-      st = (await sres.text()).trim();
-    } catch (e) { continue; }
-    if (st !== 'pending') return st;
-  }
-  return 'timeout';
 }
 
 function deleteLapFailText(state) {
   if (state === 'noheap') return 'Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.';
+  if (state === 'nospace') return 'Kein Platz im Dateisystem für das sichere Umschreiben der Session (Flash fast voll). Es wurde nichts verändert.';
   if (state === 'busy') return 'Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.';
   if (state === 'timeout') return 'Keine Rückmeldung vom Basisgerät. Bitte Zustand prüfen.';
   return 'Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert.';
