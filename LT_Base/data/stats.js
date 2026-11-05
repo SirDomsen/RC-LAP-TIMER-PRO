@@ -2160,6 +2160,7 @@ async function rebuildSessionsIndexUI() {
         let carBestLapObjMap = {};
         let carTimeSumMap = {};
         let carValidMap = {};
+        let carLastTsMap = {};
         let carDriverNameMap = {};
         let carCarNameMap = {};
         let maxTs = sData.startTs || 0;
@@ -2187,6 +2188,7 @@ async function rebuildSessionsIndexUI() {
               carValidMap[c]++;
               carTimeSumMap[c] += l.time;
             }
+            if (l.ts && l.ts > (carLastTsMap[c] || 0)) carLastTsMap[c] = l.ts;
             if (l.ts && Math.floor(l.ts / 1000) > maxTs) {
               maxTs = Math.floor(l.ts / 1000);
             }
@@ -2204,6 +2206,10 @@ async function rebuildSessionsIndexUI() {
             return bA - bB;
           } else {
             if (carLapsMap[b] !== carLapsMap[a]) return carLapsMap[b] - carLapsMap[a];
+            // Bei gleicher Rundenzahl gewinnt, wer zuerst im Ziel war
+            let tA = carLastTsMap[a] || 0;
+            let tB = carLastTsMap[b] || 0;
+            if (tA > 0 && tB > 0 && tA !== tB) return tA - tB;
             let bA = carBestMap[a] > 0 ? carBestMap[a] : 99999999;
             let bB = carBestMap[b] > 0 ? carBestMap[b] : 99999999;
             return bA - bB;

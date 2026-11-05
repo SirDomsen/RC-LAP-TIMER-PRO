@@ -74,6 +74,7 @@ static uint32_t lastIndexFlushMs = 0;
 
 static uint16_t sessionCarLaps[MAX_CARS + 1] = {0};
 static uint32_t sessionCarBest[MAX_CARS + 1] = {0};
+static uint32_t sessionCarLastMs[MAX_CARS + 1] = {0};  // Zeitstempel der letzten Runde relativ zum Session-Start
 static uint16_t sessionCarValidLaps[MAX_CARS + 1] = {0};
 static uint64_t sessionCarTimeSum[MAX_CARS + 1] = {0};
 static uint32_t sessionCarAvg[MAX_CARS + 1] = {0};
@@ -1726,7 +1727,7 @@ void saveSectorConfigToEEPROM(bool s1, bool s2, bool s3, bool cp, bool dr, bool 
 
 // --- SESSION & RUNDEN SPEICHERUNG ---
 
-static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[], uint32_t carAvg[] = nullptr, const String* driverOverrides = nullptr, const String* carOverrides = nullptr) {
+static String buildSessionEntryJson(const String& sId, const String& sFile, const String& trkId, const String& trkName, uint8_t mode, uint64_t startSec, uint64_t endSec, uint16_t carLaps[], uint32_t carBest[], uint32_t carAvg[] = nullptr, const String* driverOverrides = nullptr, const String* carOverrides = nullptr, const uint32_t* carLastMs = nullptr) {
   uint8_t activeIds[MAX_CARS + 1];
   uint8_t count = 0;
   for (uint8_t c = 1; c <= MAX_CARS; c++) {
@@ -1749,9 +1750,14 @@ static String buildSessionEntryJson(const String& sId, const String& sFile, cons
       } else {
         if (carLaps[b] > carLaps[a]) swap = true;
         else if (carLaps[b] == carLaps[a]) {
-          uint32_t ba = carBest[a] > 0 ? carBest[a] : 99999999UL;
-          uint32_t bb = carBest[b] > 0 ? carBest[b] : 99999999UL;
-          if (bb < ba) swap = true;
+          // Rennen: bei gleicher Rundenzahl gewinnt, wer zuerst im Ziel war (Zeitstempel der letzten Runde)
+          if (carLastMs != nullptr && carLastMs[a] > 0 && carLastMs[b] > 0 && carLastMs[a] != carLastMs[b]) {
+            if (carLastMs[b] < carLastMs[a]) swap = true;
+          } else {
+            uint32_t ba = carBest[a] > 0 ? carBest[a] : 99999999UL;
+            uint32_t bb = carBest[b] > 0 ? carBest[b] : 99999999UL;
+            if (bb < ba) swap = true;
+          }
         }
       }
       if (swap) {
@@ -1797,7 +1803,10 @@ void flushCurrentSessionToIndex() {
     sessionLastEndSec,
     sessionCarLaps,
     sessionCarBest,
-    sessionCarAvg
+    sessionCarAvg,
+    nullptr,
+    nullptr,
+    sessionCarLastMs
   );
 
   const char* indexPath = "/sessions.json";
@@ -1898,6 +1907,7 @@ void startNewSessionFrame(uint8_t mode) {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     sessionCarLaps[i] = 0;
     sessionCarBest[i] = 0;
+    sessionCarLastMs[i] = 0;
     sessionCarValidLaps[i] = 0;
     sessionCarTimeSum[i] = 0;
     sessionCarAvg[i] = 0;
@@ -2107,7 +2117,10 @@ void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32
   }
 
   sessionLastEndSec = timestampMs / 1000ULL;
-
+  {
+    uint64_t startMs = currentSessionStartSec * 1000ULL;
+    sessionCarLastMs[carId] = timestampMs > startMs ? (uint32_t)(timestampMs - startMs) : 0;
+  }
   // 5. Runden-JSON formatieren & stromausfallsicher in die Session-Datei schreiben (Speicheroptimiert)
   char newLapJson[512];
   int len = snprintf(newLapJson, sizeof(newLapJson),
@@ -2284,6 +2297,7 @@ struct LapRewriteResult {
   uint16_t remaining = 0;
   uint16_t calcLaps[MAX_CARS + 1] = {0};
   uint32_t calcBest[MAX_CARS + 1] = {0};
+  uint32_t calcLastMs[MAX_CARS + 1] = {0};
   uint64_t maxTsSec = 0;
   String drivers[MAX_CARS + 1];
   String cars[MAX_CARS + 1];
@@ -2348,6 +2362,9 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
         r.calcLaps[c]++;
         if (tMs > 0 && (r.calcBest[c] == 0 || tMs < r.calcBest[c])) r.calcBest[c] = tMs;
         if (tsMs / 1000ULL > r.maxTsSec) r.maxTsSec = tsMs / 1000ULL;
+        uint64_t startMs = (uint64_t)r.startTs * 1000ULL;
+        uint32_t rel = tsMs > startMs ? (uint32_t)(tsMs - startMs) : 0;
+        if (rel > r.calcLastMs[c]) r.calcLastMs[c] = rel;
       }
     }
     idx++;
@@ -2572,7 +2589,8 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     calcBest,
     nullptr,
     sessionDrivers,
-    sessionCars
+    sessionCars,
+    r.calcLastMs
   );
 
   markLapDeleteStep(4);
@@ -2711,6 +2729,7 @@ void deleteAllHistory() {
   for (uint8_t i = 0; i <= MAX_CARS; i++) {
     sessionCarLaps[i] = 0;
     sessionCarBest[i] = 0;
+    sessionCarLastMs[i] = 0;
     sessionCarValidLaps[i] = 0;
     sessionCarTimeSum[i] = 0;
     sessionCarAvg[i] = 0;
