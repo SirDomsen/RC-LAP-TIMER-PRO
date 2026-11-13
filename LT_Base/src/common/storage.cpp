@@ -1180,9 +1180,7 @@ void saveTracksToFS() {
   char* buf = (char*)malloc(TRACK_OBJ_MAX);
   if (!buf) return;
 
-  markLapDeleteSubStep(103);
   const char* tmpPath = "/tracks.json.tmp";
-  if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
   markLapDeleteSubStep(104);
   File out = LittleFS.open(tmpPath, "w");
   if (!out) { free(buf); return; }
@@ -1283,11 +1281,14 @@ void saveTracksToFS() {
   size_t outSize = out.size();
   out.close();
 
+#if defined(ESP8266)
+  ESP.wdtFeed();
+#endif
+
   if (!okWrite || outSize < 20) {
     LittleFS.remove(tmpPath);
     return;
   }
-  if (LittleFS.exists("/tracks.json")) LittleFS.remove("/tracks.json");
   if (!LittleFS.rename(tmpPath, "/tracks.json")) LittleFS.remove(tmpPath);
   markLapDeleteSubStep(13);
   updateFsUsageCache();
