@@ -1,3 +1,5 @@
+🇩🇪 **Deutsch** | 🇬🇧 [English](BEDIENUNGSANLEITUNG.en.md)
+
 # RC Lap Timer Pro – Bedienungsanleitung
 
 Diese Anleitung erklärt die wichtigsten Funktionen in einfachen Schritten. Der Lap Timer wird über eine Webseite im Browser bedient; eine zusätzliche App ist nicht nötig.

@@ -1,3 +1,5 @@
+🇩🇪 **Deutsch** | 🇬🇧 [English](README.en.md)
+
 # RC Lap Timer Pro 🏎️⏱️
 
 Ein autarkes, WLAN-basiertes Infrarot-Rundenzählersystem für RC-Cars (1:10, 1:8, 1:24 u. a.) auf Basis von **ESP8266** oder **ESP32-S3**, drahtlosen **ESP-01S-Sektorstationen** und **ATtiny13A-Transpondern**.
