@@ -54,7 +54,7 @@ void handleGetLaps(AsyncWebServerRequest *request) {
 
   AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
     [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-      static char pending[560];
+      static char pending[PLATFORM_LAPS_CHUNK_BUF_SIZE];
       static size_t pendingLen = 0;
       static size_t pendingOff = 0;
       static uint8_t nextCar = 1;

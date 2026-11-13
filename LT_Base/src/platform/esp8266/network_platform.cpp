@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 #include <network_platform.h>
 
 namespace NetworkPlatform {
@@ -63,6 +64,16 @@ void startAccessPoint(const char* ssid, const char* password, uint8_t apChannel,
 
 void stopAccessPoint(bool turnOff) {
   WiFi.softAPdisconnect(turnOff);
+}
+
+void beginMdns(const char* hostname) {
+  if (MDNS.begin(hostname)) {
+    MDNS.addService("http", "tcp", 80);
+  }
+}
+
+void updateMdns() {
+  MDNS.update();
 }
 
 }

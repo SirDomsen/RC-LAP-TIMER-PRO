@@ -7,26 +7,14 @@
 #include <platform_runtime.h>
 #include <network_platform.h>
 
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
 #if defined(ESP8266)
-#include <WiFiUdp.h>
-#include <ESP8266mDNS.h>
-#include <ArduinoOTA.h>
 #include <Updater.h>
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <LittleFS.h>
-extern "C" {
-  #include <espnow.h>
-}
 #elif defined(ESP32)
-#include <WiFiUdp.h>
-#include <ESPmDNS.h>
-#include <ArduinoOTA.h>
 #include <Update.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <LittleFS.h>
-#include <esp_now.h>
 #endif
 
 AsyncWebServer server(80);
@@ -60,25 +48,14 @@ static const char BUSY_HTML_PROGMEM[] PROGMEM =
   "<style>body{background:#0a0c10;color:#00e5ff;font-family:sans-serif;text-align:center;padding:40px 20px;}"
   ".box{border:1px solid #00e5ff;background:#161b22;padding:20px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 0 15px rgba(0,229,255,0.3);}"
   "</style></head><body><div class='box'><h3>&#x23F3; Boxengasse belegt</h3>"
-  "<p style='color:#f0f6fc;font-size:14px;'>Es sind bereits 3 Fahrer aktiv verbunden. Diese Seite l&auml;dt automatisch neu, sobald ein Platz frei wird...</p></div></body></html>";
+  "<p style='color:#f0f6fc;font-size:14px;'>Alle Pl&auml;tze in der Boxengasse sind aktuell belegt. Diese Seite l&auml;dt automatisch neu, sobald ein Platz frei wird...</p></div></body></html>";
 
 bool isHeapCriticalForFileTransfer() {
-#if defined(ESP8266)
-  return PlatformRuntime::isHeapCritical(
-    currentRuntimeWifiMode == 0 ? 5500 : 7500,
-    currentRuntimeWifiMode == 0 ? 75 : 70,
-    currentRuntimeWifiMode == 0 ? 1400 : 1800);
-#elif defined(ESP32)
-  return PlatformRuntime::isHeapCritical(12000, 100, 0);
-#endif
+  return PlatformRuntime::isHeapCriticalForFileTransfer(currentRuntimeWifiMode);
 }
 
 bool isHeapCriticalForLiveData() {
-#if defined(ESP8266)
-  return PlatformRuntime::isHeapCritical(3500, 100, 0);
-#elif defined(ESP32)
-  return PlatformRuntime::isHeapCritical(8000, 100, 0);
-#endif
+  return PlatformRuntime::isHeapCriticalForLiveData();
 }
 
 static const char* getContentType(const String& path) {
@@ -130,11 +107,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
     activeStaticTransfers = 0;
   }
 
-#if defined(ESP8266)
-  const uint8_t maxStaticSlots = 2;
-#else
-  const uint8_t maxStaticSlots = 4;
-#endif
+  const uint8_t maxStaticSlots = PLATFORM_MAX_STATIC_SLOTS;
 
   bool isAsset = path.endsWith(".css") || path.endsWith(".js");
   bool heapCrit = isHeapCriticalForFileTransfer();
@@ -200,7 +173,7 @@ struct WsTabSession {
   char tabId[12];
   uint32_t stuckQueueSince;
 };
-static const size_t MAX_WS_SESSIONS = 4;
+static const size_t MAX_WS_SESSIONS = PLATFORM_MAX_WS_SESSIONS;
 static WsTabSession wsSessions[MAX_WS_SESSIONS] = {};
 
 static void addWsClient(uint32_t clientId) {
@@ -259,19 +232,10 @@ static void unregisterWsClient(uint32_t clientId) {
 
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-#if defined(ESP8266)
-    // Schutz vor lwIP TCP-PCB Erschoepfung: Im AP-Modus max. 3 WebSockets zulassen
-    size_t maxWs = (currentRuntimeWifiMode == 0) ? 3 : 4;
-    if (ws.count() > maxWs || PlatformRuntime::isHeapCritical(4000, 100, 0)) {
+    if (!PlatformRuntime::canAcceptWebSocket(ws.count(), currentRuntimeWifiMode)) {
       client->close(1013, "Boxengasse voll");
       return;
     }
-#elif defined(ESP32)
-    if (PlatformRuntime::isHeapCritical(8000, 100, 0)) {
-      client->close(1013, "Server busy");
-      return;
-    }
-#endif
     triggerGhostWlanEarlyShutdown();
     client->keepAlivePeriod(30);
     addWsClient(client->id());
@@ -350,7 +314,7 @@ static void setupFallbackAP() {
   String activeApName = (apSSID.length() > 0) ? apSSID : getDefaultApSSID();
   const char* apKey = apPass.length() > 0 ? apPass.c_str() : AP_PASS;
   
-  NetworkPlatform::startAccessPoint(activeApName.c_str(), apKey, 1, 0, 4);
+  NetworkPlatform::startAccessPoint(activeApName.c_str(), apKey, 1, 0, PLATFORM_MAX_AP_CLIENTS);
   currentActiveIP = local_IP;
   currentRuntimeWifiMode = 0;
   LapStatusLeds::setNetworkReady(true);
@@ -662,14 +626,11 @@ void initNetworkAndServer() {
 
   auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(384);
+    json.reserve(448);
     uint32_t uptime = millis() / 1000UL;
     uint32_t freeHeap = ESP.getFreeHeap();
-#if defined(ESP8266)
-    uint8_t frag = ESP.getHeapFragmentation();
-#else
-    uint8_t frag = 0;
-#endif
+    uint32_t freePsram = (uint32_t)PlatformRuntime::getFreePsramBytes();
+    uint8_t frag = PlatformRuntime::getHeapFragmentationPercent();
     uint32_t cpu = ESP.getCpuFreqMHz();
     float maxLoopMs = perfMaxLoopUs / 1000.0f;
 
@@ -677,6 +638,8 @@ void initNetworkAndServer() {
     json += freeHeap;
     json += ",\"free_heap\":";
     json += freeHeap;
+    json += ",\"freePsram\":";
+    json += freePsram;
     json += ",\"frag\":";
     json += frag;
     json += ",\"maxLoopUs\":";
@@ -807,9 +770,7 @@ void initNetworkAndServer() {
 
   server.begin();
   
-  if (MDNS.begin("laptimer")) {
-    MDNS.addService("http", "tcp", 80);
-  }
+  NetworkPlatform::beginMdns("laptimer");
   
   ArduinoOTA.setHostname(getOtaHostname().c_str());
   ArduinoOTA.begin();
@@ -834,9 +795,7 @@ void handleNetworkTasks() {
     ESP.restart(); 
   }
 
-#if defined(ESP8266)
-  MDNS.update();
-#endif
+  NetworkPlatform::updateMdns();
   ArduinoOTA.handle();
   // Zyklischer Check auf verstaute Sockets (alle 3 Sekunden)
   static uint32_t lastClientStallCheck = 0;

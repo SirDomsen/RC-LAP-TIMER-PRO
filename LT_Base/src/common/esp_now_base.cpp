@@ -1,4 +1,5 @@
 #include "esp_now_base.h"
+#include "config.h"
 #include "lap_logic.h"
 #include <esp_now_transport.h>
 
@@ -16,7 +17,7 @@ static bool sz3Unicast = false;
 
 static bool debugModeEnabled = false;
 
-#define MAX_DEBUG_PACKETS 8
+#define MAX_DEBUG_PACKETS PLATFORM_MAX_DEBUG_PACKETS
 struct DebugPacketLog {
   uint32_t timestampMs;
   uint8_t stationId;
@@ -57,7 +58,7 @@ const String& getDebugPacketsJSON() {
   static bool memoryReserved = false;
   
   if (!memoryReserved) {
-    json.reserve(512);
+    json.reserve(PLATFORM_MAX_DEBUG_PACKETS * 56 + 16);
     memoryReserved = true;
   }
   

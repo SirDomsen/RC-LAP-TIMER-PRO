@@ -26,11 +26,7 @@ uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
 // Eindeutige Hardware-Identifikatoren
 String getChipIdSuffix() {
   char buf[8];
-#if defined(ESP8266)
-  snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getChipId() & 0xFFFF));
-#elif defined(ESP32)
-  snprintf(buf, sizeof(buf), "%04X", (uint16_t)(ESP.getEfuseMac() & 0xFFFF));
-#endif
+  snprintf(buf, sizeof(buf), "%04X", PlatformRuntime::getChipIdSuffix16());
   return String(buf);
 }
 
@@ -95,7 +91,7 @@ static const char* const defaultCars[MAX_CARS + 1] = {
   "Auto 11", "Auto 12", "Auto 13", "Auto 14", "Auto 15"
 };
 
-#define QUEUE_MAX 20
+#define QUEUE_MAX PLATFORM_LAP_QUEUE_MAX
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;
@@ -538,9 +534,7 @@ static int8_t findMatchingRecordIndex(const RecordEntry* list, uint8_t count, ui
 #define TRACK_OBJ_MAX 3072
 
 static bool atomicReplaceFile(const char* tmpPath, const char* targetPath) {
-#if defined(ESP8266)
-  ESP.wdtFeed();
-#endif
+  PlatformRuntime::feedWatchdog();
   if (!LittleFS.rename(tmpPath, targetPath)) {
     LittleFS.remove(tmpPath);
     return false;
@@ -845,21 +839,6 @@ String lastResetReason = "Unbekannt";
 String lastResetInfo = "";
 bool lastResetIsCrash = false;
 
-#if defined(ESP8266)
-// Letzte Browser-Uhrzeit im RTC-Speicher (ueberlebt Software-Resets/Crashes, nicht Power-On)
-struct RtcClockBlock {
-  uint32_t magic;
-  uint32_t epochSec;
-  int32_t tzSec;
-  uint32_t check;
-};
-static const uint32_t RTC_CLOCK_MAGIC = 0x4C54434B;
-static const uint32_t RTC_CLOCK_SLOT = 64;
-
-static uint32_t rtcClockCheck(const RtcClockBlock& b) {
-  return b.magic ^ b.epochSec ^ (uint32_t)b.tzSec ^ 0xA5A5A5A5UL;
-}
-
 static String formatClockText(uint32_t epochSec, int32_t tzSec) {
   time_t localT = (time_t)((int64_t)epochSec + tzSec);
   struct tm *tm_info = gmtime(&localT);
@@ -870,34 +849,11 @@ static String formatClockText(uint32_t epochSec, int32_t tzSec) {
   return String(buf);
 }
 
-static void rtcClockSave() {
-  if (baseUnixTimestampSec == 0) return;
-  RtcClockBlock b;
-  b.magic = RTC_CLOCK_MAGIC;
-  b.epochSec = (uint32_t)(baseUnixTimestampSec + ((millis() - baseMillis) / 1000UL));
-  b.tzSec = clientTzOffsetSec;
-  b.check = rtcClockCheck(b);
-  ESP.rtcUserMemoryWrite(RTC_CLOCK_SLOT, (uint32_t*)&b, sizeof(b));
-}
-
-static bool rtcClockLoad(RtcClockBlock& b) {
-  if (!ESP.rtcUserMemoryRead(RTC_CLOCK_SLOT, (uint32_t*)&b, sizeof(b))) return false;
-  return b.magic == RTC_CLOCK_MAGIC && b.check == rtcClockCheck(b);
-}
-
-// Diagnose: letzter Schritt des Rundenloeschens, bleibt nach einem Crash im RTC-Speicher erhalten
-static const uint32_t RTC_STEP_MAGIC = 0x4C445354;
-static const uint32_t RTC_STEP_SLOT = 72;
-#endif
-
 static bool lapStepActive = false;
 
 static void markLapDeleteStep(uint32_t step) {
   lapStepActive = (step != 0);
-#if defined(ESP8266)
-  uint32_t blk[3] = { RTC_STEP_MAGIC, step, (uint32_t)ESP.getFreeHeap() };
-  ESP.rtcUserMemoryWrite(RTC_STEP_SLOT, blk, sizeof(blk));
-#endif
+  PlatformRuntime::saveDeleteStep(step, (uint32_t)ESP.getFreeHeap());
 }
 
 // Feinschritte nur waehrend eines laufenden Rundenloeschens protokollieren
@@ -907,42 +863,33 @@ static void markLapDeleteSubStep(uint32_t step) {
 
 // Alle 30 s die Uhrzeit sichern und nach dem ersten Zeitsync eine Zeile im Reset-Log ablegen
 static void updateResetLogClock() {
-#if defined(ESP8266)
   static uint32_t lastTickMs = 0;
   static bool syncLogged = false;
   if (baseUnixTimestampSec == 0) return;
-  if (millis() - lastTickMs < 30000UL && syncLogged) return;
-  lastTickMs = millis();
-  rtcClockSave();
+  uint32_t nowMs = millis();
+  if ((uint32_t)(nowMs - lastTickMs) < 30000UL && syncLogged) return;
+  lastTickMs = nowMs;
+  uint32_t nowSec = (uint32_t)(baseUnixTimestampSec + ((uint32_t)(nowMs - baseMillis) / 1000UL));
+  PlatformRuntime::saveRtcClock(nowSec, clientTzOffsetSec);
   if (!syncLogged) {
     syncLogged = true;
     File f = LittleFS.open("/crash.log", "a");
     if (f) {
-      uint32_t nowSec = (uint32_t)(baseUnixTimestampSec + ((millis() - baseMillis) / 1000UL));
       f.print("[ZEITSYNC] ");
       f.print(formatClockText(nowSec, clientTzOffsetSec));
       f.print(" | Uptime ");
-      f.print(millis() / 1000UL);
+      f.print(nowMs / 1000UL);
       f.println(" s");
       f.close();
     }
   }
-#endif
 }
 
 void recordBootResetReason() {
-#if defined(ESP8266)
-  lastResetReason = ESP.getResetReason();
-  lastResetInfo = ESP.getResetInfo();
-
-  // Ist es ein Crash / WDT / Exception?
-  String rLower = lastResetReason;
-  rLower.toLowerCase();
-  if (rLower.indexOf("watchdog") >= 0 || rLower.indexOf("exception") >= 0 || rLower.indexOf("fatal") >= 0) {
-    lastResetIsCrash = true;
-  } else {
-    lastResetIsCrash = false;
-  }
+  PlatformRuntime::ResetDiagnosis diag = PlatformRuntime::readBootResetDiagnosis();
+  lastResetReason = diag.reason;
+  lastResetInfo = diag.info;
+  lastResetIsCrash = diag.isCrash;
 
   // Protokolliert jeden Neustart in /crash.log im LittleFS (max. 6 KB halten)
   File f = LittleFS.open("/crash.log", "a");
@@ -953,48 +900,30 @@ void recordBootResetReason() {
       f = LittleFS.open("/crash.log", "w");
     }
     if (f) {
-      const char* tag = "[START]";
-      if (lastResetIsCrash) {
-        tag = "[CRASH ⚠️]";
-      } else if (rLower.indexOf("power") >= 0) {
-        tag = "[POWER-ON]";
-      } else if (rLower.indexOf("restart") >= 0) {
-        tag = "[RESTART]";
-      } else if (rLower.indexOf("external") >= 0) {
-        tag = "[EXT-RESET]";
-      }
-
-      f.print(tag);
-      RtcClockBlock rtcBlock;
-      if (rtcClockLoad(rtcBlock)) {
+      f.print(diag.tag);
+      PlatformRuntime::RtcClockSnapshot rtcClock;
+      if (PlatformRuntime::loadRtcClock(rtcClock)) {
         f.print(" zuletzt aktiv ca. ");
-        f.print(formatClockText(rtcBlock.epochSec, rtcBlock.tzSec));
+        f.print(formatClockText(rtcClock.epochSec, rtcClock.tzSec));
       } else {
         f.print(" Zeit unbekannt");
       }
-      f.print(" |");
-      f.print(" Grund: ");
+      f.print(" | Grund: ");
       f.print(lastResetReason);
       f.print(" | Details: ");
       f.print(lastResetInfo);
-      uint32_t stepBlk[3];
-      if (ESP.rtcUserMemoryRead(RTC_STEP_SLOT, stepBlk, sizeof(stepBlk)) &&
-          stepBlk[0] == RTC_STEP_MAGIC && stepBlk[1] != 0) {
+      PlatformRuntime::RtcDeleteStepSnapshot delStep;
+      if (PlatformRuntime::loadDeleteStep(delStep)) {
         f.print(" | Loeschschritt ");
-        f.print(stepBlk[1]);
+        f.print(delStep.step);
         f.print(" Heap ");
-        f.print(stepBlk[2]);
+        f.print(delStep.freeHeap);
       }
       f.println();
       f.close();
       markLapDeleteStep(0);
     }
   }
-#elif defined(ESP32)
-  lastResetReason = "Normal Boot (ESP32)";
-  lastResetInfo = "";
-  lastResetIsCrash = false;
-#endif
 }
 
 String getCrashLog() {
@@ -2253,7 +2182,7 @@ void queueLapForStorage(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint
 }
 
 // Loeschauftraege aus dem Webserver-Callback; Abarbeitung im loop()
-#define DELETE_QUEUE_MAX 4
+#define DELETE_QUEUE_MAX PLATFORM_DELETE_QUEUE_MAX
 #define DELETE_PATH_MAX 64
 static char deleteQueue[DELETE_QUEUE_MAX][DELETE_PATH_MAX];
 static volatile uint8_t deleteQueueHead = 0;
@@ -3417,9 +3346,7 @@ void deleteAllHistory() {
   }
 #endif
   for (const String& d : dirsToRemove) {
-#if defined(ESP8266)
-    ESP.wdtFeed();
-#endif
+    PlatformRuntime::feedWatchdog();
     removeDirectoryRecursive(d);
   }
 
