@@ -537,6 +537,17 @@ static int8_t findMatchingRecordIndex(const RecordEntry* list, uint8_t count, ui
 
 #define TRACK_OBJ_MAX 3072
 
+static bool atomicReplaceFile(const char* tmpPath, const char* targetPath) {
+#if defined(ESP8266)
+  ESP.wdtFeed();
+#endif
+  if (!LittleFS.rename(tmpPath, targetPath)) {
+    LittleFS.remove(tmpPath);
+    return false;
+  }
+  return true;
+}
+
 // Streamt /tracks.json Strecke fuer Strecke (hoechstens ein Streckenobjekt im RAM).
 // activeId != nullptr: Schreibmodus, Ergebnis nach /tracks.json.tmp, danach rename. visit: 0 behalten, 1 verwerfen, 2 abbrechen
 // (Schreibmodus: Datei bleibt unveraendert; Lesemodus: Suche beendet, kein Fehler).
@@ -552,7 +563,6 @@ static bool streamTracks(const String* activeId, Fn visit) {
   File out;
   bool writing = (activeId != nullptr);
   if (writing) {
-    if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
     out = LittleFS.open(tmpPath, "w");
     if (!out) { free(buf); in.close(); return false; }
     out.print("{\"active\":\"");
@@ -602,9 +612,7 @@ static bool streamTracks(const String* activeId, Fn visit) {
   out.print("]}");
   out.close();
   if (!ok || stopped) { LittleFS.remove(tmpPath); return false; }
-  LittleFS.remove("/tracks.json");
-  if (!LittleFS.rename(tmpPath, "/tracks.json")) { LittleFS.remove(tmpPath); return false; }
-  return true;
+  return atomicReplaceFile(tmpPath, "/tracks.json");
 }
 
 bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
@@ -1281,15 +1289,11 @@ void saveTracksToFS() {
   size_t outSize = out.size();
   out.close();
 
-#if defined(ESP8266)
-  ESP.wdtFeed();
-#endif
-
   if (!okWrite || outSize < 20) {
     LittleFS.remove(tmpPath);
     return;
   }
-  if (!LittleFS.rename(tmpPath, "/tracks.json")) LittleFS.remove(tmpPath);
+  atomicReplaceFile(tmpPath, "/tracks.json");
   markLapDeleteSubStep(13);
   updateFsUsageCache();
 }
@@ -1502,8 +1506,7 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
   fIn.close();
   fOut.close();
 
-  LittleFS.remove("/sessions.json");
-  LittleFS.rename("/sessions.tmp", "/sessions.json");
+  atomicReplaceFile("/sessions.tmp", "/sessions.json");
   currentSessionIndexOffset = 0;
   currentSessionIndexLen = 0;
   updateFsUsageCache();
@@ -2473,7 +2476,6 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
 
   // Durchlauf 2: Temp-Datei ohne Zielrunde schreiben
   String tmpPath = file + ".tmp";
-  if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
   File out = LittleFS.open(tmpPath, "w");
   if (!out) { in.close(); free(buf); return LAP_DELETE_NO_SPACE; }
 
@@ -2510,8 +2512,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
     return LAP_DELETE_NO_SPACE;
   }
   // rename ersetzt das Original atomar (LittleFS)
-  if (!LittleFS.rename(tmpPath, file)) {
-    LittleFS.remove(tmpPath);
+  if (!atomicReplaceFile(tmpPath.c_str(), file.c_str())) {
     return LAP_DELETE_NO_SPACE;
   }
   return LAP_DELETE_OK;
