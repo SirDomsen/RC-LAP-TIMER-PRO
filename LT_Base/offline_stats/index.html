@@ -4,29 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c10">
-  <title>RC Lap Timer Pro – Offline-Statistik 0.9.0</title>
+  <title>RC Lap Timer Pro – Offline-Statistik 0.9.4</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
   <link rel="stylesheet" href="../data/style.css?v=4.5.11">
-  <link rel="stylesheet" href="offline_stats.css?v=0.9.0">
+  <link rel="stylesheet" href="offline_stats.css?v=0.9.3">
 </head>
 <body class="offline-app">
   <header class="offline-toolbar">
     <div>
       <h1>🏁 RC LAP TIMER</h1>
-      <p>Offline-Statistikauswertung <strong>v0.9.0</strong> · Daten bleiben auf diesem Gerät</p>
+      <p>Offline-Statistikauswertung <strong>v0.9.4</strong> · Daten bleiben auf diesem Gerät</p>
     </div>
     <div class="offline-toolbar-actions">
       <div class="offline-sync-group">
-        <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer Adresse im WLAN" spellcheck="false" autocomplete="url">
+        <label class="offline-host-label" for="laptimerHostInput">Lap-Timer (IP/Host):</label>
+        <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer IP-Adresse oder Hostname im WLAN" spellcheck="false" autocomplete="url">
         <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Vom Lap Timer laden</button>
+        <button class="btn btn-red" id="clearLaptimerButton" type="button" disabled title="Erst nach erfolgreicher Übertragung verfügbar">🗑️ Lap-Timer leeren</button>
       </div>
-      <label class="btn btn-purple" for="backupFileInput">📦 ZIP/JSON importieren</label>
+      <label class="btn btn-purple" for="backupFileInput" title="Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON">📂 Laden</label>
       <input id="backupFileInput" type="file" accept=".zip,.json,application/zip,application/json">
-      <button class="btn btn-green" id="exportDatabaseButton" type="button" disabled>💾 Stats-ZIP herunterladen</button>
+      <button class="btn btn-green" id="exportDatabaseButton" type="button" disabled>💾 Speichern</button>
       <button class="btn" id="fullscreenButton" type="button">⛶ Vollbild</button>
     </div>
     <div class="offline-status" id="offlineStatus" role="status" aria-live="polite">
-      Wähle ein Lap-Timer-ZIP/JSON aus oder lade Daten direkt vom Lap Timer im WLAN.
+      Lade eine Statistik-/Backup-Datei oder verbinde dich mit dem Lap Timer im WLAN.
     </div>
   </header>
 
@@ -34,8 +36,8 @@
     <div id="offlineWelcome" class="offline-welcome">
       <div class="offline-welcome-icon">📊</div>
       <h2>Deine Rennstatistik – ganz ohne ESP-Verbindung</h2>
-      <p>Importiere ein ZIP-Dateisystem-Backup bzw. Statistik-JSON-Backup oder lies den Lap Timer direkt im WLAN aus. Die Datenbank wächst lokal mit jedem Import.</p>
-      <label class="btn btn-purple" for="backupFileInput">ZIP/JSON auswählen</label>
+      <p>Lade ein Lap-Timer-Vollbackup, eine gespeicherte <code>statistics.zip</code> bzw. ein JSON-Backup oder lies den Lap Timer direkt im WLAN aus. Die Datenbank wächst lokal mit jedem Import.</p>
+      <label class="btn btn-purple" for="backupFileInput">📂 Laden</label>
     </div>
 
     <div id="statsOverviewModal" class="modal">
@@ -94,7 +96,23 @@
     </div>
   </main>
 
+  <div id="universalModal" class="modal" style="z-index: 10010;">
+    <div class="modal-content" id="universalModalContent" style="max-width:460px; text-align:center;">
+      <h3 id="universalModalTitle" style="font-family:var(--font-display); margin-top:0; font-size:18px; letter-spacing:1px;">DIALOG</h3>
+      <div id="universalModalBox" style="display:none; background:rgba(0,0,0,0.5); padding:12px 15px; border-radius:8px; border:1px dashed var(--neon-cyan); margin:15px 0; text-align:left;">
+        <div id="universalModalBoxLabel" style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Details:</div>
+        <div id="universalModalBoxContent" style="font-family:monospace; font-size:13px; color:#fff; font-weight:bold; word-break:break-all;"></div>
+        <div id="universalModalBoxSub" style="font-size:12px; color:var(--neon-cyan); margin-top:4px;"></div>
+      </div>
+      <p id="universalModalMessage" style="font-size:14px; color:var(--text-main); margin-bottom:20px; line-height:1.45;"></p>
+      <div id="universalModalButtons" style="display:flex; gap:10px;">
+        <button id="universalModalCancelBtn" class="btn btn-cyan" style="flex:1; padding:12px; font-weight:bold; margin:0;" onclick="closeUniversalDialog(false)">ABBRECHEN</button>
+        <button id="universalModalConfirmBtn" class="btn btn-purple" style="flex:1; padding:12px; font-weight:bold; margin:0;" onclick="closeUniversalDialog(true)">BESTÄTIGEN</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../data/stats.js?v=4.7.2"></script>
-  <script src="offline_stats.js?v=0.9.0"></script>
+  <script src="offline_stats.js?v=0.9.4"></script>
 </body>
 </html>

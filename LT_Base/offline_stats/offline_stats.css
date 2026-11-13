@@ -45,8 +45,15 @@ body.offline-app {
   gap: 6px;
 }
 
+.offline-host-label {
+  color: var(--neon-cyan);
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
 .offline-host-input {
-  width: 180px;
+  width: 195px;
   max-width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--card-border);

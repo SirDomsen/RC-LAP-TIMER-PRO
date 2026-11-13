@@ -7,7 +7,7 @@ Die Offline-Statistik ist eine lokale, vollbildfähige Auswertung für Lap-Timer
 - Einstieg: `offline_stats/index.html`
 - Implementierung des Offline-Datenadapters, ZIP-Import/-Export und IndexedDB: `offline_stats/offline_stats.js`
 - Gemeinsame Statistikdarstellung: `data/stats.js`
-- Aktuelle Offline-App-Version: **0.9.0**
+- Aktuelle Offline-App-Version: **0.9.4**
 - Speicherung: IndexedDB `rc-lap-timer-offline-stats`
 
 Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-Löschen oder Flash-Reparaturen werden nicht als lokale Änderungen ausgeführt.
@@ -18,7 +18,7 @@ Unterstützte Eingaben:
 
 - LittleFS-ZIP-Backups des Lap Timers
 - Statistik-JSON-Backups der Versionen 3, 4 und 5
-- Direkter WLAN-Abruf vom Lap Timer (`📡 Vom Lap Timer laden` über IP oder `laptimer.local`): Lädt `tracks`, `names`, `sessions` sowie nur neue oder geänderte Session-Dateien sequenziell nach und führt sie lokal zusammen (erfordert Lap-Timer-Firmware mit CORS-Header ab `v4.7.15`).
+- Direkter WLAN-Abruf vom Lap Timer (`📡 Vom Lap Timer laden` über IP oder `laptimer.local`): Lädt `tracks`, `names`, `sessions` sowie nur neue oder geänderte Session-Dateien sequenziell nach und führt sie lokal zusammen (erfordert Lap-Timer-Firmware mit CORS-Header ab `v4.7.15`). Nach erfolgreicher Übertragung kann der Statistikspeicher auf dem Lap Timer optional über `🗑️ Lap-Timer leeren` freigegeben werden (ab Firmware `v4.7.16`).
 
 Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. Neue Sessiondateien speichern Fahrer und Fahrzeug als Snapshot (`d`/`v`) beim ersten Auftreten einer ID. Kompakte Header- und Sektor-Keys reduzieren die Dateigröße; das aktuelle Backupformat ist Version 5. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
 
@@ -31,7 +31,7 @@ Die Daten werden nach relativem Dateipfad in IndexedDB gespeichert und mit dem v
 - Sessions werden anhand ihres Dateipfads (ersatzweise ihrer ID) dedupliziert.
 - Streckenrekorde, aktuelle Fahrernamen und Sessions werden zusammengeführt. Gleichnamige Fahrer werden unabhängig von ihrer ID gemeinsam ausgewertet; die Session-Snapshots bleiben von späteren Umbenennungen unberührt.
 
-Über **„Stats-ZIP herunterladen“** lässt sich die kumulierte Datenbank als ZIP mit denselben relativen Pfaden sichern. Dieses ZIP kann später wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien. Alte Dateien `names_history.json`/`.jsonl` werden nicht mehr verwendet.
+Über **„💾 Speichern“** lässt sich die kumulierte Datenbank als `statistics.zip` mit denselben relativen Pfaden sichern. In Chromium-Browsern (Chrome/Edge) wird dabei eine einmal gewählte Speicherdatei direkt überschrieben und nach Importen/WLAN-Syncs bei erteilter Berechtigung automatisch aktualisiert; andere Browser fallen auf den ZIP-Download zurück. Dieses ZIP kann über **„📂 Laden“** jederzeit wieder importiert werden, um die Datenbank auf einem anderen Browser/Gerät fortzuführen. Der Export enthält ebenfalls nur Statistikdateien, keine Frontend- oder WLAN-Dateien. Alte Dateien `names_history.json`/`.jsonl` werden nicht mehr verwendet.
 
 Die Datenbank bleibt zunächst im Browserprofil gespeichert. Browserdaten zu löschen oder ein anderes Browserprofil zu verwenden entfernt bzw. trennt diese lokale Datenbank; daher sollte das heruntergeladene Stats-ZIP als portables Backup aufbewahrt werden.
 

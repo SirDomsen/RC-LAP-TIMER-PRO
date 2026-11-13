@@ -551,11 +551,15 @@ void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {
 
 void handlePostDeleteAllStats(AsyncWebServerRequest *request) {
   if (isRaceDeleteLocked()) {
-    request->send(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    AsyncWebServerResponse *response = request->beginResponse(423, "application/json", "{\"error\":\"locked_during_race\",\"message\":\"Loeschen waehrend eines laufenden Rennens gesperrt\"}");
+    addCorsHeader(response);
+    request->send(response);
     return;
   }
   deleteAllHistory();
-  request->send(200, "text/plain", "OK");
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "OK");
+  addCorsHeader(response);
+  request->send(response);
 }
 
 void handlePostDeleteSession(AsyncWebServerRequest *request) {

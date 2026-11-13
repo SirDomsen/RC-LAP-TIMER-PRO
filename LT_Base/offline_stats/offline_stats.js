@@ -10,7 +10,7 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '0.9.0';
+const OFFLINE_STATS_VERSION = '0.9.4';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
@@ -23,6 +23,8 @@ const DEFAULT_LAPTIMER_HOST = 'laptimer.local';
 let offlineDb = null;
 let offlineBackup = null;
 let offlineInitialization = null;
+let lastSyncedLaptimerUrl = null;
+let linkedSaveFileHandle = null;
 
 function setOfflineStatus(message, state = 'info') {
   let status = document.getElementById('offlineStatus');
@@ -690,12 +692,13 @@ async function loadOfflineFile(file) {
     let { payload, entries } = await readImportFile(file);
     let imported = await importIntoLocalDatabase(payload, entries);
     await refreshOfflineViews(imported.dataset, imported.fileMap);
-    document.getElementById('exportDatabaseButton').disabled = false;
+    updateSaveButtonsUI(true);
 
     let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
     document.getElementById('offlineBackupSummary').textContent = summary;
     let status = `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
-    status += ' Die lokale Datenbank kannst du über „Stats-ZIP herunterladen“ sichern.';
+    let autoSaveNote = await tryAutoSaveStatusNote();
+    if (autoSaveNote) status += autoSaveNote;
     if (imported.missingSessionFiles) {
       status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
     }
@@ -705,13 +708,42 @@ async function loadOfflineFile(file) {
   }
 }
 
+function supportsFileSystemSave() {
+  return typeof window.showSaveFilePicker === 'function';
+}
+
+function updateSaveButtonsUI(hasData) {
+  let saveButton = document.getElementById('exportDatabaseButton');
+  let canPick = supportsFileSystemSave();
+
+  if (saveButton) {
+    saveButton.disabled = !hasData;
+    saveButton.textContent = '💾 Speichern';
+    saveButton.title = linkedSaveFileHandle
+      ? `Speichert direkt in „${linkedSaveFileHandle.name}“`
+      : (canPick ? 'Speicherort für statistics.zip wählen und speichern' : 'statistics.zip herunterladen');
+  }
+}
+
+async function ensureWritePermission(handle, promptUser) {
+  if (!handle || typeof handle.queryPermission !== 'function') return true;
+  let opts = { mode: 'readwrite' };
+  if ((await handle.queryPermission(opts)) === 'granted') return true;
+  if (!promptUser || typeof handle.requestPermission !== 'function') return false;
+  return (await handle.requestPermission(opts)) === 'granted';
+}
+
+async function writeArchiveToHandle(handle, archive) {
+  let writable = await handle.createWritable();
+  await writable.write(archive);
+  await writable.close();
+}
+
 function exportStatisticsDatabase(fileMap, dataset) {
   let archive = createStatisticsZip(fileMap, dataset);
   let url = URL.createObjectURL(archive);
   let link = document.createElement('a');
-  let now = new Date();
-  let pad = value => String(value).padStart(2, '0');
-  let fileName = `rctl_stats_database_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}.zip`;
+  let fileName = 'statistics.zip';
   link.href = url;
   link.download = fileName;
   document.body.appendChild(link);
@@ -721,7 +753,82 @@ function exportStatisticsDatabase(fileMap, dataset) {
   return { fileName, size: archive.size };
 }
 
-async function downloadStatisticsDatabase() {
+async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } = {}) {
+  let snapshot = await readDatabaseSnapshot();
+  let fileMap = getStoredFileMap(snapshot);
+  let dataset = getDatasetFromSnapshot(snapshot, fileMap);
+  if (!dataset.tracks) {
+    throw new Error('Es sind noch keine Statistikdaten zum Speichern vorhanden.');
+  }
+
+  if (supportsFileSystemSave()) {
+    try {
+      if (forcePicker || !linkedSaveFileHandle) {
+        if (autoSaveOnly) return { saved: false, reason: 'unlinked' };
+        let pickedHandle = await window.showSaveFilePicker({
+          suggestedName: linkedSaveFileHandle ? linkedSaveFileHandle.name : 'statistics.zip',
+          startIn: linkedSaveFileHandle || 'documents',
+          types: [{
+            description: 'RC Lap Timer Statistik-ZIP',
+            accept: { 'application/zip': ['.zip'] }
+          }]
+        });
+        linkedSaveFileHandle = pickedHandle;
+        await writeOfflineSetting('saveFileHandle', pickedHandle);
+        updateSaveButtonsUI(true);
+      }
+
+      let allowed = await ensureWritePermission(linkedSaveFileHandle, !autoSaveOnly);
+      if (!allowed) {
+        if (autoSaveOnly) return { saved: false, reason: 'permission' };
+        throw new Error('Schreibberechtigung für die Speicherdatei wurde nicht erteilt.');
+      }
+
+      let archive = createStatisticsZip(fileMap, dataset);
+      try {
+        await writeArchiveToHandle(linkedSaveFileHandle, archive);
+      } catch (writeError) {
+        if (writeError && writeError.name === 'NotFoundError') {
+          linkedSaveFileHandle = null;
+          await writeOfflineSetting('saveFileHandle', null);
+          updateSaveButtonsUI(true);
+          throw new Error('Die verknüpfte Speicherdatei wurde verschoben oder gelöscht. Bitte erneut auf „💾 Speichern“ klicken.');
+        }
+        throw writeError;
+      }
+
+      return { saved: true, method: 'handle', fileName: linkedSaveFileHandle.name, size: archive.size };
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return { saved: false, reason: 'cancelled' };
+      }
+      if (autoSaveOnly) {
+        return { saved: false, reason: 'error' };
+      }
+      if (!error || (error.name !== 'SecurityError' && error.name !== 'TypeError')) {
+        throw error;
+      }
+    }
+  }
+
+  if (autoSaveOnly) return { saved: false, reason: 'unsupported' };
+  let downloaded = exportStatisticsDatabase(fileMap, dataset);
+  return { saved: true, method: 'download', fileName: downloaded.fileName, size: downloaded.size };
+}
+
+async function tryAutoSaveStatusNote() {
+  if (!linkedSaveFileHandle) return '';
+  let result = await saveDatabaseToFile({ autoSaveOnly: true });
+  if (result.saved) {
+    return ` Direkt in „${result.fileName}“ gespeichert.`;
+  }
+  if (result.reason === 'permission') {
+    return ` Klicke auf „💾 Speichern“, um „${linkedSaveFileHandle.name}“ zu aktualisieren.`;
+  }
+  return '';
+}
+
+async function downloadStatisticsDatabase({ forcePicker = false } = {}) {
   let button = document.getElementById('exportDatabaseButton');
   if (!offlineDb || !await offlineInitialization) {
     setOfflineStatus('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'error');
@@ -729,19 +836,26 @@ async function downloadStatisticsDatabase() {
   }
   if (button) button.disabled = true;
   try {
-    let snapshot = await readDatabaseSnapshot();
-    let fileMap = getStoredFileMap(snapshot);
-    let dataset = getDatasetFromSnapshot(snapshot, fileMap);
-    if (!dataset.tracks) throw new Error('Es sind noch keine Statistikdaten zum Exportieren vorhanden.');
-    let result = exportStatisticsDatabase(fileMap, dataset);
-    setOfflineStatus(
-      `Kumuliertes Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).`,
-      'success'
-    );
+    let result = await saveDatabaseToFile({ forcePicker });
+    if (!result.saved && result.reason === 'cancelled') {
+      setOfflineStatus('Speichern abgebrochen.', 'info');
+      return;
+    }
+    if (result.method === 'handle') {
+      setOfflineStatus(
+        `In „${result.fileName}“ gespeichert (${(result.size / 1024).toFixed(1)} KB).`,
+        'success'
+      );
+    } else {
+      setOfflineStatus(
+        `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).`,
+        'success'
+      );
+    }
   } catch (error) {
-    setOfflineStatus(error.message || 'Statistik-ZIP konnte nicht erstellt werden.', 'error');
+    setOfflineStatus(error.message || 'Statistikdatenbank konnte nicht gespeichert werden.', 'error');
   } finally {
-    if (button) button.disabled = false;
+    updateSaveButtonsUI(Boolean(offlineBackup && offlineBackup.tracks));
   }
 }
 
@@ -749,17 +863,20 @@ async function restoreLocalDatabase() {
   let snapshot = await readDatabaseSnapshot();
   let fileMap = getStoredFileMap(snapshot);
   let dataset = getDatasetFromSnapshot(snapshot, fileMap);
-  if (!dataset.tracks) return;
+  if (!dataset.tracks) {
+    updateSaveButtonsUI(false);
+    return;
+  }
 
   await refreshOfflineViews(dataset, fileMap);
   document.getElementById('offlineBackupSummary').textContent =
     `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
-  setOfflineStatus(
-    `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`,
-    'success'
-  );
-  let exportButton = document.getElementById('exportDatabaseButton');
-  if (exportButton) exportButton.disabled = false;
+  let status = `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`;
+  if (linkedSaveFileHandle) {
+    status += ` Verknüpfte Speicherdatei: „${linkedSaveFileHandle.name}“.`;
+  }
+  setOfflineStatus(status, 'success');
+  updateSaveButtonsUI(true);
 }
 
 async function toggleOfflineFullscreen() {
@@ -849,6 +966,7 @@ function getSessionSignature(session) {
 async function syncFromLaptimer() {
   let hostInput = document.getElementById('laptimerHostInput');
   let syncButton = document.getElementById('syncLaptimerButton');
+  let clearButton = document.getElementById('clearLaptimerButton');
   let exportButton = document.getElementById('exportDatabaseButton');
 
   let baseUrl;
@@ -859,6 +977,8 @@ async function syncFromLaptimer() {
     return;
   }
 
+  lastSyncedLaptimerUrl = null;
+  if (clearButton) clearButton.disabled = true;
   if (syncButton) syncButton.disabled = true;
   if (hostInput) hostInput.disabled = true;
 
@@ -940,12 +1060,16 @@ async function syncFromLaptimer() {
     let imported = await importIntoLocalDatabase(payload, entries);
     await writeOfflineSetting('laptimerHost', baseUrl.replace(/^https?:\/\//i, ''));
     await refreshOfflineViews(imported.dataset, imported.fileMap);
-    if (exportButton) exportButton.disabled = false;
+    updateSaveButtonsUI(true);
+    lastSyncedLaptimerUrl = baseUrl;
+    if (clearButton) clearButton.disabled = false;
 
     let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
     document.getElementById('offlineBackupSummary').textContent = summary;
 
     let status = `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    let autoSaveNote = await tryAutoSaveStatusNote();
+    if (autoSaveNote) status += autoSaveNote;
     if (skippedMissing > 0) {
       status += ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`;
     } else if (imported.missingSessionFiles > 0) {
@@ -960,28 +1084,212 @@ async function syncFromLaptimer() {
   }
 }
 
+let _offlineDialogResolver = null;
+
+function showUniversalDialog(opts) {
+  return new Promise(resolve => {
+    _offlineDialogResolver = resolve;
+    const modal = document.getElementById('universalModal');
+    if (!modal) {
+      resolve(opts.isAlert ? true : window.confirm(opts.message ? opts.message.replace(/<[^>]*>/g, '') : opts.title));
+      return;
+    }
+
+    const content = document.getElementById('universalModalContent');
+    const title = document.getElementById('universalModalTitle');
+    const box = document.getElementById('universalModalBox');
+    const boxLabel = document.getElementById('universalModalBoxLabel');
+    const boxContent = document.getElementById('universalModalBoxContent');
+    const boxSub = document.getElementById('universalModalBoxSub');
+    const msg = document.getElementById('universalModalMessage');
+    const cancelBtn = document.getElementById('universalModalCancelBtn');
+    const confirmBtn = document.getElementById('universalModalConfirmBtn');
+
+    const theme = opts.theme || 'info';
+    const cleanTheme = (theme === 'red') ? 'danger' : theme;
+    if (content) content.className = 'modal-content theme-' + cleanTheme;
+
+    const themeColors = {
+      purple: 'var(--neon-purple)',
+      danger: 'var(--neon-red)',
+      orange: 'var(--neon-orange)',
+      cyan: 'var(--neon-cyan)',
+      info: 'var(--neon-cyan)',
+      green: 'var(--neon-green)',
+      success: 'var(--neon-green)'
+    };
+    const activeColor = themeColors[cleanTheme] || 'var(--neon-cyan)';
+    if (title) {
+      title.style.color = activeColor;
+      title.innerHTML = opts.title || 'HINWEIS';
+    }
+
+    if (box) {
+      if (opts.boxContent) {
+        box.style.display = 'block';
+        box.style.borderColor = activeColor;
+        if (boxLabel) boxLabel.innerText = opts.boxLabel || 'Details:';
+        if (boxContent) boxContent.innerText = opts.boxContent;
+        if (boxSub) {
+          if (opts.boxSub) {
+            boxSub.style.display = 'block';
+            boxSub.innerText = opts.boxSub;
+          } else {
+            boxSub.style.display = 'none';
+          }
+        }
+      } else {
+        box.style.display = 'none';
+      }
+    }
+
+    if (msg) msg.innerHTML = opts.message || '';
+
+    const btnClass = 'btn ' + (
+      cleanTheme === 'purple' ? 'btn-purple' :
+      cleanTheme === 'danger' ? 'btn-red' :
+      cleanTheme === 'orange' ? 'btn-orange' :
+      (cleanTheme === 'green' || cleanTheme === 'success') ? 'btn-green' :
+      'btn-cyan'
+    );
+
+    if (opts.isAlert) {
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      if (confirmBtn) {
+        confirmBtn.innerText = opts.confirmText || 'VERSTANDEN';
+        confirmBtn.className = btnClass;
+        confirmBtn.style.flex = '1';
+      }
+    } else {
+      if (cancelBtn) {
+        cancelBtn.style.display = 'block';
+        cancelBtn.innerText = opts.cancelText || 'ABBRECHEN';
+      }
+      if (confirmBtn) {
+        confirmBtn.innerText = opts.confirmText || 'BESTÄTIGEN';
+        confirmBtn.className = btnClass;
+      }
+    }
+
+    modal.style.display = 'block';
+  });
+}
+
+window.closeUniversalDialog = function(result) {
+  const modal = document.getElementById('universalModal');
+  if (modal) modal.style.display = 'none';
+  if (_offlineDialogResolver) {
+    let res = _offlineDialogResolver;
+    _offlineDialogResolver = null;
+    res(result);
+  }
+};
+
+window.showConfirm = function(opts) {
+  return showUniversalDialog(Object.assign({}, opts, { isAlert: false }));
+};
+
+window.showAlert = function(opts) {
+  return showUniversalDialog(Object.assign({}, opts, { isAlert: true }));
+};
+
+async function clearLaptimerStorage() {
+  if (!lastSyncedLaptimerUrl) {
+    setOfflineStatus('Bitte zuerst die Daten erfolgreich vom Lap Timer laden.', 'error');
+    return;
+  }
+
+  let confirmed = await window.showConfirm({
+    title: '🗑️ LAP-TIMER LEEREN?',
+    theme: 'danger',
+    boxLabel: 'Zielgerät im WLAN:',
+    boxContent: lastSyncedLaptimerUrl,
+    boxSub: 'Alle Sessions, Tagesbestzeiten & Streckenrekorde auf dem Gerät werden entfernt',
+    message: 'Möchtest du die Statistikdaten auf dem Lap Timer wirklich löschen, um Speicherplatz freizugeben?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Deine lokale Offline-Statistikdatenbank in diesem Browser bleibt vollständig erhalten.</span>',
+    confirmText: 'JETZT LÖSCHEN 🗑️',
+    cancelText: 'ABBRECHEN'
+  });
+  if (!confirmed) return;
+
+  let hostInput = document.getElementById('laptimerHostInput');
+  let syncButton = document.getElementById('syncLaptimerButton');
+  let clearButton = document.getElementById('clearLaptimerButton');
+  let targetUrl = `${lastSyncedLaptimerUrl}/api/deleteallstats`;
+
+  if (clearButton) clearButton.disabled = true;
+  if (syncButton) syncButton.disabled = true;
+  if (hostInput) hostInput.disabled = true;
+  setOfflineStatus(`Lösche Statistikdaten auf ${lastSyncedLaptimerUrl} …`);
+
+  let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = controller ? setTimeout(() => controller.abort(), LAPTIMER_FETCH_TIMEOUT_MS) : null;
+
+  try {
+    let response = await fetch(targetUrl, {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    });
+    if (response.status === 423) {
+      throw new Error('Löschen während eines laufenden Rennens auf dem Lap Timer gesperrt.');
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} beim Löschen auf dem Lap Timer.`);
+    }
+    lastSyncedLaptimerUrl = null;
+    setOfflineStatus(
+      'Speicherplatz auf dem Lap Timer wurde freigegeben. Deine lokale Offline-Datenbank bleibt erhalten.',
+      'success'
+    );
+  } catch (error) {
+    if (clearButton && lastSyncedLaptimerUrl) clearButton.disabled = false;
+    if (error && error.name === 'AbortError') {
+      setOfflineStatus('Zeitüberschreitung beim Löschen auf dem Lap Timer.', 'error');
+    } else {
+      setOfflineStatus(error.message || 'Statistikdaten auf dem Lap Timer konnten nicht gelöscht werden.', 'error');
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (syncButton) syncButton.disabled = false;
+    if (hostInput) hostInput.disabled = false;
+  }
+}
+
 document.getElementById('backupFileInput').addEventListener('change', async event => {
   await loadOfflineFile(event.target.files[0]);
   event.target.value = '';
 });
 document.getElementById('syncLaptimerButton').addEventListener('click', syncFromLaptimer);
+document.getElementById('clearLaptimerButton').addEventListener('click', clearLaptimerStorage);
+document.getElementById('laptimerHostInput').addEventListener('input', () => {
+  lastSyncedLaptimerUrl = null;
+  let clearButton = document.getElementById('clearLaptimerButton');
+  if (clearButton) clearButton.disabled = true;
+});
 document.getElementById('laptimerHostInput').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
     syncFromLaptimer();
   }
 });
-document.getElementById('exportDatabaseButton').addEventListener('click', downloadStatisticsDatabase);
+document.getElementById('exportDatabaseButton').addEventListener('click', () => downloadStatisticsDatabase());
 document.getElementById('fullscreenButton').addEventListener('click', toggleOfflineFullscreen);
 document.addEventListener('fullscreenchange', updateFullscreenButton);
 
 offlineInitialization = (async function initializeOfflineStatistics() {
   try {
     offlineDb = await openOfflineDatabase();
-    let savedHost = await readOfflineSetting('laptimerHost');
+    let [savedHost, savedHandle] = await Promise.all([
+      readOfflineSetting('laptimerHost'),
+      readOfflineSetting('saveFileHandle')
+    ]);
     let hostInput = document.getElementById('laptimerHostInput');
     if (hostInput && savedHost) {
       hostInput.value = savedHost;
+    }
+    if (savedHandle && typeof savedHandle.createWritable === 'function') {
+      linkedSaveFileHandle = savedHandle;
     }
     await restoreLocalDatabase();
     return true;
