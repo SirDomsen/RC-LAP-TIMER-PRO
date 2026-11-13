@@ -101,7 +101,7 @@ Die komplette Steuerung und Live-Zeitnahme läuft direkt über eine im Browser b
    ```
 
 4. **Flashen (USB vs. OTA):**
-   Die Environments in `platformio.ini` sind für OTA-Uploads vorkonfiguriert (`upload_protocol = espota`, z. B. `192.168.0.8` für `basisstation`, `192.168.0.14` für `basisstation_s3`, `192.168.0.11`–`.13` für `sz1`–`sz3`). Für das erstmalige Flashen per USB-Kabel das normale Serial-Upload-Target verwenden (`-t upload --upload-port COMx`). Web-Assets lassen sich danach ebenfalls bequem per Browser über `update.html` (inkl. automatischer `.gz`-Komprimierung) hochladen.
+   Die Environments in `platformio.ini` sind für OTA-Uploads vorkonfiguriert. Für das erstmalige Flashen per USB-Kabel das normale Serial-Upload-Target verwenden (`-t upload --upload-port COMx`). Web-Assets lassen sich danach ebenfalls bequem per Browser über `update.html` (inkl. automatischer `.gz`-Komprimierung) hochladen.
 
 ---
 
