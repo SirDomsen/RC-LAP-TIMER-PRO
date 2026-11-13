@@ -11,7 +11,7 @@ void updateBuzzer();
 
 // Startampel nach Grand Prix Circuit: 2x Rot (260 Hz) -> Grün (1050 Hz)
 void playBuzzerStartLights();
-void scheduleBuzzerStartLights(uint32_t delayMs = 6000);
+void scheduleBuzzerStartLights(uint32_t delayMs = 6100);
 void cancelBuzzerSchedule();
 
 // Kurzer Bestätigungston bei Zieldurchfahrt

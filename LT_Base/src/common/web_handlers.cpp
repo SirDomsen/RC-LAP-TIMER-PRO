@@ -1032,7 +1032,8 @@ void handlePostCountdown(AsyncWebServerRequest *request) {
     muteTts = (mVal == "1" || mVal == "true");
   }
 
-  scheduleBuzzerStartLights(6000);
+  // Startampel-Sequenz dauert 1900 ms bis zum Gruen-Ton -> 6100 + 1900 = 8000 ms (exakter Rennstart)
+  scheduleBuzzerStartLights(6100);
 
   char buf[96];
   snprintf(buf, sizeof(buf), "{\"type\":\"countdown\",\"muteTts\":%s}", muteTts ? "true" : "false");

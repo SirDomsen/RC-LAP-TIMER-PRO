@@ -193,7 +193,7 @@ function handleCountdownEvent(msg) {
   let muteTts = !!msg.muteTts;
   if (muteTts) return; // Stummgeschaltet durch Rennleiter: Hardware-Buzzer aktiv, Sprache aus
 
-  speak("Achtung, das Rennen beginnt gleich!", true);
+  speak("Achtung, gleich geht's los!", true);
 
   let t1 = setTimeout(() => {
     speak("3");
@@ -209,7 +209,7 @@ function handleCountdownEvent(msg) {
       countdownTimeouts.push(t3);
     }, 1000);
     countdownTimeouts.push(t2);
-  }, 5000);
+  }, 4500);
   countdownTimeouts.push(t1);
 }
 
