@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Versionsnummern ---
-#define FIRMWARE_VERSION  "v4.8.1"
+#define FIRMWARE_VERSION  "v4.8.2"
 #if __has_include("secrets.h")
   #include "secrets.h"
 #endif

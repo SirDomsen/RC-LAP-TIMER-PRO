@@ -1,7 +1,10 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.7.17';
+window.UI_VERSION = '4.8.2';
+window.LT_PLATFORM = 'esp8266';
+window.LT_PLATFORM_NAME = 'ESP8266';
+window.LT_FAST_MODE = false;
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -2333,6 +2336,17 @@ async function loadVersion(retries = 3) {
       if (response.ok) {
         let data = await response.json();
         if (fwElem) fwElem.textContent = data.firmware;
+        if (data.platform) window.LT_PLATFORM = data.platform;
+        if (data.platformName) window.LT_PLATFORM_NAME = data.platformName;
+        if (typeof data.fastMode === 'boolean') {
+          window.LT_FAST_MODE = data.fastMode;
+          MIN_UPDATE_INTERVAL_MS = data.fastMode ? 150 : 1000;
+        }
+        const footerPlat = document.getElementById('footer-platform');
+        if (footerPlat) footerPlat.textContent = window.LT_PLATFORM_NAME;
+        document.querySelectorAll('.lt-platform-name').forEach(el => {
+          el.textContent = window.LT_PLATFORM_NAME;
+        });
         return;
       }
     } catch (err) {}
@@ -2615,7 +2629,7 @@ function startLocalTimerTicker() {
 }
 
 let lastUpdateDataTime = 0;
-const MIN_UPDATE_INTERVAL_MS = 1000;
+let MIN_UPDATE_INTERVAL_MS = 1000;
 let updateDataTimer = null;
 let isHeapBusy = false;
 
@@ -2637,19 +2651,22 @@ function requestUpdateData(fullSync = false, priority = false) {
 
   let isDriver = (userRole === 'driver');
   let delay = 0;
-  if (priority) {
+  if (window.LT_FAST_MODE) {
+    delay = priority ? 0 : (15 + Math.floor(Math.random() * 35));
+  } else if (priority) {
     delay = 30 + Math.floor(Math.random() * 70);
   } else if (isDriver) {
-    // Fahrer-Modus: gestaffelter Jitter über 800 - 2400 ms
+    // Fahrer-Modus (ESP8266): gestaffelter Jitter über 800 - 2400 ms
     delay = 800 + Math.floor(Math.random() * 1600);
   } else {
-    // Admin-Modus: moderater Versatz über 250 - 650 ms
+    // Admin-Modus (ESP8266): moderater Versatz über 250 - 650 ms
     delay = 250 + Math.floor(Math.random() * 400);
   }
 
   let timeSinceLast = Date.now() - lastUpdateDataTime;
   if (timeSinceLast < MIN_UPDATE_INTERVAL_MS) {
-    delay = Math.max(delay, (MIN_UPDATE_INTERVAL_MS - timeSinceLast) + Math.floor(Math.random() * 300));
+    let jitterMax = window.LT_FAST_MODE ? 30 : 300;
+    delay = Math.max(delay, (MIN_UPDATE_INTERVAL_MS - timeSinceLast) + Math.floor(Math.random() * jitterMax));
   }
 
   if (updateDataTimer) {
@@ -2684,8 +2701,10 @@ async function updateData(fullSync = false) {
     if (fullSync) pendingUpdateFullSync = true;
     if (!updateDataTimer) {
       let isDriver = (userRole === 'driver');
-      let jitter = isDriver ? Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 300);
-      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime)) + jitter;
+      let jitter = window.LT_FAST_MODE
+        ? Math.floor(Math.random() * 30)
+        : (isDriver ? Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 300));
+      let delay = Math.max(window.LT_FAST_MODE ? 15 : 50, MIN_UPDATE_INTERVAL_MS - (now - lastUpdateDataTime)) + jitter;
       updateDataTimer = setTimeout(() => {
         updateDataTimer = null;
         let doFull = pendingUpdateFullSync;
@@ -2960,8 +2979,10 @@ async function updateData(fullSync = false) {
       pendingUpdateRequested = false;
       pendingUpdateFullSync = false;
       let isDriver = (userRole === 'driver');
-      let jitter = isDriver ? Math.floor(Math.random() * 800) : Math.floor(Math.random() * 300);
-      let delay = Math.max(50, MIN_UPDATE_INTERVAL_MS - (Date.now() - lastUpdateDataTime)) + jitter;
+      let jitter = window.LT_FAST_MODE
+        ? Math.floor(Math.random() * 30)
+        : (isDriver ? Math.floor(Math.random() * 800) : Math.floor(Math.random() * 300));
+      let delay = Math.max(window.LT_FAST_MODE ? 15 : 50, MIN_UPDATE_INTERVAL_MS - (Date.now() - lastUpdateDataTime)) + jitter;
       updateDataTimer = setTimeout(() => {
         updateDataTimer = null;
         updateData(doFull);
@@ -3214,8 +3235,10 @@ async function pollData() {
     isPolling = false;
     clearTimeout(pollTimeout);
     let wsConnected = (socket && socket.readyState === WebSocket.OPEN);
-    let baseInterval = wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 6000;
-    let jitter = Math.floor(Math.random() * 3500); 
+    let baseInterval = window.LT_FAST_MODE
+      ? (wsConnected ? 5000 : 2000)
+      : (wsConnected ? (userRole === 'driver' ? 12000 : 6500) : 6000);
+    let jitter = Math.floor(Math.random() * (window.LT_FAST_MODE ? 400 : 3500));
     pollTimeout = setTimeout(pollData, baseInterval + jitter);
   }
 }
@@ -3443,37 +3466,60 @@ async function initMainApp() {
 
   startLocalTimerTicker();
 
-  // Entzerrter Ladevorgang verhindert TCP-Pufferstau und Heap-Kollaps beim Seitenaufruf
+  // Plattform erkennen, danach auf S3 parallel oder auf ESP8266 entzerrt laden
   try {
     await loadVersion();
-    await new Promise(r => setTimeout(r, 50));
-    await syncTimeWithServerOnce();
-    await loadTracks();
-    await new Promise(r => setTimeout(r, 50));
-    await loadSectorConfigInitial();
-    await new Promise(r => setTimeout(r, 50));
-    await loadCarNames();
-    updateTTSFilterDisplay();
-    populateDriverQuickSelect();
-    updateGhostButtonStates();
-    if (localGhostHuntActive) {
-      renderGhostHud();
+    if (window.LT_FAST_MODE) {
+      await Promise.all([
+        syncTimeWithServerOnce(),
+        loadTracks(),
+        loadSectorConfigInitial(),
+        loadCarNames(),
+        loadWifiStatus()
+      ]);
+      updateTTSFilterDisplay();
+      populateDriverQuickSelect();
+      updateGhostButtonStates();
+      if (localGhostHuntActive) {
+        renderGhostHud();
+      }
+    } else {
+      await new Promise(r => setTimeout(r, 50));
+      await syncTimeWithServerOnce();
+      await loadTracks();
+      await new Promise(r => setTimeout(r, 50));
+      await loadSectorConfigInitial();
+      await new Promise(r => setTimeout(r, 50));
+      await loadCarNames();
+      updateTTSFilterDisplay();
+      populateDriverQuickSelect();
+      updateGhostButtonStates();
+      if (localGhostHuntActive) {
+        renderGhostHud();
+      }
+      await new Promise(r => setTimeout(r, 50));
+      await loadWifiStatus();
     }
-    await new Promise(r => setTimeout(r, 50));
-    await loadWifiStatus();
   } catch (e) {
     console.warn("[Init] Gestaffelter Ladevorgang:", e);
   }
 
-  // WebSocket starten, sobald Basisdaten bereitstehen (mit Jitter 200-600ms)
-  setTimeout(() => {
+  if (window.LT_FAST_MODE) {
     initWebSocket();
-  }, 200 + Math.floor(Math.random() * 400));
+    setTimeout(() => {
+      pollData();
+    }, 150);
+  } else {
+    // WebSocket starten, sobald Basisdaten bereitstehen (mit Jitter 200-600ms)
+    setTimeout(() => {
+      initWebSocket();
+    }, 200 + Math.floor(Math.random() * 400));
 
-  // Erstes Polling erst nach 800ms starten
-  setTimeout(() => {
-    pollData();
-  }, 800);
+    // Erstes Polling erst nach 800ms starten
+    setTimeout(() => {
+      pollData();
+    }, 800);
+  }
 }
 
 if (document.readyState === 'loading') {

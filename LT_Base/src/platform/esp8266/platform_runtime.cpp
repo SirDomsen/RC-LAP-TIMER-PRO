@@ -79,6 +79,18 @@ void feedWatchdog() {
   ESP.wdtFeed();
 }
 
+const char* getPlatformId() {
+  return "esp8266";
+}
+
+const char* getPlatformName() {
+  return "ESP8266";
+}
+
+bool isHighPerfPlatform() {
+  return false;
+}
+
 ResetDiagnosis readBootResetDiagnosis() {
   ResetDiagnosis diag;
   diag.reason = ESP.getResetReason();

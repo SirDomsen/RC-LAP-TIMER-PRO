@@ -89,6 +89,18 @@ void feedWatchdog() {
   // Auf ESP32-S3 laeuft AsyncWebServer in eigenem FreeRTOS-Task; hier kein yield() ausloesen.
 }
 
+const char* getPlatformId() {
+  return "esp32s3";
+}
+
+const char* getPlatformName() {
+  return "ESP32-S3";
+}
+
+bool isHighPerfPlatform() {
+  return true;
+}
+
 ResetDiagnosis readBootResetDiagnosis() {
   esp_reset_reason_t r = esp_reset_reason();
   ResetDiagnosis diag;

@@ -391,8 +391,14 @@ void handleGetNames(AsyncWebServerRequest *request) {
 void handleGetVersion(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   String json;
-  json.reserve(64);
-  json = "{\"firmware\":\"" FIRMWARE_VERSION "\"}";
+  json.reserve(128);
+  json = "{\"firmware\":\"" FIRMWARE_VERSION "\",\"platform\":\"";
+  json += PlatformRuntime::getPlatformId();
+  json += "\",\"platformName\":\"";
+  json += PlatformRuntime::getPlatformName();
+  json += "\",\"fastMode\":";
+  json += (PlatformRuntime::isHighPerfPlatform() ? "true" : "false");
+  json += "}";
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeader(response);
   request->send(response);

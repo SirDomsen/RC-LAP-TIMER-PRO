@@ -2018,7 +2018,7 @@ async function handleRestoreBackup(event) {
     boxLabel: "Ausgewählte Backup-Datei:",
     boxContent: file.name,
     boxSub: (file.size / 1024).toFixed(1) + " KB",
-    message: "Soll dieses Backup jetzt auf dem ESP8266 wiederhergestellt werden?<br><span style=\"color:var(--neon-orange); font-size:12px; display:block; margin-top:6px;\">⚠️ Vorhandene Statistiken werden mit den Backup-Daten überschrieben.</span>",
+    message: `Soll dieses Backup jetzt auf dem ${window.LT_PLATFORM_NAME || 'ESP8266'} wiederhergestellt werden?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:6px;">⚠️ Vorhandene Statistiken werden mit den Backup-Daten überschrieben.</span>`,
     confirmText: "WIEDERHERSTELLEN 📦",
     cancelText: "ABBRECHEN"
   });
@@ -2291,7 +2291,7 @@ async function rebuildSessionsIndexUI() {
             compFd.append('data', compBlob, rawName);
             let cUpRes = await fetch('/api/upload', { method: 'POST', body: compFd });
             if (cUpRes.ok) compressedCount++;
-            await new Promise(r => setTimeout(r, 60)); // ESP8266 Pause
+            await new Promise(r => setTimeout(r, window.LT_FAST_MODE ? 5 : 60)); // ESP8266 Pause, auf S3 minimal
           } catch (compErr) {
             console.warn("Konnte Datei nicht optimieren:", rawName, compErr);
           }

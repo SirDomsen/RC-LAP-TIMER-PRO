@@ -141,10 +141,10 @@ function initWebSocket() {
       if (event.code === 1013) {
         console.log("[WebSocket] Server überlastet (1013), warte auf Freigabe...");
         showConnectionNotice("⏳ Boxengasse voll: Verbinde in wenigen Sekunden...");
-        setTimeout(initWebSocket, 3500);
+        setTimeout(initWebSocket, window.LT_FAST_MODE ? 1500 : 3500);
       } else {
         console.log("[WebSocket] Getrennt, verbinde neu...");
-        setTimeout(initWebSocket, 2500);
+        setTimeout(initWebSocket, window.LT_FAST_MODE ? 1000 : 2500);
       }
     };
     socket.onerror = function(err) {

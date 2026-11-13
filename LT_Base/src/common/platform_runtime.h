@@ -32,6 +32,9 @@ uint8_t getHeapFragmentationPercent();
 size_t getFreePsramBytes();
 uint16_t getChipIdSuffix16();
 void feedWatchdog();
+const char* getPlatformId();
+const char* getPlatformName();
+bool isHighPerfPlatform();
 
 ResetDiagnosis readBootResetDiagnosis();
 void saveRtcClock(uint32_t epochSec, int32_t tzSec);

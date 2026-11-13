@@ -171,7 +171,7 @@
     <!-- SYSTEM RESSOURCEN METRIKEN -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-cyan);">ESP8266 Systemlast</h3>
+        <h3 style="font-family: 'Orbitron'; margin:0; color: var(--neon-cyan);"><span class="lt-platform-name">ESP8266</span> <span>Systemlast</span></h3>
         <label class="toggle-box">
           <input type="checkbox" id="metricsToggle" onchange="toggleMetrics()">
           <span>Metriken abfragen (3s)</span>
@@ -189,6 +189,10 @@
         <div class="metric-box">
           <div class="metric-label">Freier Heap</div>
           <div class="metric-val" id="valHeap" style="color:var(--text-muted);">-- KB</div>
+        </div>
+        <div class="metric-box" id="psramMetricBox" style="display:none;">
+          <div class="metric-label">Freier PSRAM</div>
+          <div class="metric-val" id="valPsram" style="color:var(--text-muted);">-- KB</div>
         </div>
         <div class="metric-box">
           <div class="metric-label">Fragmentierung</div>
@@ -256,13 +260,13 @@
         <span id="audioStatusBadge" style="font-size:12px; font-family:monospace; color:var(--text-muted); background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:4px; border:1px solid rgba(255,255,255,0.1);">Bereit</span>
       </div>
       <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
-        Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des ESP8266 (GPIO5), lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.
+        <span>Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des</span> <span class="lt-platform-name">ESP8266</span> (<span class="lt-speaker-pin-short">GPIO5</span>), <span>lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.</span>
       </div>
 
-      <!-- TEIL 1: ESP8266 HARDWARE-BUZZER -->
+      <!-- TEIL 1: HARDWARE-BUZZER -->
       <div class="audio-group" style="border-left: 3px solid var(--neon-cyan);">
         <div class="audio-group-title" style="color:var(--neon-cyan);">
-          <span>📟</span> 1. ESP8266 Hardware-Buzzer (PC-Speaker an GPIO5 / D1)
+          <span>📟</span> <span>1.</span> <span class="lt-platform-name">ESP8266</span> <span>Hardware-Buzzer (PC-Speaker an</span> <span class="lt-speaker-pin">GPIO5 / D1</span>)
         </div>
         <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
           Sendet HTTP-Kommandos an <code>/api/buzzer</code> zur direkten Tonausgabe über den Basisstations-Lautsprecher.
@@ -416,8 +420,27 @@
     };
     if (window.LT_LANG === 'en') {
       const s = document.createElement('script');
-      s.src = 'lang_en.js?v=4.8.0';
+      s.src = 'lang_en.js?v=4.8.2';
       document.body.appendChild(s);
+    }
+    let ltPlatform = 'esp8266';
+    let ltPlatformName = 'ESP8266';
+
+    function applyDebugPlatformUI() {
+      document.querySelectorAll('.lt-platform-name').forEach(el => {
+        el.textContent = ltPlatformName;
+      });
+      const isS3 = (ltPlatform === 'esp32s3');
+      document.querySelectorAll('.lt-speaker-pin').forEach(el => {
+        el.textContent = isS3 ? 'GPIO7' : 'GPIO5 / D1';
+      });
+      document.querySelectorAll('.lt-speaker-pin-short').forEach(el => {
+        el.textContent = isS3 ? 'GPIO7' : 'GPIO5';
+      });
+      const psramBox = document.getElementById('psramMetricBox');
+      if (psramBox && isS3) {
+        psramBox.style.display = '';
+      }
     }
     const MAX_HISTORY = 200;
     let allPackets = [];
@@ -537,13 +560,13 @@
         fetchSystemMetrics();
       } else {
         currentUptimeSec = null;
-        ['valUptime', 'valCpu', 'valHeap', 'valFrag', 'valMaxLoop', 'valPing'].forEach(id => {
+        ['valUptime', 'valCpu', 'valHeap', 'valPsram', 'valFrag', 'valMaxLoop', 'valPing'].forEach(id => {
           let el = document.getElementById(id);
           if (el) {
             el.style.color = 'var(--text-muted)';
             if (id === 'valUptime') el.innerText = '--:--:--';
             else if (id === 'valCpu') el.innerText = '-- MHz';
-            else if (id === 'valHeap') el.innerText = '-- KB';
+            else if (id === 'valHeap' || id === 'valPsram') el.innerText = '-- KB';
             else if (id === 'valFrag') el.innerText = '-- %';
             else if (id === 'valMaxLoop') el.innerText = '-- ms';
             else if (id === 'valPing') el.innerText = '-- ms';
@@ -589,6 +612,17 @@
           if (elHeap) {
             elHeap.innerText = Math.round(heap / 1024) + " KB";
             elHeap.style.color = 'var(--neon-cyan)';
+          }
+
+          let freePsram = data.freePsram ?? 0;
+          let psramBox = document.getElementById('psramMetricBox');
+          let elPsram = document.getElementById('valPsram');
+          if (psramBox && elPsram && (freePsram > 0 || ltPlatform === 'esp32s3')) {
+            psramBox.style.display = '';
+            elPsram.innerText = freePsram >= 1048576
+              ? (freePsram / 1048576).toFixed(2) + " MB"
+              : Math.round(freePsram / 1024) + " KB";
+            elPsram.style.color = 'var(--neon-cyan)';
           }
           
           let fragEl = document.getElementById('valFrag');
@@ -841,9 +875,9 @@
       }
     }
 
-    // 1. ESP8266 Hardware Buzzer API
+    // 1. Hardware Buzzer API
     async function sendHwBuzzer(cmd, track = '', loop = false) {
-      updateAudioBadge('ESP8266: Sende ' + cmd + '...', 'var(--neon-gold)');
+      updateAudioBadge(ltPlatformName + ': Sende ' + cmd + '...', 'var(--neon-gold)');
       try {
         let url = '/api/buzzer?cmd=' + encodeURIComponent(cmd);
         if (track) {
@@ -852,12 +886,12 @@
         let res = await fetch(url, { method: 'POST' });
         if (res.ok) {
           let label = (cmd === 'stop') ? 'Ton gestoppt' : ('Ton aktiv (' + cmd + ')');
-          updateAudioBadge('ESP8266: ' + label, (cmd === 'stop') ? 'var(--neon-orange)' : 'var(--neon-green)');
+          updateAudioBadge(ltPlatformName + ': ' + label, (cmd === 'stop') ? 'var(--neon-orange)' : 'var(--neon-green)');
         } else {
-          updateAudioBadge('ESP8266 HTTP ' + res.status, 'var(--neon-red)');
+          updateAudioBadge(ltPlatformName + ' HTTP ' + res.status, 'var(--neon-red)');
         }
       } catch (err) {
-        updateAudioBadge('ESP8266 Fehler: ' + err.message, 'var(--neon-red)');
+        updateAudioBadge(ltPlatformName + ' Fehler: ' + err.message, 'var(--neon-red)');
       }
     }
 
@@ -1071,6 +1105,15 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       initFilters();
+      try {
+        let vRes = await fetch('/api/version');
+        if (vRes.ok) {
+          let vData = await vRes.json();
+          if (vData.platform) ltPlatform = vData.platform;
+          if (vData.platformName) ltPlatformName = vData.platformName;
+          applyDebugPlatformUI();
+        }
+      } catch (e) {}
       // Status vom Backend laden (falls Haken noch von vorhin aktiv war)
       try {
         let res = await fetch('/api/debug/status');
@@ -1124,7 +1167,7 @@
   <div id="crashLogModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(4px); overflow-y:auto; box-sizing:border-box; padding:20px 10px;">
     <div style="background:#11151c; border:1px solid var(--neon-cyan); border-radius:10px; max-width:650px; margin:40px auto; padding:20px; box-shadow:0 0 25px rgba(0,229,255,0.3); text-align:left;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
-        <h3 style="font-family:'Orbitron'; margin:0; color:var(--neon-cyan);">📋 ESP8266 Reset- &amp; Crash-Log</h3>
+        <h3 style="font-family:'Orbitron'; margin:0; color:var(--neon-cyan);"><span>📋</span> <span class="lt-platform-name">ESP8266</span> <span>Reset- &amp; Crash-Log</span></h3>
         <button onclick="closeCrashLogModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
       </div>
       <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">

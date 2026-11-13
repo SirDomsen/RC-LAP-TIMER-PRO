@@ -377,8 +377,8 @@
     <div class="card" style="border-color: rgba(181, 50, 255, 0.4);">
       <h3 class="card-title" style="color: var(--neon-purple);">⚡ Firmware OTA Update (.bin)</h3>
       <div class="info-box" style="border-left-color: var(--neon-purple);">
-        Hier kann eine kompilierte <strong>firmware.bin</strong> direkt über das WLAN geflasht werden.<br>
-        Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der ESP8266 automatisch neu.
+        <span>Hier kann eine kompilierte</span> <strong>firmware.bin</strong> <span>direkt über das WLAN geflasht werden.</span><br>
+        <span>Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der</span> <span class="lt-platform-name">ESP8266</span> <span>automatisch neu.</span>
       </div>
 
       <div class="file-dropzone" style="border-color: rgba(181, 50, 255, 0.35); background: rgba(181, 50, 255, 0.03);" onclick="document.getElementById('firmwareInput').click()">
@@ -406,11 +406,11 @@
 
     <!-- REBOOT -->
     <div class="card">
-      <h3 class="card-title" style="color:var(--neon-orange);">ESP8266 Wartung</h3>
+      <h3 class="card-title" style="color:var(--neon-orange);"><span class="lt-platform-name">ESP8266</span> <span>Wartung</span></h3>
       <p style="font-size:13px; color:var(--text-muted); margin-top:0;">
         Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .
       </p>
-      <button class="btn btn-red" style="margin-top:10px;" onclick="triggerRestart()">⚡ ESP8266 neu starten (Speicher bereinigen)</button>
+      <button class="btn btn-red" style="margin-top:10px;" onclick="triggerRestart()"><span>⚡</span> <span class="lt-platform-name">ESP8266</span> <span>neu starten (Speicher bereinigen)</span></button>
     </div>
   </div>
 
@@ -469,8 +469,16 @@
     };
     if (window.LT_LANG === 'en') {
       const s = document.createElement('script');
-      s.src = 'lang_en.js?v=4.8.0';
+      s.src = 'lang_en.js?v=4.8.2';
       document.body.appendChild(s);
+    }
+    let ltFastMode = false;
+    let ltPlatformName = 'ESP8266';
+
+    function applyUpdatePlatformUI() {
+      document.querySelectorAll('.lt-platform-name').forEach(el => {
+        el.textContent = ltPlatformName;
+      });
     }
     let selectedFiles = [];
     let cachedFiles = [];
@@ -795,7 +803,7 @@
         boxLabel: `Archiv: ${archiveName || 'Backup.zip'}`,
         boxContent: `${files.length} Datei(en) – ${(totalBytes / 1024).toFixed(1)} KB`,
         boxSub: folderSummary,
-        message: `Möchtest du diese <strong>${files.length} Dateien</strong> jetzt auf dem ESP8266 wiederherstellen?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Vorhandene Dateien mit gleichem Namen werden überschrieben.</span>`,
+        message: `Möchtest du diese <strong>${files.length} Dateien</strong> jetzt auf dem ${ltPlatformName} wiederherstellen?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Vorhandene Dateien mit gleichem Namen werden überschrieben.</span>`,
         confirmText: "WIEDERHERSTELLEN 📥",
         cancelText: "ABBRECHEN"
       });
@@ -918,8 +926,8 @@
           return;
         }
 
-        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz)
-        await new Promise(r => setTimeout(r, 50));
+        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz), auf S3 minimal
+        await new Promise(r => setTimeout(r, ltFastMode ? 5 : 50));
       }
 
       if (status) {
@@ -927,12 +935,12 @@
         status.innerText = `✅ ${successCount} Datei(en) erfolgreich wiederhergestellt!`;
       }
       if (btn) btn.disabled = false;
-      setTimeout(loadFilesList, 600);
+      setTimeout(loadFilesList, ltFastMode ? 150 : 600);
 
       await showAlert({
         title: "✅ BACKUP EINGESPIELT",
         theme: "success",
-        message: `${successCount} Dateien wurden erfolgreich im Flash gespeichert.<br><br><span style="color:var(--neon-orange); font-size:12px;">💡 Tipp: Führe nach dem Einspielen einen kurzen <strong>ESP8266-Neustart</strong> (unten) durch, um den Speicher komplett zu defragmentieren.</span>`
+        message: `${successCount} Dateien wurden erfolgreich im Flash gespeichert.<br><br><span style="color:var(--neon-orange); font-size:12px;">💡 Tipp: Führe nach dem Einspielen einen kurzen <strong>${ltPlatformName}-Neustart</strong> (unten) durch, um den Speicher komplett zu defragmentieren.</span>`
       });
     }
 
@@ -1087,7 +1095,7 @@
         boxLabel: "Bereit zum Upload:",
         boxContent: `${selectedFiles.length} Datei(en) – ${(totalBytes / 1024).toFixed(1)} KB`,
         boxSub: folderSummary,
-        message: `Möchtest du diese <strong>${selectedFiles.length} Datei(en)</strong> jetzt auf den ESP8266 übertragen?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;">⚡ Vorhandene Dateien mit gleichem Namen werden aktualisiert.</span>`,
+        message: `Möchtest du diese <strong>${selectedFiles.length} Datei(en)</strong> jetzt auf den ${ltPlatformName} übertragen?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:6px;">⚡ Vorhandene Dateien mit gleichem Namen werden aktualisiert.</span>`,
         confirmText: "HOCHLADEN 🚀",
         cancelText: "ABBRECHEN"
       });
@@ -1153,14 +1161,14 @@
           return;
         }
 
-        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz)
-        await new Promise(r => setTimeout(r, 50));
+        // Atempause für den ESP8266 (TCP-PCB & Loop Schutz), auf S3 minimal
+        await new Promise(r => setTimeout(r, ltFastMode ? 5 : 50));
       }
 
       status.style.color = 'var(--neon-green)';
       status.innerText = 'Alle Dateien erfolgreich im LittleFS gespeichert!';
       clearSelectedFiles();
-      setTimeout(loadFilesList, 600);
+      setTimeout(loadFilesList, ltFastMode ? 150 : 600);
     }
 
     function handleFirmwareSelect(input) {
@@ -1273,7 +1281,7 @@
         boxLabel: "Ausgewählte Datei:",
         boxContent: selectedFirmwareFile.name,
         boxSub: (selectedFirmwareFile.size / 1024).toFixed(1) + " KB",
-        message: 'Soll die Firmware jetzt per Funk (OTA) geflasht werden?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Verbindung während der Übertragung nicht trennen! Der ESP8266 startet nach dem Flash automatisch neu.</span>',
+        message: `Soll die Firmware jetzt per Funk (OTA) geflasht werden?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:8px;">⚠️ Verbindung während der Übertragung nicht trennen! Der ${ltPlatformName} startet nach dem Flash automatisch neu.</span>`,
         confirmText: "FLASHEN ⚡",
         cancelText: "ABBRECHEN"
       });
@@ -1314,7 +1322,7 @@
         if (xhr.status === 200) {
           pBar.style.width = '100%';
           status.style.color = 'var(--neon-green)';
-          status.innerText = '✅ Update erfolgreich! ESP8266 startet neu... Weiterleitung in 10s...';
+          status.innerText = `✅ Update erfolgreich! ${ltPlatformName} startet neu... Weiterleitung in 10s...`;
           setTimeout(() => {
             goBackToMain();
           }, 10000);
@@ -1440,9 +1448,9 @@
         try {
           await deleteFileRequest(f.name);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, 120));
+        await new Promise(r => setTimeout(r, ltFastMode ? 20 : 120));
       }
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, ltFastMode ? 150 : 600));
 
       if (prog) {
         prog.style.color = 'var(--neon-green)';
@@ -1501,7 +1509,7 @@
             date: fileDate
           });
 
-          await new Promise(r => setTimeout(r, 30));
+          if (!ltFastMode) await new Promise(r => setTimeout(r, 30));
         }
 
         if (prog) prog.innerText = '📦 Erstelle ZIP-Archiv...';
@@ -1813,7 +1821,7 @@
       for (let attempt = 0; attempt < 40; attempt++) {
         const res = await fetch('/api/deletefile?file=' + encodeURIComponent(name), { method: 'POST' });
         if (res.status !== 503) return res;
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, ltFastMode ? 50 : 150));
       }
       throw new Error('ESP ausgelastet');
     }
@@ -1832,7 +1840,7 @@
 
       try {
         await deleteFileRequest(name);
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, ltFastMode ? 150 : 600));
         loadStorageInfo();
         loadFilesList();
       } catch(e) {
@@ -1846,9 +1854,9 @@
 
     async function triggerRestart() {
       let ok = await showConfirm({
-        title: "⚡ ESP8266 NEUSTART",
+        title: `⚡ ${ltPlatformName} NEUSTART`,
         theme: "orange",
-        message: `ESP8266 jetzt neu starten, um den Arbeitsspeicher zu defragmentieren?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:8px;">ℹ️ Die Web-Verbindung wird kurzzeitig unterbrochen.</span>`,
+        message: `${ltPlatformName} jetzt neu starten, um den Arbeitsspeicher zu defragmentieren?<br><span style="color:var(--neon-cyan); font-size:12px; display:block; margin-top:8px;">ℹ️ Die Web-Verbindung wird kurzzeitig unterbrochen.</span>`,
         confirmText: "NEU STARTEN ⚡",
         cancelText: "ABBRECHEN"
       });
@@ -2053,7 +2061,7 @@
             date: fileDate
           });
 
-          await new Promise(r => setTimeout(r, 40));
+          if (!ltFastMode) await new Promise(r => setTimeout(r, 40));
         }
 
         if (prog) prog.innerText = '📦 Erstelle ZIP-Archiv...';
@@ -2166,6 +2174,13 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+      fetch('/api/version').then(r => r.ok ? r.json() : null).then(d => {
+        if (d) {
+          if (d.platformName) ltPlatformName = d.platformName;
+          if (typeof d.fastMode === 'boolean') ltFastMode = d.fastMode;
+          applyUpdatePlatformUI();
+        }
+      }).catch(() => {});
       initDragAndDrop();
       loadStorageInfo();
       let nowSec = Math.floor(Date.now() / 1000);
