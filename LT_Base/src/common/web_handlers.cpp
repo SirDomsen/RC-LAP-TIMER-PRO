@@ -797,41 +797,88 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 
 void handleGetAllConfig(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
-  String json;
-  json.reserve(1280);
 
-  String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
-  String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+  // Chunked-Antwort: verhindert 1,3 KB String-Reallokation im Heap
+  AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
+    [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+      static char pending[768];
+      static size_t pendingLen = 0;
+      static size_t pendingOff = 0;
+      static uint8_t phase = 0; // 0=wifi, 1=deadtime/filter/sector, 2=names, 3=ende, 4=fertig
+      static uint8_t nextCar = 1;
 
-  json = "{\"wifi\":{\"runtimeMode\":";
-  json += currentRuntimeWifiMode;
-  json += ",\"mode\":";
-  json += activeWifiMode;
-  json += ",\"homeSSID\":\""; json += homeSSID;
-  json += "\",\"homePass\":\""; json += homePass;
-  json += "\",\"hotspotSSID\":\""; json += hotspotSSID;
-  json += "\",\"hotspotPass\":\""; json += hotspotPass;
-  json += "\",\"apSSID\":\""; json += apSSID;
-  json += "\",\"apPass\":\""; json += apPass;
-  json += "\",\"currentIP\":\""; json += curIP;
-  json += "\",\"learnedApIP\":\""; json += lIP;
-  json += "\",\"defaultApSSID\":\""; json += getDefaultApSSID();
-  json += "\"},\"deadtime\":{\"ms\":";
-  json += minLapTimeMs;
-  json += "},\"filter\":{\"enabled\":";
-  json += (IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
-  json += "},\"sector\":{\"useSz1\":";
-  json += (useSz1 ? "true" : "false");
-  json += ",\"useSz2\":"; json += (useSz2 ? "true" : "false");
-  json += ",\"useSz3\":"; json += (useSz3 ? "true" : "false");
-  json += ",\"checkpointMode\":"; json += (checkpointMode ? "true" : "false");
-  json += ",\"dragraceMode\":"; json += (dragraceMode ? "true" : "false");
-  json += ",\"sectorAudio\":"; json += (sectorAudioFeedback ? "true" : "false");
-  json += "},\"names\":";
-  appendNamesJson(json);
-  json += "}";
+      if (index == 0) {
+        pendingLen = pendingOff = 0;
+        phase = 0;
+        nextCar = 1;
+      }
 
-  request->send(200, "application/json", json);
+      size_t written = 0;
+      while (written < maxLen) {
+        if (pendingOff < pendingLen) {
+          size_t n = pendingLen - pendingOff;
+          if (n > maxLen - written) n = maxLen - written;
+          memcpy(buffer + written, pending + pendingOff, n);
+          pendingOff += n;
+          written += n;
+          continue;
+        }
+        pendingLen = pendingOff = 0;
+
+        if (phase == 0) {
+          String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
+          String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+          int n = snprintf(pending, sizeof(pending),
+            "{\"wifi\":{\"runtimeMode\":%d,\"mode\":%d,\"homeSSID\":\"%s\",\"homePass\":\"%s\","
+            "\"hotspotSSID\":\"%s\",\"hotspotPass\":\"%s\",\"apSSID\":\"%s\",\"apPass\":\"%s\","
+            "\"currentIP\":\"%s\",\"learnedApIP\":\"%s\",\"defaultApSSID\":\"%s\"},",
+            currentRuntimeWifiMode, activeWifiMode,
+            homeSSID.c_str(), homePass.c_str(),
+            hotspotSSID.c_str(), hotspotPass.c_str(),
+            apSSID.c_str(), apPass.c_str(),
+            curIP.c_str(), lIP.c_str(), getDefaultApSSID().c_str());
+          if (n < 0) n = 0;
+          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
+          pendingLen = (size_t)n;
+          phase = 1;
+        } else if (phase == 1) {
+          int n = snprintf(pending, sizeof(pending),
+            "\"deadtime\":{\"ms\":%u},\"filter\":{\"enabled\":%s},"
+            "\"sector\":{\"useSz1\":%s,\"useSz2\":%s,\"useSz3\":%s,\"checkpointMode\":%s,\"dragraceMode\":%s,\"sectorAudio\":%s},"
+            "\"names\":{",
+            (unsigned)minLapTimeMs,
+            IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false",
+            useSz1 ? "true" : "false", useSz2 ? "true" : "false", useSz3 ? "true" : "false",
+            checkpointMode ? "true" : "false", dragraceMode ? "true" : "false", sectorAudioFeedback ? "true" : "false");
+          if (n < 0) n = 0;
+          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
+          pendingLen = (size_t)n;
+          phase = 2;
+        } else if (phase == 2) {
+          if (nextCar > MAX_CARS) {
+            phase = 3;
+            continue;
+          }
+          uint8_t i = nextCar++;
+          int n = snprintf(pending, sizeof(pending),
+            "%s\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}",
+            (i > 1) ? "," : "", i, driverNames[i].c_str(), carNames[i].c_str());
+          if (n < 0) n = 0;
+          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
+          pendingLen = (size_t)n;
+        } else if (phase == 3) {
+          pending[0] = '}';
+          pending[1] = '}';
+          pendingLen = 2;
+          phase = 4;
+        } else {
+          break;
+        }
+      }
+      return written;
+    });
+  response->addHeader("Connection", "close");
+  request->send(response);
 }
 
 void handleGetWifiConfig(AsyncWebServerRequest *request) {

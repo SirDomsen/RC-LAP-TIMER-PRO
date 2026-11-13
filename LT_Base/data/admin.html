@@ -849,7 +849,7 @@
       if (idx >= scripts.length) return;
       const s = document.createElement('script');
       s.src = scripts[idx++];
-      s.onload = loadNext;
+      s.onload = function() { setTimeout(loadNext, 40); };
       s.onerror = function() {
         console.warn('[Loader] Retry:', s.src);
         idx--;

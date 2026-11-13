@@ -114,6 +114,9 @@ static void triggerGhostWlanEarlyShutdown() {
   }
 }
 
+static uint8_t activeStaticTransfers = 0;
+static uint32_t lastStaticTransferMs = 0;
+
 static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path) {
   if (path == "/" || path.length() == 0) path = "/index.html";
   if (path == "/admin" || path == "/admin/") path = "/admin.html";
@@ -122,16 +125,31 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
     triggerGhostWlanEarlyShutdown();
   }
 
-  if (isHeapCriticalForFileTransfer()) {
+  // Sicherheits-Reset, falls ein Disconnect-Callback im TCP-Stack verloren geht
+  if (activeStaticTransfers > 0 && (millis() - lastStaticTransferMs > 10000UL)) {
+    activeStaticTransfers = 0;
+  }
+
+#if defined(ESP8266)
+  const uint8_t maxStaticSlots = 2;
+#else
+  const uint8_t maxStaticSlots = 4;
+#endif
+
+  bool isAsset = path.endsWith(".css") || path.endsWith(".js");
+  bool heapCrit = isHeapCriticalForFileTransfer();
+  bool slotsFull = (activeStaticTransfers >= maxStaticSlots) || (heapCrit && isAsset && activeStaticTransfers >= 1);
+
+  if (slotsFull || (heapCrit && !isAsset)) {
     if (path.endsWith(".html")) {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/html", BUSY_HTML_PROGMEM);
       res->addHeader("Retry-After", "3");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
-    } else if (!path.endsWith(".css") && !path.endsWith(".js")) {
+    } else {
       AsyncWebServerResponse *res = request->beginResponse(503, "text/plain", "Busy");
-      res->addHeader("Retry-After", "2");
+      res->addHeader("Retry-After", isAsset ? "1" : "2");
       res->addHeader("Connection", "close");
       request->send(res);
       return true;
@@ -143,6 +161,12 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   bool hasRaw = !hasGz && LittleFS.exists(path);
 
   if (!hasGz && !hasRaw) return false;
+
+  activeStaticTransfers++;
+  lastStaticTransferMs = millis();
+  request->onDisconnect([]() {
+    if (activeStaticTransfers > 0) activeStaticTransfers--;
+  });
 
   const char* mime = getContentType(path);
   AsyncWebServerResponse *response = request->beginResponse(LittleFS, hasGz ? gzPath : path, mime);
