@@ -66,6 +66,7 @@ struct PendingLap {
 
 void loadSettingsFromEEPROM();
 void loadNamesFromFS();
+void scheduleReloadNamesFromFS();
 bool saveNamesToEEPROM(const String& namesJson);
 void saveDeadtimeToEEPROM(uint16_t ms);
 void saveFilterToEEPROM(bool enable);
@@ -81,6 +82,7 @@ void updateFsUsageCache();
 
 // Streckenverwaltung (/tracks.json), Streckenrekord (Top 5) & Tagesbestzeit (Top 5)
 void loadTracksFromFS();
+void scheduleReloadTracksFromFS();
 void saveTracksToFS();
 void importMissingTracksFromSessions();
 void scheduleTrackSyncFromSessions();

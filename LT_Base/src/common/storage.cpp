@@ -1303,9 +1303,21 @@ void saveActiveTrackBestToFS() {
 }
 
 static bool pendingTrackSyncFromSessions = false;
+static uint32_t pendingTrackSyncAtMs = 0;
+static bool pendingReloadNames = false;
+static bool pendingReloadTracks = false;
+
+void scheduleReloadNamesFromFS() {
+  pendingReloadNames = true;
+}
+
+void scheduleReloadTracksFromFS() {
+  pendingReloadTracks = true;
+}
 
 void scheduleTrackSyncFromSessions() {
   pendingTrackSyncFromSessions = true;
+  pendingTrackSyncAtMs = millis() + 1500;
 }
 
 // Verarbeitet pro Aufruf hoechstens EINE fehlende Strecke (Haeppchenverarbeitung):
@@ -1331,7 +1343,9 @@ static bool stepImportMissingTrackFromSessions() {
     int braceDepth = 0;
     bool inQuotes = false, escaped = false;
 
+    uint16_t readBytes = 0;
     while (fIn.available()) {
+      if ((++readBytes & 0xFF) == 0) yield();
       char c = (char)fIn.read();
       if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
       if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
@@ -1411,7 +1425,9 @@ static bool stepImportMissingTrackFromSessions() {
     int braceDepth = 0;
     bool inQuotes = false, escaped = false;
 
+    uint16_t readBytes = 0;
     while (fIn.available()) {
+      if ((++readBytes & 0xFF) == 0) yield();
       char c = (char)fIn.read();
       if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
       if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
@@ -1476,7 +1492,9 @@ static bool stepImportMissingTrackFromSessions() {
       char* buf = (char*)malloc(TRACK_OBJ_MAX);
       if (buf) {
         int d = 0; bool inQ = false, esc = false, inArr = false, ov = false; size_t len = 0;
+        uint16_t readBytes = 0;
         while (in.available()) {
+          if ((++readBytes & 0xFF) == 0) yield();
           char c = (char)in.read();
           if (!inArr) { if (c == '[') inArr = true; continue; }
           if (d == 0) {
@@ -2349,7 +2367,16 @@ void processStorageQueue() {
 
   updateResetLogClock();
 
-  if (pendingTrackSyncFromSessions && lapDeleteState != LAP_DELETE_PENDING && !PlatformRuntime::isHeapCritical(9000, 100, 0)) {
+  if (pendingReloadNames) {
+    pendingReloadNames = false;
+    loadNamesFromFS();
+  }
+  if (pendingReloadTracks) {
+    pendingReloadTracks = false;
+    loadTracksFromFS();
+  }
+
+  if (pendingTrackSyncFromSessions && (int32_t)(millis() - pendingTrackSyncAtMs) >= 0 && lapDeleteState != LAP_DELETE_PENDING && !PlatformRuntime::isHeapCritical(9000, 100, 0)) {
     pendingTrackSyncFromSessions = stepImportMissingTrackFromSessions();
   }
 

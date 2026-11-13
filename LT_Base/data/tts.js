@@ -203,13 +203,13 @@ function handleCountdownEvent(msg) {
         speak("1");
         let t4 = setTimeout(() => {
           speak("Los!");
-        }, 1000);
+        }, 1100);
         countdownTimeouts.push(t4);
-      }, 1000);
+      }, 1100);
       countdownTimeouts.push(t3);
-    }, 1000);
+    }, 1100);
     countdownTimeouts.push(t2);
-  }, 4500);
+  }, 4000);
   countdownTimeouts.push(t1);
 }
 

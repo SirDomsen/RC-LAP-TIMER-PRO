@@ -106,3 +106,7 @@ Diese Regeln resultieren aus einem fatalen OTA-Brick und sind **absolut unverhan
 4. **Ehrliche Fehlerkultur & Prognosen (Regel für Antigravity):**
    - Wenn der User in einer Endlosschleife hängt, die durch harte Hardware-Watchdogs oder ISR-Crashes verursacht wird: **Keine utopischen Software-Hacks über die Luft (OTA) vorschlagen!**
    - Wenn die Erfolgschance für einen Fix per Funk bei < 10% liegt, gib eine Progrnose aus und fordere den User ungeschönt und direkt auf, den FTDI-Adapter und Lötkolben für einen Hard-Flash herauszuholen. Keine falsche Hoffnung, keine Zeitverschwendung.
+
+5. **Häppchenverarbeitung (Chunked Processing) beim ESP8266 bevorzugen:**
+   - Größere LittleFS-/JSON-Operationen (z. B. Backup-Restore, Index-Abgleich `stepImportMissingTrackFromSessions()`, Datei-/Rundenlöschung) dürfen auf dem ESP8266 **niemals** als großer Block im `AsyncWebServer`-Callback oder in einem einzigen langen `loop()`-Durchlauf laufen (Software-Watchdog ~3,2 s & Heap-Spitzen).
+   - **Pflicht-Muster:** Im HTTP-/Upload-Callback nur ein Flag bzw. eine Queue setzen (z. B. `scheduleReloadNamesFromFS()`, `scheduleReloadTracksFromFS()`, `scheduleTrackSyncFromSessions()` mit Debounce) und die eigentliche Arbeit häppchenweise in `processStorageQueue()` (`loop()`) abarbeiten – maximal ein Objekt, eine Strecke bzw. eine Datei pro Durchlauf, mit periodischem `yield()` ausschließlich im `loop()`-Kontext (niemals im `ctx: sys` der Async-Callbacks).
