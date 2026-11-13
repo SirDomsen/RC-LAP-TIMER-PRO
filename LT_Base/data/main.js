@@ -618,11 +618,11 @@ function onGhostBeatenLiveEvent(msg) {
       playWebAudioGhostVictory();
     }
     if (typeof speak === 'function') {
-      speak("Geist geschlagen! Neue Bestzeit!", true);
+      speak("Geist geschlagen! Neue Bestzeit!", 'priority');
     }
   } else {
     if (typeof speak === 'function') {
-      speak(`${msg.driver} hat den Geist geschlagen!`, true);
+      speak(`${msg.driver} hat den Geist geschlagen!`, 'priority');
     }
   }
 
@@ -2037,6 +2037,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
 
   try {
     let success = false;
+    let fallbackToRecordDelete = false;
     if (index >= 0 && matchedSession && matchedLap) {
       // Exakt dieselbe Routine wie im Statistiken-Modal: /api/deletelap
       let lapState = 'error';
@@ -2044,6 +2045,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         let lapUrl = `/api/deletelap?sessionId=${encodeURIComponent(matchedSession.id)}${matchedSession.file ? `&file=${encodeURIComponent(matchedSession.file)}` : ''}&id=${matchedLap.carId}&lap=${matchedLap.lap}&time=${matchedLap.time}`;
         lapState = await deleteLapOnDevice(lapUrl);
         if (lapState === 'ok') success = true;
+        else if (lapState === 'notfound') fallbackToRecordDelete = true;
 
         sessionFileCache = {};
         let safeId = (typeof sanitizeDomId === 'function') ? sanitizeDomId(matchedSession.id) : String(matchedSession.id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -2054,7 +2056,7 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
       } catch (lapErr) {
         console.warn("Fehler beim Löschen via /api/deletelap:", lapErr);
       }
-      if (!success) {
+      if (!success && !fallbackToRecordDelete) {
         await showAlert({
           title: "❌ NICHT GELÖSCHT",
           theme: "danger",
@@ -2062,8 +2064,9 @@ async function deleteTrackRecordEntryUI(trackId, type, index) {
         });
         return;
       }
-    } else {
-      // Kein Session-Match (z.B. manueller Rekord) oder 'Alle löschen' (index < 0)
+    }
+    if (!success && (fallbackToRecordDelete || !(index >= 0 && matchedSession && matchedLap))) {
+      // Kein Session-Match (z.B. manueller Rekord), Runde nicht im LittleFS oder 'Alle löschen' (index < 0)
       try {
         let url = `/api/tracks/deleterecord?trackId=${encodeURIComponent(targetId)}&type=${encodeURIComponent(type)}&index=${index}`;
         let res = await fetch(url, { method: 'POST' });
@@ -2587,19 +2590,19 @@ function startLocalTimerTicker() {
 
       if (localSecondsLeft <= 60 && localSecondsLeft > 50 && !announced60) {
         announced60 = true;
-        speak("Noch eine Minute!", true);
+        speak("Noch eine Minute!", 'priority');
       } else if (localSecondsLeft <= 30 && localSecondsLeft > 20 && !announced30) {
         announced30 = true;
-        speak("Noch 30 Sekunden!", true);
+        speak("Noch 30 Sekunden!", 'priority');
       } else if (localSecondsLeft <= 10 && localSecondsLeft > 0 && !announced10) {
         announced10 = true;
-        speak("Noch 10 Sekunden!", true);
+        speak("Noch 10 Sekunden!", 'priority');
       } else if (localSecondsLeft === 0) {
         if (currentMode === 1 || currentMode === 3) {
           if (!timeExpiredAnnounced) {
             timeExpiredAnnounced = true;
             updateTimerDisplayString(0);
-            speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
+            speak("Die Zeit ist abgelaufen! Letzte Runde!", 'priority');
           }
         } else {
           finishSessionNow();
@@ -3036,7 +3039,7 @@ async function updateData(fullSync = false) {
           if (!timeExpiredAnnounced) {
             timeExpiredAnnounced = true;
             updateTimerDisplayString(0);
-            speak("Die Zeit ist abgelaufen! Letzte Runde!", true);
+            speak("Die Zeit ist abgelaufen! Letzte Runde!", 'priority');
           }
           if (info.allFinished) finishSessionNow();
         }

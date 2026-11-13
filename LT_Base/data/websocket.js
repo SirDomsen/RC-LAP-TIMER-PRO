@@ -661,13 +661,13 @@ function onLapLiveEvent(msg) {
       let remainingLaps = targetLaps - completedLapNum;
       if (remainingLaps === 5 && !announcedLaps5) {
         announcedLaps5 = true;
-        speak("Noch 5 Runden!", true);
+        speak("Noch 5 Runden!", 'priority');
       } else if (remainingLaps === 3 && !announcedLaps3) {
         announcedLaps3 = true;
-        speak("Noch 3 Runden!", true);
+        speak("Noch 3 Runden!", 'priority');
       } else if (remainingLaps === 1 && !announcedLaps1) {
         announcedLaps1 = true;
-        speak("Letzte Runde!", true);
+        speak("Letzte Runde!", 'priority');
       } else if (remainingLaps <= 0) {
         raceFinishedByLeader = true;
         isSessionFinished = true;

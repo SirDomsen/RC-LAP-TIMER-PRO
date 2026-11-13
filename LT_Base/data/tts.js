@@ -167,7 +167,16 @@ function cancelRaceCountdown(notifyBackend = false) {
     countdownTimeouts.forEach(t => clearTimeout(t));
     countdownTimeouts = [];
   }
+  if (speechCancelTimeout) {
+    clearTimeout(speechCancelTimeout);
+    speechCancelTimeout = null;
+  }
+  if (speechWatchdogTimeout) {
+    clearTimeout(speechWatchdogTimeout);
+    speechWatchdogTimeout = null;
+  }
   if ('speechSynthesis' in window) {
+    activeUtterance = null;
     try { synth.cancel(); } catch (e) {}
     speechQueue = [];
     isSpeaking = false;
@@ -204,24 +213,51 @@ function handleCountdownEvent(msg) {
   countdownTimeouts.push(t1);
 }
 
-function speak(text, cancelCurrent = false, carId = null) {
+let speechWatchdogTimeout = null;
+let speechCancelTimeout = null;
+let activeUtterance = null;
+
+function speak(text, mode = false, carId = null) {
   if (typeof ttsEnabled !== 'undefined' && !ttsEnabled) return;
   if (!('speechSynthesis' in window)) return;
-  
-  if (cancelCurrent) {
+
+  if (mode === true || mode === 'cancel') {
+    if (speechCancelTimeout) {
+      clearTimeout(speechCancelTimeout);
+      speechCancelTimeout = null;
+    }
+    if (speechWatchdogTimeout) {
+      clearTimeout(speechWatchdogTimeout);
+      speechWatchdogTimeout = null;
+    }
+    activeUtterance = null;
     try { synth.cancel(); } catch (e) {}
     speechQueue = [];
     isSpeaking = false;
-    setTimeout(() => {
-      speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
+    speechCancelTimeout = setTimeout(() => {
+      speechCancelTimeout = null;
+      speechQueue.push({ text: text, carId: carId, priority: false, createdAt: Date.now() });
       processSpeechQueue();
     }, 50);
     return;
   }
-  
+
   // Fahrzeug-spezifische Deduplizierung: Alte Rundenansage DIESES Autos verwerfen, andere Autos bleiben unberuehrt
   if (carId) {
     speechQueue = speechQueue.filter(item => !(typeof item === 'object' && item.carId === carId));
+  }
+
+  if (mode === 'priority') {
+    const entry = { text: text, carId: carId, priority: true, createdAt: Date.now() };
+    // Hinter bestehenden Priority-Events einreihen, aber vor allen normalen Rundenansagen
+    let insertIdx = speechQueue.findIndex(item => !(typeof item === 'object' && item.priority));
+    if (insertIdx === -1) speechQueue.push(entry);
+    else speechQueue.splice(insertIdx, 0, entry);
+    if (speechQueue.length > 15) {
+      speechQueue.pop();
+    }
+    processSpeechQueue();
+    return;
   }
 
   // Queue-Limit auf volles Starterfeld (15 Autos) anpassen, damit bei Pulkdurchfahrten kein Fahrzeug verschluckt wird
@@ -229,11 +265,9 @@ function speak(text, cancelCurrent = false, carId = null) {
     speechQueue.shift();
   }
 
-  speechQueue.push({ text: text, carId: carId, createdAt: Date.now() });
+  speechQueue.push({ text: text, carId: carId, priority: false, createdAt: Date.now() });
   processSpeechQueue();
 }
-
-let speechWatchdogTimeout = null;
 
 function processSpeechQueue() {
   if (isSpeaking || speechQueue.length === 0) return;
@@ -257,6 +291,7 @@ function processSpeechQueue() {
   let utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'de-DE';
   utterance.rate = 1.0;
+  activeUtterance = utterance;
 
   let clearWatchdog = () => {
     if (speechWatchdogTimeout) {
@@ -266,25 +301,31 @@ function processSpeechQueue() {
   };
 
   utterance.onend = function() {
+    if (utterance !== activeUtterance) return;
+    activeUtterance = null;
     clearWatchdog();
     isSpeaking = false;
     processSpeechQueue();
   };
 
   utterance.onerror = function() {
+    if (utterance !== activeUtterance) return;
+    activeUtterance = null;
     clearWatchdog();
     isSpeaking = false;
     processSpeechQueue();
   };
 
   clearWatchdog();
+  // Dynamischer Watchdog (10s - 35s je nach Textlaenge): schneidet lange Ansagen nicht ab, rettet aber bei haengender Engine
+  const watchdogMs = Math.max(10000, Math.min(35000, (text ? text.length : 0) * 130 + 5000));
   speechWatchdogTimeout = setTimeout(() => {
-    if (isSpeaking) {
-      try { synth.cancel(); } catch (e) {}
-      isSpeaking = false;
-      processSpeechQueue();
-    }
-  }, 5000);
+    if (utterance !== activeUtterance || !isSpeaking) return;
+    activeUtterance = null;
+    try { synth.cancel(); } catch (e) {}
+    isSpeaking = false;
+    processSpeechQueue();
+  }, watchdogMs);
 
   synth.speak(utterance);
 }
@@ -374,17 +415,17 @@ function announceRaceResults() {
     podiumText += " Platz 2 geht an " + p2Driver + "!";
   }
 
-  speak(podiumText, true);
-
   if (activeCars.length > 3) {
-    let restText = "Auf den weiteren Plätzen: ";
+    let restText = " Auf den weiteren Plätzen: ";
     for (let i = 3; i < activeCars.length; i++) {
       let pos = i + 1;
       let driverName = activeCars[i].driver || (cMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
       restText += "Platz " + pos + " " + driverName + ". ";
     }
-    speak(restText, false);
+    podiumText += restText;
   }
+
+  speak(podiumText, true);
 }
 
 // --- WEB AUDIO ARCADE CHIPTUNE SYNTHESIZER (GEISTERJAGD) ---
