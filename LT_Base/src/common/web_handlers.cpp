@@ -798,13 +798,13 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 void handleGetAllConfig(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
 
-  // Chunked-Antwort: verhindert 1,3 KB String-Reallokation im Heap
+  // Chunked-Antwort: verhindert String-Reallokation im Heap bei minimalem .bss-Puffer
   AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
     [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-      static char pending[768];
+      static char pending[192];
       static size_t pendingLen = 0;
       static size_t pendingOff = 0;
-      static uint8_t phase = 0; // 0=wifi, 1=deadtime/filter/sector, 2=names, 3=ende, 4=fertig
+      static uint8_t phase = 0;
       static uint8_t nextCar = 1;
 
       if (index == 0) {
@@ -825,55 +825,57 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
         }
         pendingLen = pendingOff = 0;
 
+        int n = 0;
         if (phase == 0) {
-          String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
-          String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
-          int n = snprintf(pending, sizeof(pending),
-            "{\"wifi\":{\"runtimeMode\":%d,\"mode\":%d,\"homeSSID\":\"%s\",\"homePass\":\"%s\","
-            "\"hotspotSSID\":\"%s\",\"hotspotPass\":\"%s\",\"apSSID\":\"%s\",\"apPass\":\"%s\","
-            "\"currentIP\":\"%s\",\"learnedApIP\":\"%s\",\"defaultApSSID\":\"%s\"},",
-            currentRuntimeWifiMode, activeWifiMode,
-            homeSSID.c_str(), homePass.c_str(),
-            hotspotSSID.c_str(), hotspotPass.c_str(),
-            apSSID.c_str(), apPass.c_str(),
-            curIP.c_str(), lIP.c_str(), getDefaultApSSID().c_str());
-          if (n < 0) n = 0;
-          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
-          pendingLen = (size_t)n;
+          n = snprintf(pending, sizeof(pending),
+            "{\"wifi\":{\"runtimeMode\":%d,\"mode\":%d,\"homeSSID\":\"%s\",\"homePass\":\"%s\",",
+            currentRuntimeWifiMode, activeWifiMode, homeSSID.c_str(), homePass.c_str());
           phase = 1;
         } else if (phase == 1) {
-          int n = snprintf(pending, sizeof(pending),
-            "\"deadtime\":{\"ms\":%u},\"filter\":{\"enabled\":%s},"
-            "\"sector\":{\"useSz1\":%s,\"useSz2\":%s,\"useSz3\":%s,\"checkpointMode\":%s,\"dragraceMode\":%s,\"sectorAudio\":%s},"
-            "\"names\":{",
-            (unsigned)minLapTimeMs,
-            IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false",
-            useSz1 ? "true" : "false", useSz2 ? "true" : "false", useSz3 ? "true" : "false",
-            checkpointMode ? "true" : "false", dragraceMode ? "true" : "false", sectorAudioFeedback ? "true" : "false");
-          if (n < 0) n = 0;
-          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
-          pendingLen = (size_t)n;
+          n = snprintf(pending, sizeof(pending),
+            "\"hotspotSSID\":\"%s\",\"hotspotPass\":\"%s\",\"apSSID\":\"%s\",",
+            hotspotSSID.c_str(), hotspotPass.c_str(), apSSID.c_str());
           phase = 2;
         } else if (phase == 2) {
+          String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
+          String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+          n = snprintf(pending, sizeof(pending),
+            "\"apPass\":\"%s\",\"currentIP\":\"%s\",\"learnedApIP\":\"%s\",\"defaultApSSID\":\"%s\"},",
+            apPass.c_str(), curIP.c_str(), lIP.c_str(), getDefaultApSSID().c_str());
+          phase = 3;
+        } else if (phase == 3) {
+          n = snprintf(pending, sizeof(pending),
+            "\"deadtime\":{\"ms\":%u},\"filter\":{\"enabled\":%s},",
+            (unsigned)minLapTimeMs,
+            IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
+          phase = 4;
+        } else if (phase == 4) {
+          n = snprintf(pending, sizeof(pending),
+            "\"sector\":{\"useSz1\":%s,\"useSz2\":%s,\"useSz3\":%s,\"checkpointMode\":%s,\"dragraceMode\":%s,\"sectorAudio\":%s},\"names\":{",
+            useSz1 ? "true" : "false", useSz2 ? "true" : "false", useSz3 ? "true" : "false",
+            checkpointMode ? "true" : "false", dragraceMode ? "true" : "false", sectorAudioFeedback ? "true" : "false");
+          phase = 5;
+        } else if (phase == 5) {
           if (nextCar > MAX_CARS) {
-            phase = 3;
+            phase = 6;
             continue;
           }
           uint8_t i = nextCar++;
-          int n = snprintf(pending, sizeof(pending),
+          n = snprintf(pending, sizeof(pending),
             "%s\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}",
             (i > 1) ? "," : "", i, driverNames[i].c_str(), carNames[i].c_str());
-          if (n < 0) n = 0;
-          if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
-          pendingLen = (size_t)n;
-        } else if (phase == 3) {
+        } else if (phase == 6) {
           pending[0] = '}';
           pending[1] = '}';
-          pendingLen = 2;
-          phase = 4;
+          n = 2;
+          phase = 7;
         } else {
           break;
         }
+
+        if (n < 0) n = 0;
+        if ((size_t)n >= sizeof(pending)) n = sizeof(pending) - 1;
+        pendingLen = (size_t)n;
       }
       return written;
     });
