@@ -63,18 +63,22 @@ function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+function _stT(s, vars) {
+  return (typeof window.t === 'function') ? window.t(s, vars) : s;
+}
+
 function getCarDriverName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.driver) {
     return carNamesMap[carId].driver;
   }
-  return 'Fahrer ' + (carId || '?');
+  return _stT('Fahrer') + ' ' + (carId || '?');
 }
 
 function getCarCarName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.car) {
     return carNamesMap[carId].car;
   }
-  return 'Auto ' + (carId || '?');
+  return _stT('Auto') + ' ' + (carId || '?');
 }
 
 function getSessionResultNames(session, result) {
@@ -186,7 +190,7 @@ function updateStatsModalDailyBest() {
       if (recBest > 0) {
         allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(recBest)}</span> <small style="color:var(--neon-cyan);">(${recDriver} - ${recTrack})</small>`;
       } else {
-        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Kein Streckenrekord')}</span>`;
       }
     }
 
@@ -197,7 +201,7 @@ function updateStatsModalDailyBest() {
     allTracksList.forEach(t => {
       if (t.bestLap > 0 && (best === 0 || t.bestLap < best)) {
         best = t.bestLap;
-        bestDriver = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        bestDriver = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || (_stT('Fahrer') + ' ' + t.bestCarId));
         bestTrack = t.name;
       }
     });
@@ -205,7 +209,7 @@ function updateStatsModalDailyBest() {
       if (best > 0) {
         dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(best)}</span> <small style="color:var(--neon-cyan);">(${bestDriver} - ${bestTrack})</small>`;
       } else {
-        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Keine Bestzeit heute')}</span>`;
       }
     }
   } else {
@@ -213,22 +217,22 @@ function updateStatsModalDailyBest() {
     if (allTimeElem) {
       let rLap = t ? (t.recordLap || 0) : 0;
       if (t && rLap > 0) {
-        let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || ('Fahrer ' + t.recordCarId));
+        let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || (_stT('Fahrer') + ' ' + t.recordCarId));
         let rc = t.recordCar || (carNamesMap[t.recordCarId]?.car || '');
         let carPart = rc ? ` (${rc})` : '';
         allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(rLap)}</span> <small style="color:var(--neon-cyan);">(${rd}${carPart})</small>`;
       } else {
-        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Kein Streckenrekord')}</span>`;
       }
     }
     if (dailyElem) {
       if (t && t.bestLap > 0) {
-        let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || (_stT('Fahrer') + ' ' + t.bestCarId));
         let c = t.bestCar || (carNamesMap[t.bestCarId]?.car || '');
         let carPart = c ? ` (${c})` : '';
         dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(t.bestLap)}</span> <small style="color:var(--neon-cyan);">(${d}${carPart})</small>`;
       } else {
-        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Keine Bestzeit heute')}</span>`;
       }
     }
   }
@@ -572,54 +576,54 @@ function renderRecordsOverview() {
   let getArrow = (col) => (recordsSortCol === col ? (recordsSortDir === 'asc' ? ' ▲' : ' ▼') : '');
   let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
 
-  let trackNameHeader = (currentStatsTrackFilter !== 'all') ? getTrackNameById(currentStatsTrackFilter) : 'Alle Strecken';
+  let trackNameHeader = (currentStatsTrackFilter !== 'all') ? getTrackNameById(currentStatsTrackFilter) : _stT('Alle Strecken');
 
   let html = `
     <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:12px; border:1px solid rgba(255,255,255,0.08); margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="btn ${recordsTimeScope === 'alltime' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('alltime')">🏆 All-Time Rekorde</button>
-          <button class="btn ${recordsTimeScope === 'daily' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('daily')">⏱️ Tagesbestzeiten (Heute)</button>
+          <button class="btn ${recordsTimeScope === 'alltime' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('alltime')">${_stT('🏆 All-Time Rekorde')}</button>
+          <button class="btn ${recordsTimeScope === 'daily' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('daily')">${_stT('⏱️ Tagesbestzeiten (Heute)')}</button>
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="btn ${recordsScope === 'all' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('all')" title="Offizielle Strecken-Rekordliste">📌 Offizielle Rekorde</button>
-          <button class="btn ${recordsScope === 'sessions' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('sessions')" title="Aus allen Sessions ermittelt">📊 Aus Sessions</button>
+          <button class="btn ${recordsScope === 'all' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('all')" title="${_stT('Offizielle Strecken-Rekordliste')}">${_stT('📌 Offizielle Rekorde')}</button>
+          <button class="btn ${recordsScope === 'sessions' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('sessions')" title="${_stT('Aus allen Sessions ermittelt')}">${_stT('📊 Aus Sessions')}</button>
         </div>
       </div>
 
       <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px; margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">📍 STRECKE:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('📍 STRECKE:')}</span>
           <select onchange="onRecordsTrackFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${currentStatsTrackFilter === 'all' ? 'selected' : ''}>Alle Strecken (${sortedTracks.length})</option>
+            <option value="all" ${currentStatsTrackFilter === 'all' ? 'selected' : ''}>${_stT('Alle Strecken')} (${sortedTracks.length})</option>
             ${sortedTracks.map(t => `<option value="${escapeHtml(t.id)}" ${currentStatsTrackFilter === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
           </select>
         </div>
 
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">🏎️ FAHRZEUG:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('🏎️ FAHRZEUG:')}</span>
           <select onchange="onRecordsCarFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${recordsCarFilter === 'all' ? 'selected' : ''}>Alle Fahrzeuge (${sortedCars.length})</option>
+            <option value="all" ${recordsCarFilter === 'all' ? 'selected' : ''}>${_stT('Alle Fahrzeuge')} (${sortedCars.length})</option>
             ${sortedCars.map(c => `<option value="${escapeHtml(c)}" ${recordsCarFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
           </select>
         </div>
 
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">👤 FAHRER:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('👤 FAHRER:')}</span>
           <select onchange="onRecordsDriverFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${recordsDriverFilter === 'all' ? 'selected' : ''}>Alle Fahrer (${sortedDrivers.length})</option>
+            <option value="all" ${recordsDriverFilter === 'all' ? 'selected' : ''}>${_stT('Alle Fahrer')} (${sortedDrivers.length})</option>
             ${sortedDrivers.map(d => `<option value="${escapeHtml(d)}" ${recordsDriverFilter === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
         </div>
       </div>
 
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-        <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('SORTIERUNG:')}</span>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="${getPillClass('lap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('lap')">⚡ Zeit${getArrow('lap')}</button>
-          <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('driver')">👤 Fahrer${getArrow('driver')}</button>
-          <button class="${getPillClass('car')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('car')">🏎️ Fahrzeug${getArrow('car')}</button>
-          <button class="${getPillClass('date')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('date')">📅 Datum${getArrow('date')}</button>
+          <button class="${getPillClass('lap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('lap')">${_stT('⚡ Zeit')}${getArrow('lap')}</button>
+          <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('driver')">${_stT('👤 Fahrer')}${getArrow('driver')}</button>
+          <button class="${getPillClass('car')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('car')">${_stT('🏎️ Fahrzeug')}${getArrow('car')}</button>
+          <button class="${getPillClass('date')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('date')">${_stT('📅 Datum')}${getArrow('date')}</button>
         </div>
       </div>
     </div>
@@ -629,7 +633,7 @@ function renderRecordsOverview() {
     html += `
       <div style="text-align:center; padding:30px 10px; color:var(--text-muted); background:rgba(0,0,0,0.2); border-radius:8px;">
         <div style="font-size:24px; margin-bottom:8px;">⏱️</div>
-        <div>Keine Rekorde für die ausgewählten Kriterien auf <strong>${escapeHtml(trackNameHeader)}</strong> vorhanden.</div>
+        <div>${_stT('Keine Rekorde für die ausgewählten Kriterien auf {track} vorhanden.', { track: '<strong>' + escapeHtml(trackNameHeader) + '</strong>' })}</div>
       </div>`;
     container.innerHTML = html;
     return;
@@ -806,10 +810,10 @@ function renderDriversOverview() {
 
   let sortBarHtml = `
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-      <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+      <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">${_stT('SORTIERUNG:')}</span>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="${getPillClass('laps')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('laps')">🔄 Runden${getArrow('laps')}</button>
-        <button class="${getPillClass('bestLap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('bestLap')">⚡ Bestzeit${getArrow('bestLap')}</button>
+        <button class="${getPillClass('laps')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('laps')">${_stT('🔄 Runden')}${getArrow('laps')}</button>
+        <button class="${getPillClass('bestLap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('bestLap')">${_stT('⚡ Bestzeit')}${getArrow('bestLap')}</button>
         <button class="${getPillClass('sessions')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('sessions')">📅 Sessions${getArrow('sessions')}</button>
         <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('driver')">👤 Name${getArrow('driver')}</button>
       </div>
@@ -824,7 +828,7 @@ function renderDriversOverview() {
       trackPillsHtml = '<div style="margin-top:6px;">';
       tbValues.forEach(tb => {
         let tSec = formatLapTime(tb.bestLap);
-        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.carId})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${escapeHtml(tb.trackName)}: <strong>${tSec}</strong> 🔗</span>`;
+        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.carId})" title="${_stT('Direkt zur Session dieser Strecken-Bestzeit springen')}">📍 ${escapeHtml(tb.trackName)}: <strong>${tSec}</strong> 🔗</span>`;
       });
       trackPillsHtml += '</div>';
     }
@@ -835,19 +839,19 @@ function renderDriversOverview() {
     cardsHtml += `<div class="driver-select-card" onclick="openDriverStats(decodeURIComponent('${driverArg}'))">
       <div style="flex:1; min-width:0;">
         <strong style="color:var(--neon-cyan); font-size:16px;">${escapeHtml(ds.driver)}</strong>
-        <small style="color:var(--text-muted);">(${escapeHtml(carSummary || 'Fahrzeug unbekannt')} · ID ${idSummary || '?'})</small><br>
-        <span style="font-size:12px; color:var(--text-muted);">Gefahrene Runden: <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
+        <small style="color:var(--text-muted);">(${escapeHtml(carSummary || _stT('Fahrzeug unbekannt'))} · ID ${idSummary || '?'})</small><br>
+        <span style="font-size:12px; color:var(--text-muted);">${_stT('Gefahrene Runden:')} <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
         ${trackPillsHtml}
       </div>
       <div style="text-align:right; margin-left:12px; flex-shrink:0;">
         <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestDisp}</span><br>
-        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + escapeHtml(ds.bestTrackName)) : 'Bestzeit'}</span><br>
-        <span style="font-size:11px; color:var(--neon-cyan);">Profil öffnen ▶</span>
+        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + escapeHtml(ds.bestTrackName)) : _stT('Bestzeit')}</span><br>
+        <span style="font-size:11px; color:var(--neon-cyan);">${_stT('Profil öffnen ▶')}</span>
       </div>
     </div>`;
   });
 
-  list.innerHTML = sortBarHtml + (cardsHtml || '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Fahrerdaten vorhanden.</p>');
+  list.innerHTML = sortBarHtml + (cardsHtml || `<p style="color:var(--text-muted); text-align:center; padding:20px;">${_stT('Keine Fahrerdaten vorhanden.')}</p>`);
 }
 
 function sortSessionResults(safeId, col) {
@@ -878,19 +882,19 @@ function renderSessionsByMode(mode, containerId) {
 
   let rebuildButtonHtml = window.offlineStatsMode
     ? ''
-    : '<button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">🔄 Index aus Dateisystem neu aufbauen</button>';
+    : `<button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">${_stT('🔄 Index aus Dateisystem neu aufbauen')}</button>`;
 
   if (sessions.length === 0) {
     container.innerHTML = `
       <div style="text-align:center; padding:30px 15px; color:var(--text-muted);">
-        <p style="font-size:14px; margin-bottom:12px;">Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.</p>
+        <p style="font-size:14px; margin-bottom:12px;">${_stT('Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.')}</p>
         ${rebuildButtonHtml}
       </div>`;
     return;
   }
 
-  let roundWord = isDrag ? "Läufe" : "Runden";
-  let roundTimeWord = isDrag ? "Laufzeiten" : "Rundenzeiten";
+  let roundWord = isDrag ? _stT("Läufe") : _stT("Runden");
+  let roundTimeWord = isDrag ? _stT("Laufzeiten") : _stT("Rundenzeiten");
   let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
 
   let html = '';

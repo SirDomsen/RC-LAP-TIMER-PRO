@@ -31,7 +31,7 @@ function hidePoleBanner() {
 function startPractice() { 
   cancelRaceCountdown(true);
   hidePoleBanner();
-  sendSession(0, 0, 0, "Freies Training gestartet"); 
+  sendSession(0, 0, 0, t("Freies Training gestartet")); 
 }
 
 function startQuali() {
@@ -39,8 +39,8 @@ function startQuali() {
   hidePoleBanner();
   let mins = parseInt(document.getElementById('qualiTimeInput').value);
   if (isNaN(mins) || mins < 1) return;
-  let minStr = (mins === 1) ? "eine Minute" : mins + " Minuten";
-  sendSession(1, mins, 0, "Qualifying gestartet für " + minStr + "!");
+  let minStr = (mins === 1) ? t("eine Minute") : mins + " " + t("Minuten");
+  sendSession(1, mins, 0, t("Qualifying gestartet für {dur}!", { dur: minStr }));
 }
 
 function startRaceLaps() {
@@ -66,7 +66,7 @@ function startRaceTime() {
 function startDragrace() {
   cancelRaceCountdown(true);
   hidePoleBanner();
-  sendSession(4, 0, 0, "Dragrace gestartet! Zeiterfassung startet bei Überfahrt der Basis.");
+  sendSession(4, 0, 0, t("Dragrace gestartet! Zeiterfassung startet bei Überfahrt der Basis."));
 }
 
 function sendSession(mode, duration, laps, speakText) {
@@ -129,7 +129,7 @@ function stopSession() {
   fetch('/api/session?mode=0&duration=0&laps=0', { method: 'POST' })
     .then(() => {
       if (prevMode !== 5) {
-        speak("Durchgang gestoppt. Freies Training.", true);
+        speak(t("Durchgang gestoppt. Freies Training."), true);
       }
       updateData(true);
     }).catch(err => console.error(err));
@@ -252,45 +252,45 @@ function updateGhostHuntModalDisplay() {
       let pb = (row && row.bestLap > 0) ? row.bestLap : (row && row.lastLap > 0 ? row.lastLap : 0);
       if (pb > 0) {
         let lapStr = (pb / 1000).toFixed(3) + 's';
-        let driverStr = (row && row.driver) || ('Fahrer ' + activeCarId);
+        let driverStr = (row && row.driver) || (t('Fahrer') + ' ' + activeCarId);
         let carStr = (row && row.car) ? ` (${row.car})` : '';
-        previewEl.innerHTML = `🏆 <strong>Streckenrekord:</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${lapStr}</span> von ${driverStr}${carStr} <span style="color:var(--neon-cyan);">[Fallback: Eigene PB]</span>`;
+        previewEl.innerHTML = `🏆 <strong>${t('Streckenrekord:')}</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${lapStr}</span> ${t('von')} ${driverStr}${carStr} <span style="color:var(--neon-cyan);">[${t('Fallback: Eigene PB')}]</span>`;
         return;
       }
     }
 
-    let lapStr = recLap > 0 ? (recLap / 1000).toFixed(3) + 's' : 'Noch kein Streckenrekord (erste Runde setzt Geist)';
-    let driverStr = recDriver || 'Unbekannt';
+    let lapStr = recLap > 0 ? (recLap / 1000).toFixed(3) + 's' : t('Noch kein Streckenrekord (erste Runde setzt Geist)');
+    let driverStr = recDriver || t('Unbekannt');
     let carStr = recCar ? ` (${recCar})` : '';
-    let szStr = (recMask > 0) ? ` <span style="color:var(--neon-green);">[mit Sektoren]</span>` : ` <span style="color:var(--neon-cyan);">[Start/Ziel]</span>`;
-    previewEl.innerHTML = `🏆 <strong>Streckenrekord:</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${lapStr}</span> von ${driverStr}${carStr}${szStr}`;
+    let szStr = (recMask > 0) ? ` <span style="color:var(--neon-green);">[${t('mit Sektoren')}]</span>` : ` <span style="color:var(--neon-cyan);">[${t('Start/Ziel')}]</span>`;
+    previewEl.innerHTML = `🏆 <strong>${t('Streckenrekord:')}</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${lapStr}</span> ${t('von')} ${driverStr}${carStr}${szStr}`;
   } else if (type === 1) {
     let dLap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
     let dDriver = (typeof dailyBestDriver !== 'undefined') ? dailyBestDriver : '';
     let dCar = (typeof dailyBestCar !== 'undefined') ? dailyBestCar : '';
     let dMask = (typeof dailyBestSzMask !== 'undefined') ? dailyBestSzMask : 0;
-    let lapStr = dLap > 0 ? (dLap / 1000).toFixed(3) + 's' : 'Noch keine Tagesbestzeit';
-    let driverStr = dDriver || 'Unbekannt';
+    let lapStr = dLap > 0 ? (dLap / 1000).toFixed(3) + 's' : t('Noch keine Tagesbestzeit');
+    let driverStr = dDriver || t('Unbekannt');
     let carStr = dCar ? ` (${dCar})` : '';
-    let szStr = (dMask > 0) ? ` <span style="color:var(--neon-green);">[mit Sektoren]</span>` : ` <span style="color:var(--neon-cyan);">[Start/Ziel]</span>`;
-    previewEl.innerHTML = `⏱️ <strong>Tagesbestzeit:</strong> <span style="color:var(--neon-green);font-weight:bold;font-size:15px;">${lapStr}</span> von ${driverStr}${carStr}${szStr}`;
+    let szStr = (dMask > 0) ? ` <span style="color:var(--neon-green);">[${t('mit Sektoren')}]</span>` : ` <span style="color:var(--neon-cyan);">[${t('Start/Ziel')}]</span>`;
+    previewEl.innerHTML = `⏱️ <strong>${t('Tagesbestzeit:')}</strong> <span style="color:var(--neon-green);font-weight:bold;font-size:15px;">${lapStr}</span> ${t('von')} ${driverStr}${carStr}${szStr}`;
   } else if (type === 2) {
     let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
     let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
     let pb = (row && row.bestLap > 0) ? row.bestLap : (row && row.lastLap > 0 ? row.lastLap : 0);
     if (pb > 0) {
-      previewEl.innerHTML = `👤 <strong>Deine Bestzeit:</strong> <span style="color:var(--neon-cyan);font-weight:bold;font-size:15px;">${(pb/1000).toFixed(3)}s</span> (Fahrzeug ${activeCarId})`;
+      previewEl.innerHTML = `👤 <strong>${t('Deine Bestzeit:')}</strong> <span style="color:var(--neon-cyan);font-weight:bold;font-size:15px;">${(pb/1000).toFixed(3)}s</span> (${t('Fahrzeug')} ${activeCarId})`;
     } else {
-      previewEl.innerHTML = `👤 <strong>Eigener Geist:</strong> <span style="color:var(--neon-cyan);">Erste gezeitete Runde dieser Session setzt deinen Geist!</span>`;
+      previewEl.innerHTML = `👤 <strong>${t('Eigener Geist:')}</strong> <span style="color:var(--neon-cyan);">${t('Erste gezeitete Runde dieser Session setzt deinen Geist!')}</span>`;
     }
   } else if (type === 3) {
-    previewEl.innerHTML = `🎯 <strong>Freie Zielzeit:</strong> Gib unten deine Wunsch-Rundenzeit in Sekunden ein.`;
+    previewEl.innerHTML = `🎯 <strong>${t('Freie Zielzeit:')}</strong> ${t('Gib unten deine Wunsch-Rundenzeit in Sekunden ein.')}`;
   } else if (type === 4) {
     let leader = (typeof lastLapsData !== 'undefined' && lastLapsData.length > 0) ? [...lastLapsData].filter(c => c.bestLap > 0).sort((a,b)=>a.bestLap-b.bestLap)[0] : null;
     if (leader && leader.bestLap > 0) {
-      previewEl.innerHTML = `🏎️ <strong>Session-Führender:</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${(leader.bestLap/1000).toFixed(3)}s</span> von ${leader.driver || ('Fahrer ' + leader.id)}`;
+      previewEl.innerHTML = `🏎️ <strong>${t('Session-Führender:')}</strong> <span style="color:var(--neon-purple);font-weight:bold;font-size:15px;">${(leader.bestLap/1000).toFixed(3)}s</span> ${t('von')} ${leader.driver || (t('Fahrer') + ' ' + leader.id)}`;
     } else {
-      previewEl.innerHTML = `🏎️ <strong>Session-Führender:</strong> <span style="color:var(--neon-cyan);">Noch keine gezeitete Runde in dieser Session!</span>`;
+      previewEl.innerHTML = `🏎️ <strong>${t('Session-Führender:')}</strong> <span style="color:var(--neon-cyan);">${t('Noch keine gezeitete Runde in dieser Session!')}</span>`;
     }
   }
 
@@ -302,15 +302,15 @@ function updateGhostHuntModalDisplay() {
 
     if (role === 'admin') {
       actionBox.innerHTML = `
-        <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Ghosthunt beenden') + '</button>' : (isGhostOn ? '' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">👻 Ghosthunt starten</button>')}
-        <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">🚀 Ghost Battle für alle starten</button>
+        <button class="btn btn-warning" onclick="closeGhostHuntModal()">${t('Schließen')}</button>
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? t('↩️ Admin-Geist übernehmen') : t('⏹️ Ghosthunt beenden')) + '</button>' : (isGhostOn ? '' : '<button class="btn btn-purple" onclick="startDriverLocalGhostHuntFromModal()">' + t('👻 Ghosthunt starten') + '</button>')}
+        <button class="btn btn-success" style="font-weight:bold; box-shadow:0 0 12px rgba(0,255,157,0.4);" onclick="startGhostHuntSession()">${t('🚀 Ghost Battle für alle starten')}</button>
       `;
     } else {
       actionBox.innerHTML = `
-        <button class="btn btn-warning" onclick="closeGhostHuntModal()">Schließen</button>
-        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? '↩️ Admin-Geist übernehmen' : '⏹️ Ghosthunt beenden') + '</button>' : ''}
-        <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? '🔄 Geist Aktualisieren' : '👻 Ghosthunt starten'}</button>
+        <button class="btn btn-warning" onclick="closeGhostHuntModal()">${t('Schließen')}</button>
+        ${isLocalOverride ? '<button class="btn btn-danger" onclick="stopDriverLocalGhostHunt()">' + (currentMode === 5 ? t('↩️ Admin-Geist übernehmen') : t('⏹️ Ghosthunt beenden')) + '</button>' : ''}
+        <button class="btn btn-purple" style="font-weight:bold; box-shadow:0 0 12px rgba(181,50,255,0.4);" onclick="startDriverLocalGhostHuntFromModal()">${isGhostOn ? t('🔄 Geist Aktualisieren') : t('👻 Ghosthunt starten')}</button>
       `;
     }
   }
@@ -325,7 +325,7 @@ function startGhostHuntSession() {
     let inp = document.getElementById('ghostCustomTimeInput');
     let sec = inp ? parseFloat(inp.value.replace(',', '.')) : 0;
     if (isNaN(sec) || sec <= 0) {
-      if (typeof showAlert === 'function') showAlert("Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!");
+      if (typeof showAlert === 'function') showAlert(t("Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!"));
       return;
     }
     customLapMs = Math.round(sec * 1000);
@@ -441,7 +441,7 @@ function startDriverLocalGhostHuntFromModal() {
     let inp = document.getElementById('ghostCustomTimeInput');
     let sec = inp ? parseFloat(inp.value.replace(',', '.')) : 0;
     if (isNaN(sec) || sec <= 0) {
-      if (typeof showAlert === 'function') showAlert("Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!");
+      if (typeof showAlert === 'function') showAlert(t("Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!"));
       return;
     }
     customLapMs = Math.round(sec * 1000);
@@ -460,11 +460,11 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     s3: 0,
     s4: 0,
     szMask: 0,
-    driver: "Geist",
+    driver: t("Geist"),
     car: ""
   };
 
-  let speakText = "Ghosthunt aktiviert! Schnapp dir den Geist!";
+  let speakText = t("Ghosthunt aktiviert! Schnapp dir den Geist!");
 
   if (type === 0) {
     let recLap = (typeof allTimeBestLap !== 'undefined') ? allTimeBestLap : 0;
@@ -478,11 +478,11 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
         gTarget.s3 = row.bestSz3 || 0;
         gTarget.s4 = row.bestSz4 || 0;
         gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | 8;
-        gTarget.driver = (row && row.driver) || ("Fahrer " + activeCarId);
+        gTarget.driver = (row && row.driver) || (t("Fahrer") + " " + activeCarId);
         gTarget.car = (row && row.car) || "";
       } else {
         gTarget.lap = 0;
-        gTarget.driver = "Streckenrekord";
+        gTarget.driver = t("Streckenrekord");
       }
     } else {
       gTarget.lap = recLap;
@@ -491,10 +491,10 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
       gTarget.s3 = (typeof allTimeBestS3 !== 'undefined') ? allTimeBestS3 : 0;
       gTarget.s4 = (typeof allTimeBestS4 !== 'undefined') ? allTimeBestS4 : 0;
       gTarget.szMask = (typeof allTimeBestSzMask !== 'undefined') ? allTimeBestSzMask : 0;
-      gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : "Streckenrekord";
+      gTarget.driver = (typeof allTimeBestDriver !== 'undefined' && allTimeBestDriver) ? allTimeBestDriver : t("Streckenrekord");
       gTarget.car = (typeof allTimeBestCar !== 'undefined') ? allTimeBestCar : "";
     }
-    speakText = "Ghosthunt gegen den Streckenrekord!";
+    speakText = t("Ghosthunt gegen den Streckenrekord!");
   } else if (type === 1) {
     gTarget.lap = (typeof dailyBestLap !== 'undefined') ? dailyBestLap : 0;
     gTarget.s1 = (typeof dailyBestS1 !== 'undefined') ? dailyBestS1 : 0;
@@ -502,9 +502,9 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     gTarget.s3 = (typeof dailyBestS3 !== 'undefined') ? dailyBestS3 : 0;
     gTarget.s4 = (typeof dailyBestS4 !== 'undefined') ? dailyBestS4 : 0;
     gTarget.szMask = (typeof dailyBestSzMask !== 'undefined') ? dailyBestSzMask : 0;
-    gTarget.driver = (typeof dailyBestDriver !== 'undefined' && dailyBestDriver) ? dailyBestDriver : "Tagesbestzeit";
+    gTarget.driver = (typeof dailyBestDriver !== 'undefined' && dailyBestDriver) ? dailyBestDriver : t("Tagesbestzeit");
     gTarget.car = (typeof dailyBestCar !== 'undefined') ? dailyBestCar : "";
-    speakText = "Ghosthunt gegen die Tagesbestzeit!";
+    speakText = t("Ghosthunt gegen die Tagesbestzeit!");
   } else if (type === 2) {
     let row = (typeof lastLapsData !== 'undefined') ? lastLapsData.find(r => r.id === activeCarId) : null;
     let pb = (row && row.bestLap > 0) ? row.bestLap : 0;
@@ -514,12 +514,12 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
     gTarget.s3 = row ? (row.bestSz3 || 0) : 0;
     gTarget.s4 = row ? (row.bestSz4 || 0) : 0;
     gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
-    gTarget.driver = (row && row.driver) ? row.driver : ("Fahrer " + activeCarId);
-    speakText = (pb > 0) ? "Ghosthunt gegen deine persönliche Bestzeit!" : "Ghosthunt aktiviert! Deine erste Runde setzt den Geist!";
+    gTarget.driver = (row && row.driver) ? row.driver : (t("Fahrer") + " " + activeCarId);
+    speakText = (pb > 0) ? t("Ghosthunt gegen deine persönliche Bestzeit!") : t("Ghosthunt aktiviert! Deine erste Runde setzt den Geist!");
   } else if (type === 3) {
     gTarget.lap = customLapMs;
-    gTarget.driver = "Zielzeit";
-    speakText = "Ghosthunt gegen Zielzeit!";
+    gTarget.driver = t("Zielzeit");
+    speakText = t("Ghosthunt gegen Zielzeit!");
   } else if (type === 4) {
     let leader = (typeof lastLapsData !== 'undefined' && lastLapsData.length > 0) ? [...lastLapsData].filter(c => c.bestLap > 0).sort((a,b)=>a.bestLap-b.bestLap)[0] : null;
     if (leader && leader.bestLap > 0) {
@@ -529,10 +529,10 @@ function startDriverLocalGhostHunt(type, customLapMs = 0) {
       gTarget.s3 = leader.bestSz3 || 0;
       gTarget.s4 = leader.bestSz4 || 0;
       gTarget.szMask = (gTarget.s1 > 0 ? 1 : 0) | (gTarget.s2 > 0 ? 2 : 0) | (gTarget.s3 > 0 ? 4 : 0) | (gTarget.s4 > 0 ? 8 : 0);
-      gTarget.driver = leader.driver || ("Fahrer " + leader.id);
-      speakText = "Ghosthunt gegen " + gTarget.driver + "!";
+      gTarget.driver = leader.driver || (t("Fahrer") + " " + leader.id);
+      speakText = t("Ghosthunt gegen {driver}!", { driver: gTarget.driver });
     } else {
-      speakText = "Noch keine Runden in dieser Session! Erste Runde setzt den Geist.";
+      speakText = t("Noch keine Runden in dieser Session! Erste Runde setzt den Geist.");
     }
   }
 
@@ -577,7 +577,7 @@ function stopDriverLocalGhostHunt() {
       window.currentGhostTarget = currentGhostTarget;
     }
     if (typeof renderGhostHud === 'function') renderGhostHud();
-    if (typeof speak === 'function') speak("Zurück zum Session-Geist.", true);
+    if (typeof speak === 'function') speak(t("Zurück zum Session-Geist."), true);
   } else {
     let hud = document.getElementById('ghostHudContainer');
     if (hud) hud.style.display = 'none';
@@ -585,7 +585,7 @@ function stopDriverLocalGhostHunt() {
     let banner = document.getElementById('ghostBeatenBanner');
     if (banner) banner.style.display = 'none';
 
-    if (typeof speak === 'function') speak("Ghosthunt beendet.", true);
+    if (typeof speak === 'function') speak(t("Ghosthunt beendet."), true);
   }
 }
 

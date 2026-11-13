@@ -354,12 +354,12 @@ function onSessionStartLiveEvent(msg) {
     if (typeof localGhostHuntActive !== 'undefined') localGhostHuntActive = false;
     localStorage.removeItem('localGhostHuntActive');
     localStorage.removeItem('localGhostTarget');
-    if (typeof speak === 'function') speak("Ghost Battle gestartet!", true);
+    if (typeof speak === 'function') speak(t("Ghost Battle gestartet!"), true);
     if (typeof updateGhostButtonStates === 'function') updateGhostButtonStates();
     if (typeof renderGhostHud === 'function') renderGhostHud();
   } else {
     if (prevMode === 5) {
-      if (typeof speak === 'function') speak("Ghost Battle beendet.", true);
+      if (typeof speak === 'function') speak(t("Ghost Battle beendet."), true);
     }
     window.localGhostHuntActive = false;
     if (typeof localGhostHuntActive !== 'undefined') localGhostHuntActive = false;
@@ -392,8 +392,8 @@ function onDragStartEvent(msg) {
   if (!lastDragStartTs[msg.carId] || (now - lastDragStartTs[msg.carId] > 3000)) {
     lastDragStartTs[msg.carId] = now;
     if (isCarAllowedForTTS(msg.carId)) {
-      let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
-      speak(driver + " gestartet!");
+      let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || (t("Fahrer") + " " + msg.carId);
+      speak(t("{driver} gestartet!", { driver: driver }));
     }
   }
   requestUpdateData();
@@ -401,15 +401,15 @@ function onDragStartEvent(msg) {
 
 function onDragFinishEvent(msg) {
   if (isCarAllowedForTTS(msg.carId)) {
-    let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || ("Fahrer " + msg.carId);
+    let driver = msg.driver || (carNamesMap[msg.carId]?.driver) || (t("Fahrer") + " " + msg.carId);
     let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.time) : (msg.time / 1000).toFixed(2).replace('.', ',');
     let text = "";
     if (msg.isOverallBest) {
-      text = driver + ", neue absolute Bestzeit! " + timeSec + " Sekunden!";
+      text = t("{driver}, neue absolute Bestzeit! {time} Sekunden!", { driver: driver, time: timeSec });
     } else if (msg.isPB) {
-      text = driver + ", persönliche Bestzeit! " + timeSec + " Sekunden!";
+      text = t("{driver}, persönliche Bestzeit! {time} Sekunden!", { driver: driver, time: timeSec });
     } else {
-      text = driver + ", Ziel! " + timeSec + " Sekunden!";
+      text = t("{driver}, Ziel! {time} Sekunden!", { driver: driver, time: timeSec });
     }
     speak(text);
   }
@@ -562,12 +562,12 @@ function onSectorLiveEvent(msg) {
   }
 
   if (!isFinalSector && sectorAudioEnabled && isCarAllowedForTTS(carId) && (msg.isPB || msg.isOverallBest)) {
-    let driver = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+    let driver = msg.driver || (carNamesMap[carId]?.driver) || (t("Fahrer") + " " + carId);
     let text = "";
     if (msg.isOverallBest) {
-      text = driver + ", absolute Bestzeit Sektor " + msg.sector + "!";
+      text = t("{driver}, absolute Bestzeit Sektor {sector}!", { driver: driver, sector: msg.sector });
     } else if (msg.isPB) {
-      text = driver + ", Bestzeit Sektor " + msg.sector + "!";
+      text = t("{driver}, Bestzeit Sektor {sector}!", { driver: driver, sector: msg.sector });
     }
     if (text) speak(text, false, carId);
   }
@@ -577,7 +577,7 @@ function onLapLiveEvent(msg) {
   if (!msg || !msg.carId) return;
 
   let carId = msg.carId;
-  let driverName = msg.driver || (typeof carNamesMap !== 'undefined' && carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  let driverName = msg.driver || (typeof carNamesMap !== 'undefined' && carNamesMap[carId]?.driver) || (t("Fahrer") + " " + carId);
   let completedLapNum = msg.lap || 1;
   let position = msg.pos || 1;
   let isOutLapDone = !!msg.isOutLap;
@@ -630,7 +630,7 @@ function onLapLiveEvent(msg) {
         currentGhostTarget.s4 = msg.s4 || 0;
         currentGhostTarget.driver = driverName;
         if (typeof renderGhostHud === 'function') renderGhostHud();
-        speak("Geist gesetzt: " + (msg.lapTime / 1000).toFixed(2) + " Sekunden! Schnapp ihn dir!", true);
+        speak(t("Geist gesetzt: {sec} Sekunden! Schnapp ihn dir!", { sec: (msg.lapTime / 1000).toFixed(2) }), true);
       } else if (msg.lapTime <= currentGhostTarget.lap) {
         let deltaToGhost = msg.lapTime - currentGhostTarget.lap;
         if (typeof onGhostBeatenLiveEvent === 'function') {
@@ -661,13 +661,13 @@ function onLapLiveEvent(msg) {
       let remainingLaps = targetLaps - completedLapNum;
       if (remainingLaps === 5 && !announcedLaps5) {
         announcedLaps5 = true;
-        speak("Noch 5 Runden!", 'priority');
+        speak(t("Noch 5 Runden!"), 'priority');
       } else if (remainingLaps === 3 && !announcedLaps3) {
         announcedLaps3 = true;
-        speak("Noch 3 Runden!", 'priority');
+        speak(t("Noch 3 Runden!"), 'priority');
       } else if (remainingLaps === 1 && !announcedLaps1) {
         announcedLaps1 = true;
-        speak("Letzte Runde!", 'priority');
+        speak(t("Letzte Runde!"), 'priority');
       } else if (remainingLaps <= 0) {
         raceFinishedByLeader = true;
         isSessionFinished = true;
@@ -687,7 +687,7 @@ function onLapLiveEvent(msg) {
       currentLeaderId = carId;
       if (isCarAllowedForTTS(carId) || isCarAllowedForTTS(oldLeaderId)) {
         leadChangeOccurred = true;
-        speak("Neuer Führender! " + driverName + " übernimmt die Spitze!", false);
+        speak(t("Neuer Führender! {driver} übernimmt die Spitze!", { driver: driverName }), false);
       }
     } else if (currentLeaderId === null && position === 1 && completedLapNum > 0) {
       currentLeaderId = carId;
@@ -697,35 +697,35 @@ function onLapLiveEvent(msg) {
   // 3. Rundenzeiten- & Outlap-Ansage (Echtzeit über WebSocket!)
   if (!raceFinishedByLeader && !isSessionFinished && isCarAllowedForTTS(carId) && !leadChangeOccurred && currentMode !== 4) {
     if (isOutLapDone) {
-      speak(driverName + ", Outlap beendet!", false, carId);
+      speak(t("{driver}, Outlap beendet!", { driver: driverName }), false, carId);
     } else if (msg.lapTime > 0) {
       let timeSec = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(msg.lapTime) : (msg.lapTime / 1000).toFixed(2).replace('.', ',');
       let posText = ", ";
       if (currentMode === 5) {
         if (position === 1) {
-          posText = ", du bist der Schnellste! ";
+          posText = ", " + t("du bist der Schnellste!") + " ";
         } else if (position > 1) {
-          posText = ", du hast derzeit die " + position + ". schnellste Zeit, ";
+          posText = ", " + t("du hast derzeit die {pos}. schnellste Zeit,", { pos: position }) + " ";
         }
       } else if (currentMode !== 0 && position > 0) {
-        posText = ", Platz " + position + ", ";
+        posText = ", " + t("Platz") + " " + position + ", ";
       }
 
       let lapAnnouncement = "";
       let isRaceMode = (currentMode >= 2);
-      let bestLapWord = isRaceMode ? "schnellste Rennrunde! " : "schnellste Runde! ";
+      let bestLapWord = isRaceMode ? t("schnellste Rennrunde!") + " " : t("schnellste Runde!") + " ";
 
       if (isNewTrackRecord) {
-        lapAnnouncement = driverName + posText + "neuer Streckenrekord! " + timeSec;
+        lapAnnouncement = driverName + posText + t("neuer Streckenrekord!") + " " + timeSec;
       } else if (isNewDailyRecord) {
-        lapAnnouncement = driverName + posText + "neue Tagesbestzeit! " + timeSec;
+        lapAnnouncement = driverName + posText + t("neue Tagesbestzeit!") + " " + timeSec;
       } else if (isRaceMode && !announceLapTimesInRace) {
         if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
-        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+        else if (isPersonalBest) lapAnnouncement = driverName + posText + t("persönliche Bestzeit!") + " " + timeSec;
         else lapAnnouncement = driverName + posText;
       } else {
         if (isAbsoluteBest) lapAnnouncement = driverName + posText + bestLapWord + timeSec;
-        else if (isPersonalBest) lapAnnouncement = driverName + posText + "persönliche Bestzeit! " + timeSec;
+        else if (isPersonalBest) lapAnnouncement = driverName + posText + t("persönliche Bestzeit!") + " " + timeSec;
         else lapAnnouncement = driverName + posText + timeSec;
       }
       speak(lapAnnouncement, false, carId);

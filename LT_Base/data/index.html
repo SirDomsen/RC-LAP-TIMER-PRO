@@ -180,10 +180,13 @@
   <div class="main-wrapper">
     <div class="hero-header">
       <h1>🏁 RC LAP TIMER PRO 🏁</h1>
-      <div class="role-badge-bar">
+      <div class="role-badge-bar" style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:wrap;">
         <span id="currentRoleBadge" class="role-pill" onclick="openAdminConfirmModal()" title="Klicken, um zum Rennleiter-Bereich zu wechseln" style="border-color:var(--neon-green); color:var(--neon-green);">
           🏎️ Aktueller Modus: Fahrer. Zu Rennleiter wechseln 👑
         </span>
+        <button type="button" id="langToggleBtn" class="role-pill" onclick="toggleLanguage()" title="Sprache wechseln / Switch language" style="cursor:pointer; border-color:var(--neon-cyan); color:var(--neon-cyan); background:rgba(0,240,255,0.08);">
+          🇬🇧 EN
+        </button>
       </div>
     </div>
 
@@ -634,21 +637,33 @@
 
   <footer>
     <div>RC Lap Timer Pro <span id="firmware-version" style="color:var(--neon-cyan);">--</span></div>
-    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.7.17</span></div>
+    <div>User Interface <span id="ui-version" style="color:var(--neon-cyan);">4.7.18</span></div>
     <div id="footer-wifi-status" style="margin-top:4px;">WLAN: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div id="footer-storage-status" style="margin-top:4px;">Speicher: <span style="color:var(--neon-cyan);">Lade...</span></div>
     <div style="margin-top:4px;">&copy; 2026 | Powered by ESP8266</div>
   </footer>
 
   <script>
+  window.LT_LANG = localStorage.getItem('lt_lang') === 'en' ? 'en' : 'de';
+  window.LT_I18N = window.LT_I18N || {};
+  window.t = function(s, vars) {
+    let out = (window.LT_LANG === 'en' && window.LT_I18N[s]) ? window.LT_I18N[s] : s;
+    if (vars) { for (const k in vars) out = out.replaceAll('{' + k + '}', vars[k]); }
+    return out;
+  };
+  window.toggleLanguage = function() {
+    localStorage.setItem('lt_lang', window.LT_LANG === 'en' ? 'de' : 'en');
+    location.reload();
+  };
   (function() {
     const scripts = [
       'qrcode.min.js?v=4.7.14',
-      'tts.js?v=4.7.17',
-      'websocket.js?v=4.7.15',
-      'modes.js?v=4.7.15',
-      'main.js?v=4.7.16'
+      'tts.js?v=4.7.18',
+      'websocket.js?v=4.7.18',
+      'modes.js?v=4.7.18',
+      'main.js?v=4.7.18'
     ];
+    if (window.LT_LANG === 'en') scripts.unshift('lang_en.js?v=4.7.18');
     let idx = 0;
     function loadNext() {
       if (idx >= scripts.length) return;

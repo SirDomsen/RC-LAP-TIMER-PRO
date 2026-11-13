@@ -11,13 +11,13 @@ function renderDriverAndTtsInputs() {
   ttsContainer.innerHTML = '';
 
   for (let i = 1; i <= MAX_CARS; i++) {
-    let driver = carNamesMap[i]?.driver || ('Fahrer ' + i);
-    let car = carNamesMap[i]?.car || ('Auto ' + i);
+    let driver = carNamesMap[i]?.driver || (t('Fahrer') + ' ' + i);
+    let car = carNamesMap[i]?.car || (t('Auto') + ' ' + i);
     
     container.innerHTML += `<div class="modal-row">
       <span>ID <strong>${i}</strong>:</span>
-      <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="Fahrer" style="width:30%;">
-      <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="Auto" style="width:30%;">
+      <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="${t('Fahrer')}" style="width:30%;">
+      <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="${t('Auto')}" style="width:30%;">
     </div>`;
 
     let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
@@ -77,29 +77,29 @@ function openConfigModal() {
         let bg = "";
 
         if (actual === 1) { 
-          txt = "🏠 Heim-WLAN"; 
+          txt = t("🏠 Heim-WLAN"); 
           color = "var(--neon-green)"; 
           bg = "rgba(0,255,102,0.1)"; 
         }
         else if (actual === 2) { 
-          txt = "📱 Hotspot"; 
+          txt = t("📱 Hotspot"); 
           color = "var(--neon-orange)"; 
           bg = "rgba(255,153,0,0.1)"; 
         }
         else { 
-          txt = "📡 AP-Modus"; 
+          txt = t("📡 AP-Modus"); 
           color = "var(--neon-purple)"; 
           bg = "rgba(181,50,255,0.1)"; 
         }
 
         if (isFallback) {
-          let source = configured === 1 ? "Heim-WLAN" : (configured === 2 ? "Hotspot" : "unbekannt");
-          txt += ` (Fallback von ${source})`;
+          let source = configured === 1 ? t("Heim-WLAN") : (configured === 2 ? t("Hotspot") : t("unbekannt"));
+          txt += ` (${t('Fallback von')} ${source})`;
           color = "var(--neon-red)";
           bg = "rgba(255,51,102,0.15)";
         }
 
-        badge.innerText = txt + " aktiv";
+        badge.innerText = txt + " " + t("aktiv");
         badge.style.borderColor = color;
         badge.style.color = color;
         badge.style.background = bg;
@@ -284,13 +284,13 @@ async function saveConfig() {
       if (affectsRunningSession) {
         let raceRunning = typeof currentMode !== 'undefined' && currentMode >= 2 && isSessionActive && !isSessionFinished;
         let ok = await showConfirm({
-          title: "⚠️ SESSION WIRD BEENDET",
+          title: t("⚠️ SESSION WIRD BEENDET"),
           theme: "danger",
-          message: "Aktuelle Session wird beendet und ein neues Freies Training gestartet." +
-            (raceRunning ? "<br><b>Das laufende Rennen wird beendet!</b>" : "") +
-            '<br><span style="color:var(--neon-red); font-size:12px;">Namen gelten immer für die gesamte Session.</span>',
-          confirmText: "BEENDEN & NEU STARTEN",
-          cancelText: "ABBRECHEN"
+          message: t("Aktuelle Session wird beendet und ein neues Freies Training gestartet.") +
+            (raceRunning ? "<br><b>" + t("Das laufende Rennen wird beendet!") + "</b>" : "") +
+            '<br><span style="color:var(--neon-red); font-size:12px;">' + t("Namen gelten immer für die gesamte Session.") + '</span>',
+          confirmText: t("BEENDEN & NEU STARTEN"),
+          cancelText: t("ABBRECHEN")
         });
         if (!ok) {
           if (typeof loadCarNames === 'function') await loadCarNames();
@@ -317,9 +317,9 @@ async function saveConfig() {
     console.error("Fehler beim Speichern der Konfiguration:", err); 
     if (typeof showAlert === 'function') {
       await showAlert({
-        title: "❌ SPEICHERFEHLER",
+        title: t("❌ SPEICHERFEHLER"),
         theme: "danger",
-        message: "Die Änderungen an den Fahrer-/Auto-Zuordnungen konnten nicht vollständig gespeichert werden. Bitte prüfe die Verbindung und kontrolliere die Zuordnungen erneut."
+        message: t("Die Änderungen an den Fahrer-/Auto-Zuordnungen konnten nicht vollständig gespeichert werden. Bitte prüfe die Verbindung und kontrolliere die Zuordnungen erneut.")
       });
     }
   } finally {
@@ -338,9 +338,9 @@ async function forceWifiMode(mode) {
 
   if (mode === 2 && !hsSsid) {
     await showAlert({
-      title: "⚠️ FEHLENDE EINGABE",
+      title: t("⚠️ FEHLENDE EINGABE"),
       theme: "orange",
-      message: "Bitte erst eine Hotspot-SSID in den WLAN-Einstellungen eintragen!"
+      message: t("Bitte erst eine Hotspot-SSID in den WLAN-Einstellungen eintragen!")
     });
     return;
   }
@@ -357,31 +357,31 @@ async function forceWifiMode(mode) {
   if (mode === 1) {
     let cleanSsid = hS.trim();
     let maxLen = 31 - 4 - 15;
-    let shortSsid = cleanSsid.length > maxLen ? cleanSsid.substring(0, maxLen) : (cleanSsid || "Heimnetzwerk");
-    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
-    targetIp = "<IP aus Geister-WLAN>";
-    step1Text = "1. Im Smartphone-WLAN nach Geister-WLAN suchen:";
-    step2Text = "2. Im Heim-WLAN im Browser öffnen:";
-    descText = "Der Laptimer verbindet sich mit deinem Heim-WLAN per DHCP. Die vom Router vergebene IP liest du einfach am Ende des Geister-WLAN-Namens ab!";
-    noteHtml = "💡 <strong>Super praktisch:</strong> Die Box speichert diese Heim-IP automatisch auch für den AP-Modus! Unterwegs an der Rennstrecke öffnest du den Laptimer also unter exakt derselben Adresse.";
+    let shortSsid = cleanSsid.length > maxLen ? cleanSsid.substring(0, maxLen) : (cleanSsid || t("Heimnetzwerk"));
+    expectedSsid = "LT_" + shortSsid + "-" + t("[IP-Adresse]");
+    targetIp = t("<IP aus Geister-WLAN>");
+    step1Text = t("1. Im Smartphone-WLAN nach Geister-WLAN suchen:");
+    step2Text = t("2. Im Heim-WLAN im Browser öffnen:");
+    descText = t("Der Laptimer verbindet sich mit deinem Heim-WLAN per DHCP. Die vom Router vergebene IP liest du einfach am Ende des Geister-WLAN-Namens ab!");
+    noteHtml = t("💡 <strong>Super praktisch:</strong> Die Box speichert diese Heim-IP automatisch auch für den AP-Modus! Unterwegs an der Rennstrecke öffnest du den Laptimer also unter exakt derselben Adresse.");
   } else if (mode === 2) {
     let cleanSsid = hsSsid.trim();
     let maxLen = 31 - 4 - 15;
     let shortSsid = cleanSsid.length > maxLen ? cleanSsid.substring(0, maxLen) : cleanSsid;
-    expectedSsid = "LT_" + shortSsid + "-[IP-Adresse]";
-    targetIp = "<IP aus Geister-WLAN>";
-    step1Text = "1. Geister-WLAN oder Hotspot-Liste am Handy prüfen:";
-    step2Text = "2. Im Browser aufrufen:";
-    descText = "Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN oder der Hotspot-Übersicht deines Smartphones ab.";
-    noteHtml = "📱 <strong>Tipp:</strong> Sobald dein Handy die Verbindung per Browser aufruft, schaltet sich das Geister-WLAN nach 20 Sekunden stromsparend ab.";
+    expectedSsid = "LT_" + shortSsid + "-" + t("[IP-Adresse]");
+    targetIp = t("<IP aus Geister-WLAN>");
+    step1Text = t("1. Geister-WLAN oder Hotspot-Liste am Handy prüfen:");
+    step2Text = t("2. Im Browser aufrufen:");
+    descText = t("Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN oder der Hotspot-Übersicht deines Smartphones ab.");
+    noteHtml = t("📱 <strong>Tipp:</strong> Sobald dein Handy die Verbindung per Browser aufruft, schaltet sich das Geister-WLAN nach 20 Sekunden stromsparend ab.");
   } else {
     let activeAp = (apS.trim().length > 0) ? apS.trim() : defaultApSSID;
     expectedSsid = activeAp + (apPassVal ? " (PW: " + apPassVal + ")" : "");
     targetIp = lastLearnedApIp || "192.168.0.8";
-    step1Text = "1. Smartphone direkt mit Laptimer-WLAN verbinden:";
-    step2Text = "2. Im Browser öffnen (gewohnte Heim-IP):";
-    descText = "Der Laptimer spannt sein eigenes Direkt-WLAN an der Rennstrecke auf (kein Router erforderlich).";
-    noteHtml = "🎯 <strong>Dank IP-Sync:</strong> Dein Handy verbindet sich mit dem Laptimer-WLAN und nutzt dieselbe IP wie daheim (" + targetIp + ")!";
+    step1Text = t("1. Smartphone direkt mit Laptimer-WLAN verbinden:");
+    step2Text = t("2. Im Browser öffnen (gewohnte Heim-IP):");
+    descText = t("Der Laptimer spannt sein eigenes Direkt-WLAN an der Rennstrecke auf (kein Router erforderlich).");
+    noteHtml = t("🎯 <strong>Dank IP-Sync:</strong> Dein Handy verbindet sich mit dem Laptimer-WLAN und nutzt dieselbe IP wie daheim ({ip})!", { ip: targetIp });
   }
 
   let desc = document.getElementById('alertModalDesc');
@@ -444,8 +444,8 @@ function triggerSZOta() {
   if (modal) {
     statusBox.style.display = 'none';
     btns.innerHTML = `
-      <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">ABBRECHEN</button>
-      <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">STARTEN</button>
+      <button class="btn btn-warning" style="flex:1; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">${t('ABBRECHEN')}</button>
+      <button class="btn btn-red" style="flex:1; padding:12px; font-weight:bold;" onclick="confirmOtaAlert()">${t('STARTEN')}</button>
     `;
     btns.style.display = 'flex';
     desc.style.display = 'block';
@@ -468,7 +468,7 @@ async function confirmOtaAlert() {
   desc.style.display = 'none';
   statusBox.style.display = 'block';
   statusText.color = 'var(--neon-cyan)';
-  statusText.innerText = "Sende Trigger-Signal an Sektorstationen...";
+  statusText.innerText = t("Sende Trigger-Signal an Sektorstationen...");
 
   try {
     let res = await fetch('/api/trigger_sz_ota', { method: 'POST' });
@@ -476,18 +476,18 @@ async function confirmOtaAlert() {
     
     if (!res.ok) {
       statusText.style.color = 'var(--neon-orange)';
-      statusText.innerText = "⚠️ Fehler: " + msg;
+      statusText.innerText = t("⚠️ Fehler:") + " " + msg;
     } else {
       statusText.style.color = 'var(--neon-green)';
-      statusText.innerHTML = "✅ Signal erfolgreich gesendet!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Die Stationen blinken nun schnell (3Hz) und verbinden sich mit dem aktuellen Netzwerk.<br>Flash-Vorgang per OTA kann gestartet werden.</span>";
+      statusText.innerHTML = t("✅ Signal erfolgreich gesendet!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Die Stationen blinken nun schnell (3Hz) und verbinden sich mit dem aktuellen Netzwerk.<br>Flash-Vorgang per OTA kann gestartet werden.</span>");
     }
   } catch(e) {
     statusText.style.color = 'var(--neon-red)';
-    statusText.innerText = "❌ Fehler beim Senden: " + e.message;
+    statusText.innerText = t("❌ Fehler beim Senden:") + " " + e.message;
   }
   
   setTimeout(() => {
-    btns.innerHTML = `<button class="btn btn-cyan" style="width:100%; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">SCHLIESSEN</button>`;
+    btns.innerHTML = `<button class="btn btn-cyan" style="width:100%; padding:12px; font-weight:bold;" onclick="closeOtaAlert()">${t('SCHLIESSEN')}</button>`;
     btns.style.display = 'flex';
   }, 500);
 }
@@ -498,7 +498,7 @@ function toggleWifiPass(inputId, btn) {
   const show = input.type === 'password';
   input.type = show ? 'text' : 'password';
   btn.classList.toggle('is-visible', show);
-  btn.title = show ? 'Passwort verbergen' : 'Passwort anzeigen';
+  btn.title = show ? t('Passwort verbergen') : t('Passwort anzeigen');
   btn.setAttribute('aria-label', btn.title);
   btn.innerHTML = show
     ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'

@@ -87,8 +87,17 @@ const PHONETIC_MAP = [
   { pattern: /\bDominic\b/gi, replacement: "Domminick" }
 ];
 
+function _ltT(s, vars) {
+  return (typeof window.t === 'function') ? window.t(s, vars) : s;
+}
+
 function applyPhonetics(text) {
   if (!text || typeof text !== 'string') return text;
+  if (window.LT_LANG === 'en') {
+    return text.replace(/\b(\d+)[.,]00\b/g, '$1 flat')
+               .replace(/\b(\d+)[.,]0(\d)\b/g, '$1 oh $2')
+               .replace(/\b(\d+)[.,](\d{2})\b/g, '$1 $2');
+  }
   let result = text;
   for (let i = 0; i < PHONETIC_MAP.length; i++) {
     result = result.replace(PHONETIC_MAP[i].pattern, PHONETIC_MAP[i].replacement);
@@ -102,6 +111,7 @@ function applyPhonetics(text) {
 
 function formatTimeForTTS(ms) {
   if (!ms || isNaN(ms) || ms <= 0) return "";
+  let isEn = (window.LT_LANG === 'en');
   let totalHundredths = Math.round(ms / 10);
   let hundredths = totalHundredths % 100;
   let totalSeconds = Math.floor(totalHundredths / 100);
@@ -110,19 +120,19 @@ function formatTimeForTTS(ms) {
 
   let hStr = "";
   if (hundredths === 0) {
-    hStr = "null";
+    hStr = isEn ? "flat" : "null";
   } else if (hundredths < 10) {
-    hStr = "null " + hundredths;
+    hStr = (isEn ? "oh " : "null ") + hundredths;
   } else {
     hStr = String(hundredths);
   }
 
   if (minutes > 0) {
-    let minWord = (minutes === 1) ? "eins" : String(minutes);
+    let minWord = (minutes === 1) ? (isEn ? "one" : "eins") : String(minutes);
     if (seconds === 0 && hundredths === 0) {
-      return `${minWord}, null`;
+      return isEn ? `${minWord} minute` : `${minWord}, null`;
     }
-    let secStr = (seconds < 10) ? ("null " + seconds) : String(seconds);
+    let secStr = (seconds < 10) ? ((isEn ? "oh " : "null ") + seconds) : String(seconds);
     return `${minWord}, ${secStr} ${hStr}`;
   } else {
     return `${seconds} ${hStr}`;
@@ -131,6 +141,7 @@ function formatTimeForTTS(ms) {
 
 function formatGhostDeltaForTTS(deltaMs) {
   if (deltaMs === undefined || deltaMs === null || isNaN(deltaMs)) return "";
+  let isEn = (window.LT_LANG === 'en');
   let isMinus = deltaMs <= 0;
   let absMs = Math.abs(deltaMs);
   let totalHundredths = Math.round(absMs / 10);
@@ -140,13 +151,13 @@ function formatGhostDeltaForTTS(deltaMs) {
   let prefix = isMinus ? "Minus " : "Plus ";
   let hStr = "";
   if (hundredths < 10) {
-    hStr = (hundredths === 0) ? "null" : ("null " + hundredths);
+    hStr = (hundredths === 0) ? (isEn ? "zero" : "null") : ((isEn ? "oh " : "null ") + hundredths);
   } else {
     hStr = String(hundredths);
   }
 
   if (seconds > 0) {
-    let secWord = (seconds === 1) ? "eins" : String(seconds);
+    let secWord = (seconds === 1) ? (isEn ? "one" : "eins") : String(seconds);
     return `${prefix}${secWord} ${hStr}`;
   } else {
     return `${prefix}${hStr}`;
@@ -193,7 +204,7 @@ function handleCountdownEvent(msg) {
   let muteTts = !!msg.muteTts;
   if (muteTts) return; // Stummgeschaltet durch Rennleiter: Hardware-Buzzer aktiv, Sprache aus
 
-  speak("Achtung, gleich geht's los!", true);
+  speak(_ltT("Achtung, gleich geht's los!"), true);
 
   let t1 = setTimeout(() => {
     speak("3");
@@ -202,7 +213,7 @@ function handleCountdownEvent(msg) {
       let t3 = setTimeout(() => {
         speak("1");
         let t4 = setTimeout(() => {
-          speak("Los!");
+          speak(_ltT("Los!"));
         }, 1100);
         countdownTimeouts.push(t4);
       }, 1100);
@@ -289,7 +300,7 @@ function processSpeechQueue() {
   let rawText = (typeof item === 'object' && item !== null) ? item.text : item;
   let text = applyPhonetics(rawText);
   let utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'de-DE';
+  utterance.lang = (window.LT_LANG === 'en') ? 'en-US' : 'de-DE';
   utterance.rate = 1.0;
   activeUtterance = utterance;
 
@@ -338,8 +349,8 @@ function isCarAllowedForTTS(carId) {
 
 function toggleTTS() {
   ttsEnabled = !ttsEnabled;
-  document.getElementById('ttsToggleBtn').innerText = ttsEnabled ? "🔊 Ton: AN" : "🔇 Ton: AUS";
-  if (ttsEnabled) speak("Sprachausgabe aktiviert");
+  document.getElementById('ttsToggleBtn').innerText = ttsEnabled ? _ltT("🔊 Ton: AN") : _ltT("🔇 Ton: AUS");
+  if (ttsEnabled) speak(_ltT("Sprachausgabe aktiviert"));
 }
 
 function unmuteIOSAudio() {
@@ -358,7 +369,7 @@ function unmuteIOSAudio() {
     synth.speak(u);
     audioUnmuted = true;
     let btn = document.getElementById('iosUnmuteBtn');
-    if (btn) { btn.style.borderColor = 'var(--neon-green)'; btn.style.color = 'var(--neon-green)'; btn.innerText = '✅ iOS Ton Aktiv'; }
+    if (btn) { btn.style.borderColor = 'var(--neon-green)'; btn.style.color = 'var(--neon-green)'; btn.innerText = _ltT('✅ iOS Ton Aktiv'); }
   }
 }
 
@@ -366,7 +377,7 @@ function updateTTSFilterDisplay() {
   let disp = document.getElementById('ttsSelectedCarsDisplay');
   if (!disp) return;
   if (selectedTTSCars.length === 0) {
-    disp.innerText = "Alle Fahrzeuge";
+    disp.innerText = _ltT("Alle Fahrzeuge");
     disp.style.color = "var(--neon-cyan)";
   } else {
     let namesLoaded = selectedTTSCars.every(id => carNamesMap[id] !== undefined);
@@ -374,7 +385,7 @@ function updateTTSFilterDisplay() {
       loadCarNames().then(() => updateTTSFilterDisplay());
       return;
     }
-    let names = selectedTTSCars.map(id => carNamesMap[id]?.driver || ("Fahrer " + id));
+    let names = selectedTTSCars.map(id => carNamesMap[id]?.driver || (_ltT("Fahrer") + " " + id));
     disp.innerText = names.join(" & ");
     disp.style.color = "var(--neon-green)";
   }
@@ -390,7 +401,7 @@ function announceRaceResults() {
 
   let activeCars = lastLapsData.filter(car => car.completedLaps > 0);
   if (activeCars.length === 0) {
-    speak("Das Rennen ist beendet!", true);
+    speak(_ltT("Das Rennen ist beendet!"), true);
     return;
   }
 
@@ -401,26 +412,26 @@ function announceRaceResults() {
   let p3 = activeCars[2];
 
   let cMap = (typeof carNamesMap !== 'undefined') ? carNamesMap : {};
-  let winnerDriver = winner.driver || (cMap[winner.id]?.driver || ("Fahrer " + winner.id));
-  let winnerCar = winner.car || (cMap[winner.id]?.car || ("Auto " + winner.id));
+  let winnerDriver = winner.driver || (cMap[winner.id]?.driver || (_ltT("Fahrer") + " " + winner.id));
+  let winnerCar = winner.car || (cMap[winner.id]?.car || (_ltT("Auto") + " " + winner.id));
 
-  let podiumText = "Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an " + winnerDriver + " auf " + winnerCar + " zum Sieg!";
+  let podiumText = _ltT("Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an {driver} auf {car} zum Sieg!", { driver: winnerDriver, car: winnerCar });
 
   if (p2 && p3) {
-    let p2Driver = p2.driver || (cMap[p2.id]?.driver || ("Fahrer " + p2.id));
-    let p3Driver = p3.driver || (cMap[p3.id]?.driver || ("Fahrer " + p3.id));
-    podiumText += " Platz 2 geht an " + p2Driver + ", und Platz 3 an " + p3Driver + "!";
+    let p2Driver = p2.driver || (cMap[p2.id]?.driver || (_ltT("Fahrer") + " " + p2.id));
+    let p3Driver = p3.driver || (cMap[p3.id]?.driver || (_ltT("Fahrer") + " " + p3.id));
+    podiumText += " " + _ltT("Platz 2 geht an {p2}, und Platz 3 an {p3}!", { p2: p2Driver, p3: p3Driver });
   } else if (p2) {
-    let p2Driver = p2.driver || (cMap[p2.id]?.driver || ("Fahrer " + p2.id));
-    podiumText += " Platz 2 geht an " + p2Driver + "!";
+    let p2Driver = p2.driver || (cMap[p2.id]?.driver || (_ltT("Fahrer") + " " + p2.id));
+    podiumText += " " + _ltT("Platz 2 geht an {p2}!", { p2: p2Driver });
   }
 
   if (activeCars.length > 3) {
-    let restText = " Auf den weiteren Plätzen: ";
+    let restText = " " + _ltT("Auf den weiteren Plätzen:") + " ";
     for (let i = 3; i < activeCars.length; i++) {
       let pos = i + 1;
-      let driverName = activeCars[i].driver || (cMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
-      restText += "Platz " + pos + " " + driverName + ". ";
+      let driverName = activeCars[i].driver || (cMap[activeCars[i].id]?.driver || (_ltT("Fahrer") + " " + activeCars[i].id));
+      restText += _ltT("Platz {pos} {driver}.", { pos: pos, driver: driverName }) + " ";
     }
     podiumText += restText;
   }

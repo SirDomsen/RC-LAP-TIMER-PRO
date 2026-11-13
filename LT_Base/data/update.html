@@ -275,8 +275,9 @@
   <div class="container">
     <h1>🚀 LITTLEFS DATEI- & SPEICHER-MANAGER</h1>
     
-    <div style="margin-bottom: 15px; text-align: left;">
+    <div style="margin-bottom: 15px; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
       <button class="btn btn-cyan" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="location.href='/admin.html'">← Zurück</button>
+      <button type="button" id="langToggleBtn" class="btn btn-cyan" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="toggleLanguage()" title="Sprache wechseln / Switch language">🇬🇧 EN</button>
     </div>
 
     <!-- SPEICHERPLATZ-ANZEIGE -->
@@ -455,6 +456,22 @@
 
 
   <script>
+    window.LT_LANG = localStorage.getItem('lt_lang') === 'en' ? 'en' : 'de';
+    window.LT_I18N = window.LT_I18N || {};
+    window.t = function(s, vars) {
+      let out = (window.LT_LANG === 'en' && window.LT_I18N[s]) ? window.LT_I18N[s] : s;
+      if (vars) { for (const k in vars) out = out.replaceAll('{' + k + '}', vars[k]); }
+      return out;
+    };
+    window.toggleLanguage = function() {
+      localStorage.setItem('lt_lang', window.LT_LANG === 'en' ? 'de' : 'en');
+      location.reload();
+    };
+    if (window.LT_LANG === 'en') {
+      const s = document.createElement('script');
+      s.src = 'lang_en.js?v=4.7.18';
+      document.body.appendChild(s);
+    }
     let selectedFiles = [];
     let cachedFiles = [];
     let sortColumn = 'name';

@@ -161,8 +161,9 @@
 <body>
   <div class="container">
     <h1>📡 DEBUG CONSOLE</h1>
-    <div style="margin-bottom: 15px; text-align: left;">
+    <div style="margin-bottom: 15px; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
       <button class="btn" onclick="location.href='/admin.html'">← Zurück</button>
+      <button type="button" id="langToggleBtn" class="btn" onclick="toggleLanguage()" title="Sprache wechseln / Switch language" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">🇬🇧 EN</button>
     </div>
 
     <div id="pollingStatus">⚠️ TAB MINIMIERT - POLLING &amp; AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG</div>
@@ -402,6 +403,22 @@
   </div>
 
   <script>
+    window.LT_LANG = localStorage.getItem('lt_lang') === 'en' ? 'en' : 'de';
+    window.LT_I18N = window.LT_I18N || {};
+    window.t = function(s, vars) {
+      let out = (window.LT_LANG === 'en' && window.LT_I18N[s]) ? window.LT_I18N[s] : s;
+      if (vars) { for (const k in vars) out = out.replaceAll('{' + k + '}', vars[k]); }
+      return out;
+    };
+    window.toggleLanguage = function() {
+      localStorage.setItem('lt_lang', window.LT_LANG === 'en' ? 'de' : 'en');
+      location.reload();
+    };
+    if (window.LT_LANG === 'en') {
+      const s = document.createElement('script');
+      s.src = 'lang_en.js?v=4.7.18';
+      document.body.appendChild(s);
+    }
     const MAX_HISTORY = 200;
     let allPackets = [];
     let packetHashSet = new Set();

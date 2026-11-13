@@ -618,11 +618,11 @@ function onGhostBeatenLiveEvent(msg) {
       playWebAudioGhostVictory();
     }
     if (typeof speak === 'function') {
-      speak("Geist geschlagen! Neue Bestzeit!", 'priority');
+      speak(t("Geist geschlagen! Neue Bestzeit!"), 'priority');
     }
   } else {
     if (typeof speak === 'function') {
-      speak(`${msg.driver} hat den Geist geschlagen!`, 'priority');
+      speak(t("{driver} hat den Geist geschlagen!", { driver: msg.driver }), 'priority');
     }
   }
 
@@ -691,8 +691,8 @@ function renderGhostHud() {
   let gName = document.getElementById('ghostTargetName');
   let gTime = document.getElementById('ghostTargetTime');
   if (gName) {
-    let typeLabels = ["Streckenrekord", "Tagesbestzeit", "Persönliche Bestzeit", "Zielzeit", "Session-Führender"];
-    let prefix = typeLabels[currentGhostTarget.type] || "Geist";
+    let typeLabels = [t("Streckenrekord"), t("Tagesbestzeit"), t("Persönliche Bestzeit"), t("Zielzeit"), t("Session-Führender")];
+    let prefix = typeLabels[currentGhostTarget.type] || t("Geist");
     gName.innerText = currentGhostTarget.driver ? `${prefix} (${currentGhostTarget.driver})` : prefix;
   }
   if (gTime) {
@@ -706,7 +706,7 @@ function renderGhostHud() {
   if (s1El) s1El.innerText = `SZ1: ${currentGhostTarget.s1 > 0 ? formatLapTime(currentGhostTarget.s1) : '---'}`;
   if (s2El) s2El.innerText = `SZ2: ${currentGhostTarget.s2 > 0 ? formatLapTime(currentGhostTarget.s2) : '---'}`;
   if (s3El) s3El.innerText = `SZ3: ${currentGhostTarget.s3 > 0 ? formatLapTime(currentGhostTarget.s3) : '---'}`;
-  if (s4El) s4El.innerText = `Ziel: ${currentGhostTarget.s4 > 0 ? formatLapTime(currentGhostTarget.s4) : (currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : '---')}`;
+  if (s4El) s4El.innerText = `${t('Ziel')}: ${currentGhostTarget.s4 > 0 ? formatLapTime(currentGhostTarget.s4) : (currentGhostTarget.lap > 0 ? formatLapTime(currentGhostTarget.lap) : '---')}`;
 
   // 2. Jäger-Karte
   let activeCarId = (typeof selectedTTSCars !== 'undefined' && selectedTTSCars.length > 0) ? selectedTTSCars[0] : 1;
@@ -1312,20 +1312,20 @@ function onDriverQuickSelectChange(val) {
   updateData(true);
 
   if (selectedTTSCars.length === 2) {
-    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
-    let n2 = carNamesMap[selectedTTSCars[1]]?.driver || ('Fahrer ' + selectedTTSCars[1]);
+    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || (t('Fahrer') + ' ' + selectedTTSCars[0]);
+    let n2 = carNamesMap[selectedTTSCars[1]]?.driver || (t('Fahrer') + ' ' + selectedTTSCars[1]);
     let isGhost = (currentMode === 5) || (typeof window.localGhostHuntActive !== 'undefined' && window.localGhostHuntActive) || (localStorage.getItem('localGhostHuntActive') === 'true');
     if (isGhost) {
-      speak(`${n1} ist aktiver Jäger. ${n2} ist Zuhörer.`, true);
+      speak(t("{n1} ist aktiver Jäger. {n2} ist Zuhörer.", { n1: n1, n2: n2 }), true);
     } else {
-      speak(`Sprachausgabe aktiv für ${n1} und ${n2}`, true);
+      speak(t("Sprachausgabe aktiv für {n1} und {n2}", { n1: n1, n2: n2 }), true);
     }
   } else if (selectedTTSCars.length === 1) {
-    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || ('Fahrer ' + selectedTTSCars[0]);
-    let c1 = carNamesMap[selectedTTSCars[0]]?.car || ('Auto ' + selectedTTSCars[0]);
-    speak(`Sprachausgabe aktiv für ${n1} auf ${c1}`, true);
+    let n1 = carNamesMap[selectedTTSCars[0]]?.driver || (t('Fahrer') + ' ' + selectedTTSCars[0]);
+    let c1 = carNamesMap[selectedTTSCars[0]]?.car || (t('Auto') + ' ' + selectedTTSCars[0]);
+    speak(t("Sprachausgabe aktiv für {n1} auf {c1}", { n1: n1, c1: c1 }), true);
   } else {
-    speak("Sprachausgabe für alle Fahrzeuge aktiv", true);
+    speak(t("Sprachausgabe für alle Fahrzeuge aktiv"), true);
   }
 }
 
@@ -1790,22 +1790,22 @@ function renderTrackRecordsModalContent(trackId) {
   body.innerHTML = `
     <div class="top5-section-card alltime">
       <div class="top5-section-title" style="color:var(--neon-gold);">
-        <span>🏆 STRECKENREKORD – TOP 5 (ALL-TIME)</span>
+        <span>${t('🏆 STRECKENREKORD – TOP 5 (ALL-TIME)')}</span>
         ${allTimeClearBtn}
       </div>
-      ${renderListHtml(allTimeArr, 'alltime', 'Noch kein Streckenrekord auf dieser Strecke', true)}
+      ${renderListHtml(allTimeArr, 'alltime', t('Noch kein Streckenrekord auf dieser Strecke'), true)}
     </div>
 
     <div class="top5-section-card daily">
       <div class="top5-section-title" style="color:var(--neon-green);">
-        <span>⏱️ TAGESBESTZEIT – TOP 5 (HEUTE)</span>
+        <span>${t('⏱️ TAGESBESTZEIT – TOP 5 (HEUTE)')}</span>
         ${dailyClearBtn}
       </div>
-      ${renderListHtml(dailyArr, 'daily', 'Heute noch keine Zeit auf dieser Strecke gefahren', false)}
+      ${renderListHtml(dailyArr, 'daily', t('Heute noch keine Zeit auf dieser Strecke gefahren'), false)}
     </div>
     <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-top:6px;">
-      💡 Pro Fahrer &amp; Fahrzeug wird jeweils die schnellste Zeit geführt.
-      ${isAdmin ? '<br>Beim Löschen einer Fehlmessung rückt die vorherige Bestzeit des Fahrers automatisch nach.' : ''}
+      💡 ${t('Pro Fahrer & Fahrzeug wird jeweils die schnellste Zeit geführt.')}
+      ${isAdmin ? '<br>' + t('Beim Löschen einer Fehlmessung rückt die vorherige Bestzeit des Fahrers automatisch nach.') : ''}
     </div>
   `;
 }
@@ -1820,7 +1820,7 @@ function setLapDeleteNotice(show) {
   el = document.createElement('div');
   el.id = 'lapDeleteNotice';
   el.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;background:#2a1a00;color:#ffb300;border:1px solid #ffb300;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:bold;box-shadow:0 0 12px rgba(255,179,0,.5);';
-  el.textContent = '⏳ Runde wird gelöscht – bitte Seite nicht neu laden und das Gerät nicht trennen.';
+  el.textContent = t('⏳ Runde wird gelöscht – bitte Seite nicht neu laden und das Gerät nicht trennen.');
   document.body.appendChild(el);
 }
 
@@ -1853,27 +1853,27 @@ async function deleteLapOnDevice(url) {
 }
 
 function deleteLapFailText(state) {
-  if (state === 'locked') return 'Löschen ist während eines laufenden Rennens gesperrt.';
-  if (state === 'noheap') return 'Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.';
-  if (state === 'nospace') return 'Kein Platz im Dateisystem für das sichere Umschreiben der Session (Flash fast voll). Es wurde nichts verändert.';
-  if (state === 'busy') return 'Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.';
-  if (state === 'timeout') return 'Keine Rückmeldung vom Basisgerät. Bitte Zustand prüfen.';
-  return 'Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert.';
+  if (state === 'locked') return t('Löschen ist während eines laufenden Rennens gesperrt.');
+  if (state === 'noheap') return t('Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.');
+  if (state === 'nospace') return t('Kein Platz im Dateisystem für das sichere Umschreiben der Session (Flash fast voll). Es wurde nichts verändert.');
+  if (state === 'busy') return t('Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.');
+  if (state === 'timeout') return t('Keine Rückmeldung vom Basisgerät. Bitte Zustand prüfen.');
+  return t('Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert.');
 }
 
 async function deleteTrackRecordEntryUI(trackId, type, index) {
   if (typeof isRaceDeleteLocked === 'function' && isRaceDeleteLocked()) {
     await showAlert({
-      title: "🔒 GESPERRT",
+      title: t("🔒 GESPERRT"),
       theme: "warning",
-      message: "Löschen ist während eines laufenden Rennens gesperrt."
+      message: t("Löschen ist während eines laufenden Rennens gesperrt.")
     });
     return;
   }
   let targetId = trackId || activeTrackId;
   let trackObj = allTracksList.find(t => t.id === targetId);
   let isDaily = (type === 'daily');
-  let title = isDaily ? '⏱️ TAGESBESTZEIT LÖSCHEN' : '🏆 STRECKENREKORD LÖSCHEN';
+  let title = isDaily ? t('⏱️ TAGESBESTZEIT LÖSCHEN') : t('🏆 STRECKENREKORD LÖSCHEN');
   let desc = '';
   let boxInfo = '';
   let cascadeInfo = '';
@@ -2272,11 +2272,11 @@ function updateStorageStatusUI(pct, full, usedBytes, totalBytes) {
   let ft = document.getElementById('footer-storage-status');
   if (ft) {
     if (pct >= 95) {
-      ft.innerHTML = `Speicher: <strong style="color:var(--neon-red);">🛑 ${detailStr} – VOLL! Keine Aufzeichnung!</strong>`;
+      ft.innerHTML = `${t('Speicher:')} <strong style="color:var(--neon-red);">🛑 ${detailStr} – ${t('VOLL! Keine Aufzeichnung!')}</strong>`;
     } else if (pct >= 90) {
-      ft.innerHTML = `Speicher: <strong style="color:var(--neon-orange);">⚠️ ${detailStr} – Fast voll!</strong>`;
+      ft.innerHTML = `${t('Speicher:')} <strong style="color:var(--neon-orange);">⚠️ ${detailStr} – ${t('Fast voll!')}</strong>`;
     } else {
-      ft.innerHTML = `Speicher: <strong style="color:var(--neon-cyan);">💾 ${detailStr}</strong>`;
+      ft.innerHTML = `${t('Speicher:')} <strong style="color:var(--neon-cyan);">💾 ${detailStr}</strong>`;
     }
   }
 
@@ -2287,7 +2287,7 @@ function updateStorageStatusUI(pct, full, usedBytes, totalBytes) {
     statsTxt.style.color = (pct >= 95) ? 'var(--neon-red)' : ((pct >= 90) ? 'var(--neon-orange)' : 'var(--neon-cyan)');
   }
 
-  let warnMsg95 = `🛑 Speicher voll (${pct}%)! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.`;
+  let warnMsg95 = t('🛑 Speicher voll ({pct}%)! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.', { pct: pct });
   let warnMsg90 = `⚠️ Speicher zu ${pct}% gefüllt! Bitte bald bestehende Sessions löschen.`;
 
   let statsBanner = document.getElementById('statsStorageWarningBanner');
@@ -2425,7 +2425,7 @@ async function loadWifiStatus() {
       }
 
       let ft = document.getElementById('footer-wifi-status');
-      if (ft) ft.innerHTML = `WLAN: <strong style="color:var(--neon-cyan);">${txt}</strong>`;
+      if (ft) ft.innerHTML = `${t('WLAN:')} <strong style="color:var(--neon-cyan);">${t(txt)}</strong>`;
     }
   } catch (e) {
     console.warn("WLAN Status konnte nicht für den Footer geladen werden");
@@ -2545,18 +2545,18 @@ function updateTrackRecordBar(info) {
       let dateTag = dFmt ? ` <small style="color:var(--text-muted); font-size:11px;">• ${dFmt}</small>` : '';
       allTimeDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small>${dateTag} — <span style="color:var(--neon-gold); text-shadow:0 0 8px rgba(255,215,0,0.6); font-size:16px;">${timeStr}</span>`;
     } else {
-      allTimeDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">Noch kein Streckenrekord</span>`;
+      allTimeDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">${t('Noch kein Streckenrekord')}</span>`;
     }
   }
 
   if (dailyDisp) {
     if (hasDailyBest) {
       let timeStr = formatLapTime(dailyLap);
-      let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || ('Fahrer ' + dailyCarId);
-      let car = dailyCar || (carNamesMap[dailyCarId]?.car) || ('Auto ' + dailyCarId);
+      let driver = dailyDriver || (carNamesMap[dailyCarId]?.driver) || (t('Fahrer') + ' ' + dailyCarId);
+      let car = dailyCar || (carNamesMap[dailyCarId]?.car) || (t('Auto') + ' ' + dailyCarId);
       dailyDisp.innerHTML = `<span style="color:var(--neon-cyan);">${driver}</span> <small style="color:var(--text-muted);">(${car})</small> — <span style="color:var(--neon-purple); text-shadow:0 0 8px rgba(181,50,255,0.7); font-size:16px;">${timeStr}</span>`;
     } else {
-      dailyDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">Noch keine Bestzeit heute</span>`;
+      dailyDisp.innerHTML = `<span style="color:var(--text-muted); font-size:12px;">${t('Noch keine Bestzeit heute')}</span>`;
     }
   }
 }
@@ -2567,11 +2567,11 @@ function updateTimerDisplayString(sec) {
   let textVal = "--:--";
 
   if (qualiFinishedHold) {
-    textVal = "QUALI BEENDET";
+    textVal = t("QUALI BEENDET");
   } else if (isSessionFinished) {
-    textVal = (currentMode === 1) ? "QUALI BEENDET" : "ZIEL";
+    textVal = (currentMode === 1) ? t("QUALI BEENDET") : t("ZIEL");
   } else if (timeExpiredAnnounced) {
-    textVal = "LETZTE RUNDE";
+    textVal = t("LETZTE RUNDE");
   } else if (sec >= 0) {
     let m = Math.floor(sec / 60);
     let s = sec % 60;
@@ -2592,19 +2592,19 @@ function startLocalTimerTicker() {
 
       if (localSecondsLeft <= 60 && localSecondsLeft > 50 && !announced60) {
         announced60 = true;
-        speak("Noch eine Minute!", 'priority');
+        speak(t("Noch eine Minute!"), 'priority');
       } else if (localSecondsLeft <= 30 && localSecondsLeft > 20 && !announced30) {
         announced30 = true;
-        speak("Noch 30 Sekunden!", 'priority');
+        speak(t("Noch 30 Sekunden!"), 'priority');
       } else if (localSecondsLeft <= 10 && localSecondsLeft > 0 && !announced10) {
         announced10 = true;
-        speak("Noch 10 Sekunden!", 'priority');
+        speak(t("Noch 10 Sekunden!"), 'priority');
       } else if (localSecondsLeft === 0) {
         if (currentMode === 1 || currentMode === 3) {
           if (!timeExpiredAnnounced) {
             timeExpiredAnnounced = true;
             updateTimerDisplayString(0);
-            speak("Die Zeit ist abgelaufen! Letzte Runde!", 'priority');
+            speak(t("Die Zeit ist abgelaufen! Letzte Runde!"), 'priority');
           }
         } else {
           finishSessionNow();
@@ -2907,13 +2907,13 @@ async function updateData(fullSync = false) {
     if (dMode) {
       if (currentMode === 5) dMode.innerText = "GHOST BATTLE 👻";
       else if (typeof localGhostHuntActive !== 'undefined' && localGhostHuntActive) {
-        let baseM = (currentMode === 1) ? "QUALIFYING" : (currentMode === 4 ? "DRAGRACE" : "TRAINING");
+        let baseM = (currentMode === 1) ? "QUALIFYING" : (currentMode === 4 ? "DRAGRACE" : t("TRAINING"));
         dMode.innerText = `${baseM} (GHOSTHUNT 👻)`;
       }
-      else if (currentMode === 0) dMode.innerText = "FREIES TRAINING";
-      else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? "QUALIFYING (BEENDET)" : "QUALIFYING";
-      else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? `RENNEN (${leaderLaps}/${targetLaps} RND)` : "RENNEN (RUNDEN)";
-      else if (currentMode === 3) dMode.innerText = "RENNEN (ZEIT)";
+      else if (currentMode === 0) dMode.innerText = t("FREIES TRAINING");
+      else if (currentMode === 1) dMode.innerText = qualiFinishedHold ? t("QUALIFYING (BEENDET)") : "QUALIFYING";
+      else if (currentMode === 2) dMode.innerText = (targetLaps > 0) ? t("RENNEN ({cur}/{tot} RND)", { cur: leaderLaps, tot: targetLaps }) : t("RENNEN (RUNDEN)");
+      else if (currentMode === 3) dMode.innerText = t("RENNEN (ZEIT)");
       else if (currentMode === 4) dMode.innerText = "DRAGRACE";
     }
 
@@ -2986,10 +2986,10 @@ async function updateData(fullSync = false) {
       }
       updateTrackRecordBar(info);
 
-      let modeText = "Freies Training";
-      if (currentMode === 1) modeText = qualiFinishedHold ? "Qualifying (Beendet)" : "Qualifying";
-      if (currentMode === 2) modeText = "Rennen (Runden)";
-      if (currentMode === 3) modeText = "Rennen (Zeit)";
+      let modeText = t("Freies Training");
+      if (currentMode === 1) modeText = qualiFinishedHold ? t("Qualifying (Beendet)") : "Qualifying";
+      if (currentMode === 2) modeText = t("Rennen (Runden)");
+      if (currentMode === 3) modeText = t("Rennen (Zeit)");
       if (currentMode === 4) modeText = "Dragrace";
       if (currentMode === 5) modeText = "Ghost Battle 👻";
       let modeElem = document.getElementById('modeDisplay');
@@ -3117,15 +3117,15 @@ function finishSessionNow() {
     qualiFinishedHold = true;
     updateTimerDisplayString(0);
     let modeElem = document.getElementById('modeDisplay');
-    if (modeElem) modeElem.innerText = "Qualifying (Beendet)";
+    if (modeElem) modeElem.innerText = t("Qualifying (Beendet)");
 
     let activeCars = lastLapsData.filter(car => car.bestLap > 0);
     activeCars.sort((a, b) => a.bestLap - b.bestLap);
 
     if (activeCars.length > 0) {
       let pole = activeCars[0];
-      let poleDriver = pole.driver || (carNamesMap[pole.id]?.driver || ("Fahrer " + pole.id));
-      let poleCar = pole.car || (carNamesMap[pole.id]?.car || ("Auto " + pole.id));
+      let poleDriver = pole.driver || (carNamesMap[pole.id]?.driver || (t("Fahrer") + " " + pole.id));
+      let poleCar = pole.car || (carNamesMap[pole.id]?.car || (t("Auto") + " " + pole.id));
       let poleTimeDisp = formatLapTime(pole.bestLap);
       let poleTimeSpeech = typeof formatTimeForTTS === 'function' ? formatTimeForTTS(pole.bestLap) : (pole.bestLap / 1000).toFixed(2).replace('.', ',');
 
@@ -3136,39 +3136,39 @@ function finishSessionNow() {
         banner.style.display = 'block';
       }
 
-      let speechText = `Qualifying beendet! Herzlichen Glückwunsch ${poleDriver} auf ${poleCar} zur Pole Position mit ${poleTimeSpeech}!`;
+      let speechText = t("Qualifying beendet! Herzlichen Glückwunsch {driver} auf {car} zur Pole Position mit {time}!", { driver: poleDriver, car: poleCar, time: poleTimeSpeech });
 
       let p2 = activeCars[1];
       let p3 = activeCars[2];
       if (p2 && p3) {
-        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
-        let p3Driver = p3.driver || (carNamesMap[p3.id]?.driver || ("Fahrer " + p3.id));
-        speechText += ` Auf Platz 2 folgen ${p2Driver} und ${p3Driver} auf Platz 3.`;
+        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || (t("Fahrer") + " " + p2.id));
+        let p3Driver = p3.driver || (carNamesMap[p3.id]?.driver || (t("Fahrer") + " " + p3.id));
+        speechText += " " + t("Auf Platz 2 folgen {p2} und {p3} auf Platz 3.", { p2: p2Driver, p3: p3Driver });
       } else if (p2) {
-        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || ("Fahrer " + p2.id));
-        speechText += ` Auf Platz 2 folgt ${p2Driver}.`;
+        let p2Driver = p2.driver || (carNamesMap[p2.id]?.driver || (t("Fahrer") + " " + p2.id));
+        speechText += " " + t("Auf Platz 2 folgt {p2}.", { p2: p2Driver });
       }
 
       if (activeCars.length > 3) {
         for (let i = 3; i < activeCars.length; i++) {
           let pos = i + 1;
-          let dName = activeCars[i].driver || (carNamesMap[activeCars[i].id]?.driver || ("Fahrer " + activeCars[i].id));
-          speechText += ` Platz ${pos} geht an ${dName}.`;
+          let dName = activeCars[i].driver || (carNamesMap[activeCars[i].id]?.driver || (t("Fahrer") + " " + activeCars[i].id));
+          speechText += " " + t("Platz {pos} geht an {driver}.", { pos: pos, driver: dName });
         }
       }
       speak(speechText, true);
     } else {
-      speak("Das Qualifying ist beendet!", true);
+      speak(t("Das Qualifying ist beendet!"), true);
     }
   } else if (currentMode === 2 || currentMode === 3 || currentMode === 4) {
-    if (timerElem) timerElem.innerText = "ZIEL";
+    if (timerElem) timerElem.innerText = t("ZIEL");
     if (typeof announceRaceResults === 'function') announceRaceResults();
   } else if (currentMode === 5) {
-    if (timerElem) timerElem.innerText = "ZIEL";
-    speak("Ghost Battle beendet.", true);
+    if (timerElem) timerElem.innerText = t("ZIEL");
+    speak(t("Ghost Battle beendet."), true);
   } else {
-    if (timerElem) timerElem.innerText = "ZIEL";
-    speak("Die Zeit ist abgelaufen! Durchgang beendet!", false);
+    if (timerElem) timerElem.innerText = t("ZIEL");
+    speak(t("Die Zeit ist abgelaufen! Durchgang beendet!"), false);
   }
 }
 
@@ -3222,18 +3222,18 @@ async function pollData() {
 
 function handleBaseCrossEvent(msg) {
   let carId = msg.carId;
-  let driverName = msg.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  let driverName = msg.driver || (carNamesMap[carId]?.driver) || (t("Fahrer") + " " + carId);
   let now = Date.now();
   
   if (statusCarsMap[carId] === 'box') {
-    if (isCarAllowedForTTS(carId)) speak(driverName + " verlässt die Box");
+    if (isCarAllowedForTTS(carId)) speak(t("{driver} verlässt die Box", { driver: driverName }));
   } else if (statusCarsMap[carId] === 'pause') {
-    if (isCarAllowedForTTS(carId)) speak(driverName + " wieder gestartet");
+    if (isCarAllowedForTTS(carId)) speak(t("{driver} wieder gestartet", { driver: driverName }));
   } else {
     if (currentMode !== 4 && isCarAllowedForTTS(carId)) {
       if (!lastStartAnnouncedTs[carId] || (now - lastStartAnnouncedTs[carId] > 8000)) {
         lastStartAnnouncedTs[carId] = now;
-        speak(driverName + " gestartet!");
+        speak(t("{driver} gestartet!", { driver: driverName }));
       }
     }
   }
@@ -3246,7 +3246,7 @@ function handleBaseCrossEvent(msg) {
 function handleSectorTrackEntryTTS(carId) {
   if (currentMode === 4) return;
 
-  let driverName = carNamesMap[carId]?.driver || ("Fahrer " + carId);
+  let driverName = carNamesMap[carId]?.driver || (t("Fahrer") + " " + carId);
   if (awaitingBaseCrossMap[carId]) return;
 
   if (previousLaps[carId] === undefined || previousLaps[carId] === 0) {
@@ -3258,15 +3258,15 @@ function handleSectorTrackEntryTTS(carId) {
     lastAnnouncedLapMap[carId] = knownLaps;
     lapHistoryMap[carId] = [];
     statusCarsMap[carId] = 'outlap';
-    if (isCarAllowedForTTS(carId)) speak(driverName + " auf Outlap!");
+    if (isCarAllowedForTTS(carId)) speak(t("{driver} auf Outlap!", { driver: driverName }));
   } else if (statusCarsMap[carId] === 'pause') {
     awaitingBaseCrossMap[carId] = true;
     statusCarsMap[carId] = 'outlap';
-    if (isCarAllowedForTTS(carId)) speak(driverName + " wieder gestartet");
+    if (isCarAllowedForTTS(carId)) speak(t("{driver} wieder gestartet", { driver: driverName }));
   } else if (statusCarsMap[carId] === 'box') {
     awaitingBaseCrossMap[carId] = true;
     statusCarsMap[carId] = 'outlap';
-    if (isCarAllowedForTTS(carId)) speak(driverName + " verlässt die Box");
+    if (isCarAllowedForTTS(carId)) speak(t("{driver} verlässt die Box", { driver: driverName }));
   }
 }
 
@@ -3275,7 +3275,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
   let currentLaps = car.completedLaps;
   let prevLaps = previousLaps[carId];
   let prevBest = previousBestLaps[carId] || 0;
-  let driverName = car.driver || (carNamesMap[carId]?.driver) || ("Fahrer " + carId);
+  let driverName = car.driver || (carNamesMap[carId]?.driver) || (t("Fahrer") + " " + carId);
 
   if (prevLaps === undefined) {
     previousLaps[carId] = currentLaps;
@@ -3287,7 +3287,7 @@ function checkLapEvents(car, currentLeaderLaps, position, minBestLap = 0) {
       let now = Date.now();
       if (!lastStartAnnouncedTs[carId] || (now - lastStartAnnouncedTs[carId] > 8000)) {
         lastStartAnnouncedTs[carId] = now;
-        speak(driverName + " gestartet!");
+        speak(t("{driver} gestartet!", { driver: driverName }));
       }
     }
     return;
