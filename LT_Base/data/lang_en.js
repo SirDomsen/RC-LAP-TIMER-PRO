@@ -579,7 +579,7 @@
     "Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!": "Timing will be interrupted until the stations are restarted!",
 
     // --- Offline-Statistik HTML ---
-    "RC Lap Timer Pro – Offline-Statistik 0.9.5": "RC Lap Timer Pro – Offline Statistics 0.9.5",
+    "RC Lap Timer Pro – Offline-Statistik 1.0": "RC Lap Timer Pro – Offline Statistics 1.0",
     "Offline-Statistikauswertung": "Offline Statistics",
     "· Daten bleiben auf diesem Gerät": "· Data stays on this device",
     "Lap-Timer (IP/Host):": "Lap Timer (IP/Host):",
