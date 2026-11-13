@@ -7,6 +7,7 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <memory>
 
 String driverNames[MAX_CARS + 1];
 String carNames[MAX_CARS + 1];
@@ -1990,12 +1991,30 @@ static void processFileDeletion(const String& filename) {
 static bool lapDeleteResume = false;
 static void writeLapDeletePending(const String& sessionId, const String& file, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint8_t attempts);
 
+struct LapRewriteResult {
+  String trackId;
+  String trackName;
+  uint8_t mode = 0;
+  uint32_t startTs = 0;
+  uint32_t deletedLapTimeMs = 0;
+  uint16_t remaining = 0;
+  uint16_t calcLaps[MAX_CARS + 1] = {0};
+  uint32_t calcBest[MAX_CARS + 1] = {0};
+  uint32_t calcLastMs[MAX_CARS + 1] = {0};
+  uint64_t maxTsSec = 0;
+  String drivers[MAX_CARS + 1];
+  String cars[MAX_CARS + 1];
+};
+
+static std::unique_ptr<LapRewriteResult> lapDeleteRewriteRes;
+
 static struct {
   char sessionId[40];
   char file[DELETE_PATH_MAX];
   uint8_t carId;
   uint16_t lapNum;
   uint32_t lapTimeMs;
+  uint8_t phase;
 } lapDeleteJob;
 static volatile LapDeleteState lapDeleteState = LAP_DELETE_IDLE;
 
@@ -2007,6 +2026,8 @@ bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t c
   lapDeleteJob.carId = carId;
   lapDeleteJob.lapNum = lapNum;
   lapDeleteJob.lapTimeMs = lapTimeMs;
+  lapDeleteJob.phase = 0;
+  lapDeleteRewriteRes.reset();
   lapDeleteState = LAP_DELETE_PENDING;
   return true;
 }
@@ -2014,6 +2035,8 @@ bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t c
 LapDeleteState getLapDeletionState() {
   return lapDeleteState;
 }
+
+static bool stepLapDeletion();
 
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
@@ -2041,9 +2064,9 @@ void processStorageQueue() {
         writeLapDeletePending(pSid, pFile, pCar, pLap, pMs, 1);
         lapDeleteResume = true;
         // Rundennummer bevorzugen, damit keine andere Runde mit gleicher Zeit getroffen wird
-        deleteLapFromSession(pSid, pFile, pCar, pLap, pLap > 0 ? 0 : pMs);
-        lapDeleteResume = false;
-        updateFsUsageCache();
+        if (!queueLapDeletion(pSid, pFile, pCar, pLap, pLap > 0 ? 0 : pMs)) {
+          lapDeleteResume = false;
+        }
       }
       lastStorageWrite = millis();
       return;
@@ -2051,11 +2074,11 @@ void processStorageQueue() {
   }
 
   if (lapDeleteState == LAP_DELETE_PENDING) {
-    LapDeleteState result = deleteLapFromSession(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
-                                                 lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs);
-    updateFsUsageCache();
-    lapDeleteState = result;
-    lastStorageWrite = millis();
+    // Pro loop()-Durchlauf genau ein kleines Haeppchen, damit der 4-KB-Stack zwischen den Phasen abgebaut wird
+    if (stepLapDeletion()) {
+      updateFsUsageCache();
+      lastStorageWrite = millis();
+    }
     return;
   }
 
@@ -2316,21 +2339,6 @@ static bool readNextLapObject(File& f, char* buf, size_t cap, bool& overflow) {
   return false;
 }
 
-struct LapRewriteResult {
-  String trackId;
-  String trackName;
-  uint8_t mode = 0;
-  uint32_t startTs = 0;
-  uint32_t deletedLapTimeMs = 0;
-  uint16_t remaining = 0;
-  uint16_t calcLaps[MAX_CARS + 1] = {0};
-  uint32_t calcBest[MAX_CARS + 1] = {0};
-  uint32_t calcLastMs[MAX_CARS + 1] = {0};
-  uint64_t maxTsSec = 0;
-  String drivers[MAX_CARS + 1];
-  String cars[MAX_CARS + 1];
-};
-
 // Schreibt die Session ohne die Zielrunde in eine Temp-Datei und ersetzt dann atomar das Original.
 // Es liegt immer nur ein Runden-Objekt im RAM; bei jedem Fehler bleibt das Original unveraendert.
 static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, LapRewriteResult& r) {
@@ -2501,131 +2509,188 @@ static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t l
     }
     return;
   }
-  // Andere (nicht aktive) Strecke: passenden Eintrag aus tracks.json suchen (gestreamt)
-  RecordEntry dList[MAX_TRACK_RECORDS];
-  uint8_t dCount = 0;
-  RecordEntry aList[MAX_TRACK_RECORDS];
-  uint8_t aCount = 0;
-  bool hit = false;
+  // Andere (nicht aktive) Strecke: passenden Index aus tracks.json suchen (ohne RecordEntry-Arrays auf dem Stack)
+  int8_t dIdx = -1;
+  int8_t aIdx = -1;
   streamTracks(nullptr, [&](JsonDocument& d) -> int {
     JsonObject t = d.as<JsonObject>();
     if (t["id"].as<String>() != trackId) return 0;
-    loadRecordArrayFromJson(t, "dailyRecords", dList, dCount);
-    loadRecordArrayFromJson(t, "allTimeRecords", aList, aCount);
-    hit = true;
+    JsonArray da = t["dailyRecords"];
+    if (!da.isNull()) {
+      for (int8_t i = 0; i < (int8_t)da.size() && i < MAX_TRACK_RECORDS; i++) {
+        if ((da[i]["lap"] | 0U) == lapMs && (uint8_t)(da[i]["carId"] | 0) == carId) {
+          dIdx = i;
+          break;
+        }
+      }
+    }
+    if (dIdx < 0) {
+      JsonArray aa = t["allTimeRecords"];
+      if (!aa.isNull()) {
+        for (int8_t i = 0; i < (int8_t)aa.size() && i < MAX_TRACK_RECORDS; i++) {
+          if ((aa[i]["lap"] | 0U) == lapMs && (uint8_t)(aa[i]["carId"] | 0) == carId) {
+            aIdx = i;
+            break;
+          }
+        }
+      }
+    }
     return 2;
   });
-  if (!hit) return;
-  int8_t dIdx = findMatchingRecordIndex(dList, dCount, lapMs, carId, "", "");
   if (dIdx >= 0) {
     deleteTrackRecordEntry(trackId, true, dIdx);
     return;
   }
-  int8_t aIdx = findMatchingRecordIndex(aList, aCount, lapMs, carId, "", "");
   if (aIdx >= 0) deleteTrackRecordEntry(trackId, false, aIdx);
 }
 
-LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
-  if (sessionId.length() == 0 && filePath.length() == 0) return LAP_DELETE_NOT_FOUND;
-  if (sessionIndexDirty) flushCurrentSessionToIndex();
+static bool stepLapDeletion() {
+  if (lapDeleteJob.phase == 0) {
+    String sessionId = String(lapDeleteJob.sessionId);
+    String targetFile = String(lapDeleteJob.file);
+    if (sessionId.length() == 0 && targetFile.length() == 0) {
+      lapDeleteResume = false;
+      lapDeleteState = LAP_DELETE_NOT_FOUND;
+      return true;
+    }
+    if (sessionIndexDirty) flushCurrentSessionToIndex();
 
-  // 1. Dateipfad der Session ermitteln
-  String targetFile = filePath;
-  if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
-    targetFile = "/" + targetFile;
-  }
+    if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
+      targetFile = "/" + targetFile;
+    }
 
-  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
-    if (currentSessionActive && currentSessionId == sessionId) {
-      targetFile = currentSessionFilePath;
-    } else if (LittleFS.exists("/sessions.json")) {
-      File fIn = LittleFS.open("/sessions.json", "r");
-      if (fIn) {
-        String needle = "\"id\":\"" + sessionId + "\"";
-        while (fIn.available()) {
-          String line = fIn.readStringUntil('}');
-          int idx = line.indexOf(needle);
-          if (idx >= 0) {
-            int fIdx = line.indexOf("\"file\":\"");
-            if (fIdx >= 0) {
-              int startQ = fIdx + 8;
-              int endQ = line.indexOf("\"", startQ);
-              if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+    if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
+      if (currentSessionActive && currentSessionId == sessionId) {
+        targetFile = currentSessionFilePath;
+      } else if (LittleFS.exists("/sessions.json")) {
+        File fIn = LittleFS.open("/sessions.json", "r");
+        if (fIn) {
+          String needle = "\"id\":\"" + sessionId + "\"";
+          while (fIn.available()) {
+            String line = fIn.readStringUntil('}');
+            int idx = line.indexOf(needle);
+            if (idx >= 0) {
+              int fIdx = line.indexOf("\"file\":\"");
+              if (fIdx >= 0) {
+                int startQ = fIdx + 8;
+                int endQ = line.indexOf("\"", startQ);
+                if (endQ > startQ) targetFile = line.substring(startQ, endQ);
+              }
+              break;
             }
-            break;
           }
+          fIn.close();
         }
-        fIn.close();
       }
     }
+
+    if (targetFile.length() == 0 || !LittleFS.exists(targetFile) || targetFile.length() >= DELETE_PATH_MAX) {
+      lapDeleteResume = false;
+      lapDeleteState = LAP_DELETE_NOT_FOUND;
+      return true;
+    }
+    if (PlatformRuntime::isHeapCritical(4000, 100, 0)) {
+      lapDeleteResume = false;
+      lapDeleteState = LAP_DELETE_NO_HEAP;
+      return true;
+    }
+
+    strlcpy(lapDeleteJob.file, targetFile.c_str(), DELETE_PATH_MAX);
+    markLapDeleteStep(1);
+    lapDeleteJob.phase = lapDeleteResume ? 2 : 1;
+    return false;
   }
 
-  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) return LAP_DELETE_NOT_FOUND;
-
-  if (PlatformRuntime::isHeapCritical(4000, 100, 0)) return LAP_DELETE_NO_HEAP;
-  markLapDeleteStep(1);
-
-  // Phase 1: Merker schreiben, dann nur die Rekordlisten korrigieren (kleine Dateien).
-  // Phase 2 (Session umschreiben + Index) folgt danach; nach einem Absturz setzt der Boot sie fort.
-  if (!lapDeleteResume) {
-    writeLapDeletePending(sessionId, targetFile, carId, lapNum, lapTimeMs, 0);
-    String recTrackId = readSessionHeaderTrackId(targetFile);
-    removeRecordsForLap(recTrackId.length() > 0 ? recTrackId : activeTrackId, carId, lapTimeMs);
+  if (lapDeleteJob.phase == 1) {
+    writeLapDeletePending(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
+                          lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, 0);
+    String recTrackId = readSessionHeaderTrackId(String(lapDeleteJob.file));
+    removeRecordsForLap(recTrackId.length() > 0 ? recTrackId : activeTrackId, lapDeleteJob.carId, lapDeleteJob.lapTimeMs);
+    markLapDeleteStep(3);
+    lapDeleteJob.phase = 2;
+    return false;
   }
+
+  if (lapDeleteJob.phase == 2) {
+    lapDeleteRewriteRes.reset(new (std::nothrow) LapRewriteResult());
+    if (!lapDeleteRewriteRes) {
+      markLapDeleteStep(0);
+      lapDeleteResume = false;
+      lapDeleteState = LAP_DELETE_NO_HEAP;
+      return true;
+    }
+    LapDeleteState rewriteState = rewriteSessionWithoutLap(String(lapDeleteJob.file), lapDeleteJob.carId,
+                                                           lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, *lapDeleteRewriteRes);
+    if (rewriteState != LAP_DELETE_OK) {
+      lapDeleteRewriteRes.reset();
+      markLapDeleteStep(0);
+      lapDeleteResume = false;
+      lapDeleteState = rewriteState;
+      return true;
+    }
+    markLapDeleteStep(2);
+    lapDeleteJob.phase = 3;
+    return false;
+  }
+
+  // Phase 3: Session-Index aktualisieren (oder leere Session loeschen) und aufraeumen
   markLapDeleteStep(3);
-
-  LapRewriteResult r;
-  LapDeleteState rewriteState = rewriteSessionWithoutLap(targetFile, carId, lapNum, lapTimeMs, r);
-  if (rewriteState != LAP_DELETE_OK) { markLapDeleteStep(0); return rewriteState; }
-  markLapDeleteStep(2);
-
-  String sessTrackId = r.trackId.length() > 0 ? r.trackId : activeTrackId;
-
-  markLapDeleteStep(3);
-  if (r.remaining == 0) {
+  String sessionId = String(lapDeleteJob.sessionId);
+  if (!lapDeleteRewriteRes || lapDeleteRewriteRes->remaining == 0) {
     deleteSessionById(sessionId);
     LittleFS.remove("/pending_del.json");
+    lapDeleteRewriteRes.reset();
     markLapDeleteStep(0);
-    return LAP_DELETE_OK;
+    lapDeleteResume = false;
+    lapDeleteState = LAP_DELETE_OK;
+    return true;
   }
 
-  uint16_t* calcLaps = r.calcLaps;
-  uint32_t* calcBest = r.calcBest;
-  String* sessionDrivers = r.drivers;
-  String* sessionCars = r.cars;
-  uint64_t maxTsSec = r.maxTsSec;
-
+  LapRewriteResult& r = *lapDeleteRewriteRes;
+  String sessTrackId = r.trackId.length() > 0 ? r.trackId : activeTrackId;
   if (currentSessionActive && currentSessionId == sessionId) {
     for (uint8_t c = 1; c <= MAX_CARS; c++) {
-      sessionCarLaps[c] = calcLaps[c];
-      sessionCarBest[c] = calcBest[c];
-      copySessionName(sessionDriverNames[c], sizeof(sessionDriverNames[c]), sessionDrivers[c]);
-      copySessionName(sessionCarNames[c], sizeof(sessionCarNames[c]), sessionCars[c]);
-      if (sessionDrivers[c].length() > 0) sessionNamesWrittenMask |= ((uint16_t)1 << c);
+      sessionCarLaps[c] = r.calcLaps[c];
+      sessionCarBest[c] = r.calcBest[c];
+      copySessionName(sessionDriverNames[c], sizeof(sessionDriverNames[c]), r.drivers[c]);
+      copySessionName(sessionCarNames[c], sizeof(sessionCarNames[c]), r.cars[c]);
+      if (r.drivers[c].length() > 0) sessionNamesWrittenMask |= ((uint16_t)1 << c);
     }
   }
 
   String updatedEntry = buildSessionEntryJson(
     sessionId,
-    targetFile,
+    String(lapDeleteJob.file),
     sessTrackId,
     r.trackName.length() > 0 ? r.trackName : activeTrackName,
     r.mode,
     r.startTs,
-    maxTsSec,
-    calcLaps,
-    calcBest,
+    r.maxTsSec,
+    r.calcLaps,
+    r.calcBest,
     nullptr,
-    sessionDrivers,
-    sessionCars,
+    r.drivers,
+    r.cars,
     r.calcLastMs
   );
 
   markLapDeleteStep(4);
   filterSessionsIndexFile("", "", sessionId, updatedEntry);
   LittleFS.remove("/pending_del.json");
+  lapDeleteRewriteRes.reset();
   markLapDeleteStep(0);
-  return LAP_DELETE_OK;
+  lapDeleteResume = false;
+  lapDeleteState = LAP_DELETE_OK;
+  return true;
+}
+
+LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  if (!queueLapDeletion(sessionId, filePath, carId, lapNum, lapTimeMs)) return LAP_DELETE_PENDING;
+  while (lapDeleteState == LAP_DELETE_PENDING) {
+    if (stepLapDeletion()) break;
+    yield();
+  }
+  return lapDeleteState;
 }
 
 void deleteDriverHistory(const String& driverName) {
