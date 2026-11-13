@@ -78,23 +78,23 @@ static uint32_t sessionCarLastMs[MAX_CARS + 1] = {0};  // Zeitstempel der letzte
 static uint16_t sessionCarValidLaps[MAX_CARS + 1] = {0};
 static uint64_t sessionCarTimeSum[MAX_CARS + 1] = {0};
 static uint32_t sessionCarAvg[MAX_CARS + 1] = {0};
-static char sessionDriverNames[MAX_CARS + 1][61] = {};
-static char sessionCarNames[MAX_CARS + 1][61] = {};
+static char sessionDriverNames[MAX_CARS + 1][33] = {};
+static char sessionCarNames[MAX_CARS + 1][33] = {};
 static uint16_t sessionNamesWrittenMask = 0;
 
-static const String defaultDrivers[MAX_CARS + 1] = {
+static const char* const defaultDrivers[MAX_CARS + 1] = {
   "-", "Fahrer 1", "Fahrer 2", "Fahrer 3", "Fahrer 4", "Fahrer 5",
   "Fahrer 6", "Fahrer 7", "Fahrer 8", "Fahrer 9", "Fahrer 10",
   "Fahrer 11", "Fahrer 12", "Fahrer 13", "Fahrer 14", "Fahrer 15"
 };
 
-static const String defaultCars[MAX_CARS + 1] = {
+static const char* const defaultCars[MAX_CARS + 1] = {
   "-", "Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5",
   "Auto 6", "Auto 7", "Auto 8", "Auto 9", "Auto 10",
   "Auto 11", "Auto 12", "Auto 13", "Auto 14", "Auto 15"
 };
 
-#define QUEUE_MAX 30
+#define QUEUE_MAX 20
 static PendingLap lapQueue[QUEUE_MAX];
 static uint8_t queueHead = 0;
 static uint8_t queueTail = 0;

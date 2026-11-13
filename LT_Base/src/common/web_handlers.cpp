@@ -364,14 +364,26 @@ void handleGetFilter(AsyncWebServerRequest *request) {
   request->send(200, "application/json", json);
 }
 
-void handleGetNames(AsyncWebServerRequest *request) {
-  AsyncResponseStream *response = request->beginResponseStream("application/json");
-  response->print("{");
+static void appendNamesJson(String& json) {
+  json += "{";
   for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (i > 1) response->print(",");
-    response->printf("\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}", i, driverNames[i].c_str(), carNames[i].c_str());
+    if (i > 1) json += ",";
+    json += "\"";
+    json += i;
+    json += "\":{\"driver\":\"";
+    json += driverNames[i];
+    json += "\",\"car\":\"";
+    json += carNames[i];
+    json += "\"}";
   }
-  response->print("}");
+  json += "}";
+}
+
+void handleGetNames(AsyncWebServerRequest *request) {
+  String json;
+  json.reserve(768);
+  appendNamesJson(json);
+  AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeader(response);
   request->send(response);
 }
@@ -776,44 +788,41 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 
 void handleGetAllConfig(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
-  AsyncResponseStream *response = request->beginResponseStream("application/json");
+  String json;
+  json.reserve(1280);
 
-  response->print("{\"wifi\":{");
-  response->printf("\"runtimeMode\":%d,", currentRuntimeWifiMode);
-  response->printf("\"mode\":%d,", activeWifiMode);
-  response->printf("\"homeSSID\":\"%s\",", homeSSID.c_str());
-  response->printf("\"homePass\":\"%s\",", homePass.c_str());
-  response->printf("\"hotspotSSID\":\"%s\",", hotspotSSID.c_str());
-  response->printf("\"hotspotPass\":\"%s\",", hotspotPass.c_str());
-  response->printf("\"apSSID\":\"%s\",", apSSID.c_str());
-  response->printf("\"apPass\":\"%s\",", apPass.c_str());
   String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
   String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
-  response->printf("\"currentIP\":\"%s\",", curIP.c_str());
-  response->printf("\"learnedApIP\":\"%s\",", lIP.c_str());
-  response->printf("\"defaultApSSID\":\"%s\"", getDefaultApSSID().c_str());
-  response->print("},");
 
-  response->printf("\"deadtime\":{\"ms\":%u},", minLapTimeMs);
-  response->printf("\"filter\":{\"enabled\":%s},", IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
+  json = "{\"wifi\":{\"runtimeMode\":";
+  json += currentRuntimeWifiMode;
+  json += ",\"mode\":";
+  json += activeWifiMode;
+  json += ",\"homeSSID\":\""; json += homeSSID;
+  json += "\",\"homePass\":\""; json += homePass;
+  json += "\",\"hotspotSSID\":\""; json += hotspotSSID;
+  json += "\",\"hotspotPass\":\""; json += hotspotPass;
+  json += "\",\"apSSID\":\""; json += apSSID;
+  json += "\",\"apPass\":\""; json += apPass;
+  json += "\",\"currentIP\":\""; json += curIP;
+  json += "\",\"learnedApIP\":\""; json += lIP;
+  json += "\",\"defaultApSSID\":\""; json += getDefaultApSSID();
+  json += "\"},\"deadtime\":{\"ms\":";
+  json += minLapTimeMs;
+  json += "},\"filter\":{\"enabled\":";
+  json += (IrDecoder::isTwoFrameFilterEnabled() ? "true" : "false");
+  json += "},\"sector\":{\"useSz1\":";
+  json += (useSz1 ? "true" : "false");
+  json += ",\"useSz2\":"; json += (useSz2 ? "true" : "false");
+  json += ",\"useSz3\":"; json += (useSz3 ? "true" : "false");
+  json += ",\"checkpointMode\":"; json += (checkpointMode ? "true" : "false");
+  json += ",\"dragraceMode\":"; json += (dragraceMode ? "true" : "false");
+  json += ",\"sectorAudio\":"; json += (sectorAudioFeedback ? "true" : "false");
+  json += "},\"names\":";
+  appendNamesJson(json);
+  json += "}";
 
-  response->print("\"sector\":{");
-  response->printf("\"useSz1\":%s,", useSz1 ? "true" : "false");
-  response->printf("\"useSz2\":%s,", useSz2 ? "true" : "false");
-  response->printf("\"useSz3\":%s,", useSz3 ? "true" : "false");
-  response->printf("\"checkpointMode\":%s,", checkpointMode ? "true" : "false");
-  response->printf("\"dragraceMode\":%s,", dragraceMode ? "true" : "false");
-  response->printf("\"sectorAudio\":%s", sectorAudioFeedback ? "true" : "false");
-  response->print("},");
-
-  response->print("\"names\":{");
-  for (uint8_t i = 1; i <= MAX_CARS; i++) {
-    if (i > 1) response->print(",");
-    response->printf("\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}", i, driverNames[i].c_str(), carNames[i].c_str());
-  }
-  response->print("}}");
-
-  request->send(response);
+  request->send(200, "application/json", json);
 }
 
 void handleGetWifiConfig(AsyncWebServerRequest *request) {

@@ -386,43 +386,24 @@ static void connectNetworkCascade(uint8_t startMode) {
   setupFallbackAP();
 }
 
+#include <memory>
+
+#define MAX_FS_DIR_DEPTH 6
+
+struct FilesStreamState {
+  char pending[256];
+  size_t pendingLen = 0;
+  size_t pendingOff = 0;
+  uint8_t phase = 0;
+  bool first = true;
+  String dirPaths[MAX_FS_DIR_DEPTH];
 #if defined(ESP8266)
-static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
-  Dir dir = LittleFS.openDir(basePath);
-  while (dir.next()) {
-    String entryName = dir.fileName();
-    String fullPath = (basePath == "/") ? ("/" + entryName) : (basePath + "/" + entryName);
-    if (dir.isDirectory()) {
-      listFilesRecursive(fullPath, response, first);
-    } else {
-      if (!first) response->print(",");
-      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
-      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
-                       relName.c_str(), (unsigned int)dir.fileSize(), (unsigned long)dir.fileTime());
-      first = false;
-    }
-  }
-}
+  Dir dirs[MAX_FS_DIR_DEPTH];
 #elif defined(ESP32)
-static void listFilesRecursive(const String& basePath, AsyncResponseStream *response, bool& first) {
-  File dir = LittleFS.open(basePath);
-  if (!dir || !dir.isDirectory()) return;
-  File file = dir.openNextFile();
-  while (file) {
-    String fullPath = file.path();
-    if (file.isDirectory()) {
-      listFilesRecursive(fullPath, response, first);
-    } else {
-      if (!first) response->print(",");
-      String relName = fullPath.startsWith("/") ? fullPath.substring(1) : fullPath;
-      response->printf("{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
-                       relName.c_str(), (unsigned int)file.size(), (unsigned long)file.getLastWrite());
-      first = false;
-    }
-    file = dir.openNextFile();
-  }
-}
+  File dirs[MAX_FS_DIR_DEPTH];
 #endif
+  int8_t depth = -1;
+};
 
 void initNetworkAndServer() {
   connectNetworkCascade(activeWifiMode);
@@ -503,14 +484,108 @@ void initNetworkAndServer() {
     flushCurrentSessionToIndex();
     updateFsUsageCache();
 
-    AsyncResponseStream *response = request->beginResponseStream("application/json", 2048);
-    response->printf("{\"total\":%u,\"used\":%u,\"files\":[",
-                     (unsigned int)cachedFsTotalBytes, (unsigned int)cachedFsUsedBytes);
+    auto st = std::make_shared<FilesStreamState>();
+    AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
+      [st](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+        if (index == 0) {
+          st->pendingLen = st->pendingOff = 0;
+          st->phase = 0;
+          st->first = true;
+          st->depth = -1;
+        }
 
-    bool first = true;
-    listFilesRecursive("/", response, first);
+        size_t written = 0;
+        while (written < maxLen) {
+          if (st->pendingOff < st->pendingLen) {
+            size_t n = st->pendingLen - st->pendingOff;
+            if (n > maxLen - written) n = maxLen - written;
+            memcpy(buffer + written, st->pending + st->pendingOff, n);
+            st->pendingOff += n;
+            written += n;
+            continue;
+          }
+          st->pendingLen = st->pendingOff = 0;
 
-    response->print("]}");
+          if (st->phase == 0) {
+            int n = snprintf(st->pending, sizeof(st->pending), "{\"total\":%u,\"used\":%u,\"files\":[",
+                             (unsigned int)cachedFsTotalBytes, (unsigned int)cachedFsUsedBytes);
+            if (n > 0) st->pendingLen = (size_t)n < sizeof(st->pending) ? (size_t)n : sizeof(st->pending) - 1;
+            st->depth = 0;
+            st->dirPaths[0] = "/";
+#if defined(ESP8266)
+            st->dirs[0] = LittleFS.openDir("/");
+#elif defined(ESP32)
+            st->dirs[0] = LittleFS.open("/");
+            if (!st->dirs[0] || !st->dirs[0].isDirectory()) st->depth = -1;
+#endif
+            st->phase = 1;
+          } else if (st->phase == 1) {
+            if (st->depth < 0) {
+              st->phase = 2;
+              continue;
+            }
+#if defined(ESP8266)
+            if (st->dirs[st->depth].next()) {
+              String entryName = st->dirs[st->depth].fileName();
+              String fullPath = (st->dirPaths[st->depth] == "/") ? ("/" + entryName) : (st->dirPaths[st->depth] + "/" + entryName);
+              if (st->dirs[st->depth].isDirectory()) {
+                if (st->depth + 1 < MAX_FS_DIR_DEPTH) {
+                  st->depth++;
+                  st->dirPaths[st->depth] = fullPath;
+                  st->dirs[st->depth] = LittleFS.openDir(fullPath);
+                }
+              } else {
+                const char* rel = fullPath.c_str() + (fullPath.startsWith("/") ? 1 : 0);
+                int n = snprintf(st->pending, sizeof(st->pending), "%s{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                                 st->first ? "" : ",", rel, (unsigned int)st->dirs[st->depth].fileSize(), (unsigned long)st->dirs[st->depth].fileTime());
+                if (n > 0) {
+                  st->pendingLen = (size_t)n < sizeof(st->pending) ? (size_t)n : sizeof(st->pending) - 1;
+                  st->first = false;
+                }
+              }
+            } else {
+              st->dirPaths[st->depth] = "";
+              st->depth--;
+            }
+#elif defined(ESP32)
+            File file = st->dirs[st->depth].openNextFile();
+            if (file) {
+              String fullPath = file.path();
+              if (file.isDirectory()) {
+                if (st->depth + 1 < MAX_FS_DIR_DEPTH) {
+                  st->depth++;
+                  st->dirPaths[st->depth] = fullPath;
+                  st->dirs[st->depth] = file;
+                } else {
+                  file.close();
+                }
+              } else {
+                const char* rel = fullPath.c_str() + (fullPath.startsWith("/") ? 1 : 0);
+                int n = snprintf(st->pending, sizeof(st->pending), "%s{\"name\":\"%s\",\"size\":%u,\"time\":%lu}",
+                                 st->first ? "" : ",", rel, (unsigned int)file.size(), (unsigned long)file.getLastWrite());
+                if (n > 0) {
+                  st->pendingLen = (size_t)n < sizeof(st->pending) ? (size_t)n : sizeof(st->pending) - 1;
+                  st->first = false;
+                }
+                file.close();
+              }
+            } else {
+              st->dirs[st->depth].close();
+              st->dirPaths[st->depth] = "";
+              st->depth--;
+            }
+#endif
+          } else if (st->phase == 2) {
+            st->pending[0] = ']';
+            st->pending[1] = '}';
+            st->pendingLen = 2;
+            st->phase = 3;
+          } else {
+            break;
+          }
+        }
+        return written;
+      });
     request->send(response);
   });
 
