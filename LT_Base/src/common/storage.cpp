@@ -1302,6 +1302,210 @@ void saveActiveTrackBestToFS() {
   saveTracksToFS();
 }
 
+static bool pendingTrackSyncFromSessions = false;
+
+void scheduleTrackSyncFromSessions() {
+  pendingTrackSyncFromSessions = true;
+}
+
+void importMissingTracksFromSessions() {
+  if (!LittleFS.exists("/sessions.json")) return;
+
+  struct DiscoveredTrack {
+    String id;
+    String name;
+    uint32_t bestLap;
+    uint8_t bestCarId;
+    String bestDriver;
+    String bestCar;
+    bool existsInTracks;
+  };
+  const uint8_t MAX_DISCOVER = 16;
+  std::vector<DiscoveredTrack> discovered;
+
+  File fIn = LittleFS.open("/sessions.json", "r");
+  if (!fIn) return;
+
+  int braceDepth = 0;
+  bool inQuotes = false;
+  bool escaped = false;
+  String currentObj = "";
+  currentObj.reserve(640);
+
+  while (fIn.available()) {
+    char c = (char)fIn.read();
+    if (braceDepth == 0) {
+      if (c == '[') braceDepth = 1;
+      continue;
+    }
+    if (escaped) {
+      escaped = false;
+      if (braceDepth >= 2) currentObj += c;
+      continue;
+    }
+    if (c == '\\' && inQuotes) {
+      escaped = true;
+      if (braceDepth >= 2) currentObj += c;
+      continue;
+    }
+    if (c == '\"') inQuotes = !inQuotes;
+
+    if (!inQuotes) {
+      if (c == '{') {
+        if (braceDepth == 1) currentObj = "{";
+        else currentObj += '{';
+        braceDepth++;
+        continue;
+      } else if (c == '}') {
+        braceDepth--;
+        if (braceDepth == 1) {
+          currentObj += '}';
+          JsonDocument doc;
+          if (!deserializeJson(doc, currentObj)) {
+            String tid = doc["trackId"] | "";
+            String tname = doc["trackName"] | "";
+            if (tid.length() > 0) {
+              int foundIdx = -1;
+              for (size_t k = 0; k < discovered.size(); k++) {
+                if (discovered[k].id == tid) { foundIdx = (int)k; break; }
+              }
+              if (foundIdx < 0 && discovered.size() < MAX_DISCOVER) {
+                DiscoveredTrack dt;
+                dt.id = tid;
+                dt.name = tname.length() > 0 ? tname : tid;
+                dt.bestLap = 0;
+                dt.bestCarId = 0;
+                dt.existsInTracks = false;
+                discovered.push_back(dt);
+                foundIdx = (int)discovered.size() - 1;
+              }
+              if (foundIdx >= 0 && doc["results"].is<JsonArray>()) {
+                JsonArray res = doc["results"].as<JsonArray>();
+                for (JsonObject r : res) {
+                  uint32_t bl = r["bestLap"] | 0;
+                  if (bl > 0 && (discovered[foundIdx].bestLap == 0 || bl < discovered[foundIdx].bestLap)) {
+                    discovered[foundIdx].bestLap = bl;
+                    discovered[foundIdx].bestCarId = r["id"] | 0;
+                    discovered[foundIdx].bestDriver = r["driver"] | "";
+                    discovered[foundIdx].bestCar = r["car"] | "";
+                  }
+                }
+              }
+            }
+          }
+          currentObj = "";
+          continue;
+        }
+      } else if (c == ']' && braceDepth == 1) {
+        break;
+      }
+    }
+    if (braceDepth >= 2 && currentObj.length() < 1536) {
+      currentObj += c;
+    }
+  }
+  fIn.close();
+
+  if (discovered.empty()) return;
+
+  streamTracks(nullptr, [&](JsonDocument& t) -> int {
+    String tid = t["id"] | "";
+    for (size_t k = 0; k < discovered.size(); k++) {
+      if (discovered[k].id == tid) discovered[k].existsInTracks = true;
+    }
+    return 0;
+  });
+
+  bool anyMissing = false;
+  for (size_t k = 0; k < discovered.size(); k++) {
+    if (!discovered[k].existsInTracks) { anyMissing = true; break; }
+  }
+  if (!anyMissing) return;
+
+  const char* tmpPath = "/tracks.json.tmp";
+  File out = LittleFS.open(tmpPath, "w");
+  if (!out) return;
+
+  out.print("{\"active\":\"");
+  out.print(activeTrackId);
+  out.print("\",\"tracks\":[");
+  bool firstOut = true;
+
+  if (LittleFS.exists("/tracks.json")) {
+    File in = LittleFS.open("/tracks.json", "r");
+    if (in) {
+      char* buf = (char*)malloc(TRACK_OBJ_MAX);
+      if (buf) {
+        int d = 0; bool inQ = false, esc = false, inArr = false, ov = false; size_t len = 0;
+        while (in.available()) {
+          char c = (char)in.read();
+          if (!inArr) { if (c == '[') inArr = true; continue; }
+          if (d == 0) {
+            if (c == '{') { d = 1; len = 0; ov = false; inQ = false; esc = false; buf[len++] = c; }
+            else if (c == ']') break;
+            continue;
+          }
+          if (len + 1 < TRACK_OBJ_MAX) buf[len++] = c; else ov = true;
+          if (esc) { esc = false; continue; }
+          if (inQ) { if (c == '\\') esc = true; else if (c == '"') inQ = false; continue; }
+          if (c == '"') inQ = true;
+          else if (c == '{') d++;
+          else if (c == '}' && --d == 0) {
+            if (!ov) {
+              buf[len] = '\0';
+              if (!firstOut) out.print(",");
+              out.write((const uint8_t*)buf, len);
+              firstOut = false;
+            }
+          }
+        }
+        free(buf);
+      }
+      in.close();
+    }
+  }
+
+  for (size_t k = 0; k < discovered.size(); k++) {
+    if (discovered[k].existsInTracks) continue;
+    JsonDocument t;
+    t["id"] = discovered[k].id;
+    t["name"] = discovered[k].name;
+    t["recordLap"] = discovered[k].bestLap;
+    t["recordCarId"] = discovered[k].bestCarId;
+    t["recordDriver"] = discovered[k].bestDriver;
+    t["recordCar"] = discovered[k].bestCar;
+    t["recordDate"] = "";
+    t["bestLap"] = 0;
+    t["bestCarId"] = 0;
+    t["bestDriver"] = "";
+    t["bestCar"] = "";
+    t["bestDate"] = "";
+    JsonArray allRecs = t["allTimeRecords"].to<JsonArray>();
+    if (discovered[k].bestLap > 0) {
+      JsonObject rec = allRecs.add<JsonObject>();
+      rec["lap"] = discovered[k].bestLap;
+      rec["carId"] = discovered[k].bestCarId;
+      rec["driver"] = discovered[k].bestDriver;
+      rec["car"] = discovered[k].bestCar;
+      rec["date"] = "";
+    }
+    t["dailyRecords"].to<JsonArray>();
+    if (!firstOut) out.print(",");
+    serializeJson(t, out);
+    firstOut = false;
+  }
+
+  out.print("]}");
+  size_t outSize = out.size();
+  out.close();
+  if (outSize < 20 || !atomicReplaceFile(tmpPath, "/tracks.json")) {
+    LittleFS.remove(tmpPath);
+    return;
+  }
+  loadTracksFromFS();
+  updateFsUsageCache();
+}
+
 bool selectTrackById(const String& trackId) {
   JsonDocument found;
   bool hit = false;
@@ -1667,6 +1871,7 @@ void loadSettingsFromEEPROM() {
   loadNamesFromFS();
   loadWifiConfigFromFS();
   loadTracksFromFS();
+  importMissingTracksFromSessions();
 
   if (EEPROM.read(0) != EEPROM_MAGIC) {
     EEPROM.write(0, EEPROM_MAGIC);
@@ -2092,6 +2297,11 @@ void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
 
   updateResetLogClock();
+
+  if (pendingTrackSyncFromSessions) {
+    pendingTrackSyncFromSessions = false;
+    importMissingTracksFromSessions();
+  }
 
   // Nach einem Absturz mitten im Loeschen: Phase 2 (Session/Index) genau einmal wiederholen
   static bool resumeChecked = false;
@@ -3121,6 +3331,9 @@ void deleteAllHistory() {
   }
 #endif
   for (const String& d : dirsToRemove) {
+#if defined(ESP8266)
+    ESP.wdtFeed();
+#endif
     removeDirectoryRecursive(d);
   }
 

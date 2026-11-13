@@ -787,6 +787,9 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
         loadNamesFromFS();
       } else if (filename.indexOf("tracks.json") >= 0) {
         loadTracksFromFS();
+        scheduleTrackSyncFromSessions();
+      } else if (filename.indexOf("sessions.json") >= 0) {
+        scheduleTrackSyncFromSessions();
       }
       updateFsUsageCache();
     }

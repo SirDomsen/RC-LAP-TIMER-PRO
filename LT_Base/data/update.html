@@ -785,6 +785,80 @@
 
       if (!ok) return;
 
+      // Fehlende Strecken aus bestehendem Gerät, ZIP-tracks.json und ZIP-sessions.json zusammenführen
+      try {
+        let tracksIdx = files.findIndex(f => f.name === 'tracks.json');
+        let sessionsIdx = files.findIndex(f => f.name === 'sessions.json');
+        if (tracksIdx >= 0 || sessionsIdx >= 0) {
+          let decoder = new TextDecoder('utf-8');
+          let encoder = new TextEncoder();
+          let mergedMap = new Map();
+          let activeId = 'standard';
+
+          let addTrack = (tr) => {
+            if (!tr || !tr.id) return;
+            let ex = mergedMap.get(tr.id);
+            if (!ex) {
+              mergedMap.set(tr.id, tr);
+            } else {
+              let exHas = (ex.recordLap > 0) || (Array.isArray(ex.allTimeRecords) && ex.allTimeRecords.length > 0);
+              let trHas = (tr.recordLap > 0) || (Array.isArray(tr.allTimeRecords) && tr.allTimeRecords.length > 0);
+              if (!exHas && trHas) mergedMap.set(tr.id, tr);
+            }
+          };
+
+          try {
+            let curRes = await fetch('/api/tracks');
+            if (curRes.ok) {
+              let curDoc = await curRes.json();
+              if (curDoc && curDoc.active) activeId = curDoc.active;
+              if (curDoc && Array.isArray(curDoc.tracks)) curDoc.tracks.forEach(addTrack);
+            }
+          } catch (_) {}
+
+          if (tracksIdx >= 0) {
+            try {
+              let zipTracks = JSON.parse(decoder.decode(files[tracksIdx].data));
+              if (zipTracks && zipTracks.active) activeId = zipTracks.active;
+              if (zipTracks && Array.isArray(zipTracks.tracks)) zipTracks.tracks.forEach(addTrack);
+            } catch (_) {}
+          }
+
+          if (sessionsIdx >= 0) {
+            try {
+              let zipSess = JSON.parse(decoder.decode(files[sessionsIdx].data));
+              let arr = Array.isArray(zipSess) ? zipSess : (zipSess && zipSess.sessions) || [];
+              arr.forEach(s => {
+                if (s && s.trackId && !mergedMap.has(s.trackId)) {
+                  addTrack({
+                    id: s.trackId,
+                    name: s.trackName || s.trackId,
+                    recordLap: 0, recordCarId: 0, recordDriver: '', recordCar: '', recordDate: '',
+                    bestLap: 0, bestCarId: 0, bestDriver: '', bestCar: '', bestDate: '',
+                    allTimeRecords: [], dailyRecords: []
+                  });
+                }
+              });
+            } catch (_) {}
+          }
+
+          if (mergedMap.size > 0) {
+            let mergedBytes = encoder.encode(JSON.stringify({
+              active: activeId,
+              tracks: Array.from(mergedMap.values())
+            }));
+            if (tracksIdx >= 0) {
+              files[tracksIdx].data = mergedBytes;
+              files[tracksIdx].size = mergedBytes.length;
+            } else {
+              files.push({ name: 'tracks.json', data: mergedBytes, size: mergedBytes.length, date: new Date() });
+            }
+          }
+        }
+      } catch (mergeErr) {
+        console.warn('[Restore] Strecken-Merge übersprungen:', mergeErr);
+      }
+
       let btn = document.getElementById('uploadBtn');
       let pBg = document.getElementById('progressBg');
       let pBar = document.getElementById('progressBar');

@@ -7,7 +7,7 @@ Die Offline-Statistik ist eine lokale, vollbildfähige Auswertung für Lap-Timer
 - Einstieg: `offline_stats/index.html`
 - Implementierung des Offline-Datenadapters, ZIP-Import/-Export und IndexedDB: `offline_stats/offline_stats.js`
 - Gemeinsame Statistikdarstellung: `data/stats.js`
-- Aktuelle Offline-App-Version: **0.9.4**
+- Aktuelle Offline-App-Version: **0.9.5**
 - Speicherung: IndexedDB `rc-lap-timer-offline-stats`
 
 Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-Löschen oder Flash-Reparaturen werden nicht als lokale Änderungen ausgeführt.

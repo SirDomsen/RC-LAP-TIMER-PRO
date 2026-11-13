@@ -10,7 +10,7 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '0.9.4';
+const OFFLINE_STATS_VERSION = '0.9.5';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
@@ -817,7 +817,12 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
 }
 
 async function tryAutoSaveStatusNote() {
-  if (!linkedSaveFileHandle) return '';
+  if (!supportsFileSystemSave()) {
+    return ' Tipp: Über „💾 Speichern“ kannst du statistics.zip als Backup herunterladen (direktes Überschreiben unterstützt dieser Browser nicht).';
+  }
+  if (!linkedSaveFileHandle) {
+    return ' Tipp: Über „💾 Speichern“ kannst du eine lokale statistics.zip verknüpfen.';
+  }
   let result = await saveDatabaseToFile({ autoSaveOnly: true });
   if (result.saved) {
     return ` Direkt in „${result.fileName}“ gespeichert.`;
@@ -847,8 +852,11 @@ async function downloadStatisticsDatabase({ forcePicker = false } = {}) {
         'success'
       );
     } else {
+      let extra = !supportsFileSystemSave()
+        ? ' (Dieser Browser unterstützt kein direktes Überschreiben lokaler Dateien.)'
+        : '';
       setOfflineStatus(
-        `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).`,
+        `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`,
         'success'
       );
     }

@@ -82,6 +82,8 @@ void updateFsUsageCache();
 // Streckenverwaltung (/tracks.json), Streckenrekord (Top 5) & Tagesbestzeit (Top 5)
 void loadTracksFromFS();
 void saveTracksToFS();
+void importMissingTracksFromSessions();
+void scheduleTrackSyncFromSessions();
 String sanitizeTrackSlug(const String& rawName);
 bool selectTrackById(const String& trackId);
 bool addOrSelectTrack(const String& rawName);
