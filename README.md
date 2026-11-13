@@ -122,7 +122,9 @@ Die komplette Steuerung und Live-Zeitnahme läuft direkt über eine im Browser b
 
 ## 📥 Fertige Downloads (GitHub Releases)
 
-Für alle, die nicht selbst kompilieren möchten, stehen unter **Releases** auf GitHub automatisch gebaute Pakete zum direkten Download bereit:
+Für alle, die nicht selbst kompilieren möchten, stehen unter [**GitHub Releases**](https://github.com/SirDomsen/RC-LAP-TIMER-PRO/releases) automatisch gebaute Pakete zum direkten Download bereit:
+
+👉 [**Aktuellstes Release herunterladen**](https://github.com/SirDomsen/RC-LAP-TIMER-PRO/releases/latest) · [**Alle Releases anzeigen**](https://github.com/SirDomsen/RC-LAP-TIMER-PRO/releases)
 
 * **Basisstation ESP8266:** `LT_Base_ESP8266_firmware.bin` + `LT_Base_ESP8266_littlefs.bin`
 * **Basisstation ESP32-S3:** `LT_Base_ESP32-S3_firmware.bin`, `LT_Base_ESP32-S3_bootloader.bin`, `LT_Base_ESP32-S3_partitions.bin` + `LT_Base_ESP32-S3_littlefs.bin`
