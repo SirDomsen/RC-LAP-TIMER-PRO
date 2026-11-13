@@ -4,25 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c10">
-  <title>RC Lap Timer Pro – Offline-Statistik 0.8.2</title>
+  <title>RC Lap Timer Pro – Offline-Statistik 0.9.0</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
   <link rel="stylesheet" href="../data/style.css?v=4.5.11">
-  <link rel="stylesheet" href="offline_stats.css?v=0.8.0">
+  <link rel="stylesheet" href="offline_stats.css?v=0.9.0">
 </head>
 <body class="offline-app">
   <header class="offline-toolbar">
     <div>
       <h1>🏁 RC LAP TIMER</h1>
-      <p>Offline-Statistikauswertung <strong>v0.8.2</strong> · Daten bleiben auf diesem Gerät</p>
+      <p>Offline-Statistikauswertung <strong>v0.9.0</strong> · Daten bleiben auf diesem Gerät</p>
     </div>
     <div class="offline-toolbar-actions">
+      <div class="offline-sync-group">
+        <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer Adresse im WLAN" spellcheck="false" autocomplete="url">
+        <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Vom Lap Timer laden</button>
+      </div>
       <label class="btn btn-purple" for="backupFileInput">📦 ZIP/JSON importieren</label>
       <input id="backupFileInput" type="file" accept=".zip,.json,application/zip,application/json">
       <button class="btn btn-green" id="exportDatabaseButton" type="button" disabled>💾 Stats-ZIP herunterladen</button>
       <button class="btn" id="fullscreenButton" type="button">⛶ Vollbild</button>
     </div>
     <div class="offline-status" id="offlineStatus" role="status" aria-live="polite">
-      Wähle ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup aus.
+      Wähle ein Lap-Timer-ZIP/JSON aus oder lade Daten direkt vom Lap Timer im WLAN.
     </div>
   </header>
 
@@ -30,7 +34,7 @@
     <div id="offlineWelcome" class="offline-welcome">
       <div class="offline-welcome-icon">📊</div>
       <h2>Deine Rennstatistik – ganz ohne ESP-Verbindung</h2>
-      <p>Importiere ein ZIP-Dateisystem-Backup des Lap Timers oder ein Statistik-JSON-Backup. Die Datenbank wächst lokal mit jedem Import.</p>
+      <p>Importiere ein ZIP-Dateisystem-Backup bzw. Statistik-JSON-Backup oder lies den Lap Timer direkt im WLAN aus. Die Datenbank wächst lokal mit jedem Import.</p>
       <label class="btn btn-purple" for="backupFileInput">ZIP/JSON auswählen</label>
     </div>
 
@@ -91,6 +95,6 @@
   </main>
 
   <script src="../data/stats.js?v=4.7.2"></script>
-  <script src="offline_stats.js?v=0.8.2"></script>
+  <script src="offline_stats.js?v=0.9.0"></script>
 </body>
 </html>

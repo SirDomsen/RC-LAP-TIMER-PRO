@@ -33,8 +33,38 @@ body.offline-app {
 
 .offline-toolbar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.offline-sync-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.offline-host-input {
+  width: 180px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: rgba(22, 27, 34, 0.95);
+  color: var(--text-main, #f0f6fc);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.offline-host-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+}
+
+.offline-host-input:disabled {
+  opacity: 0.6;
 }
 
 .offline-toolbar-actions .btn,
@@ -212,6 +242,15 @@ body.offline-app {
   .offline-toolbar-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .offline-sync-group {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .offline-host-input {
+    flex: 1 1 160px;
   }
 
   .offline-stats-heading,

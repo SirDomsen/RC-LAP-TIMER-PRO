@@ -10,12 +10,15 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '0.8.2';
+const OFFLINE_STATS_VERSION = '0.9.0';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
 const MAX_STAT_FILE_SIZE = 64 * 1024 * 1024;
 const MAX_TOTAL_STAT_SIZE = 512 * 1024 * 1024;
+const LAPTIMER_FETCH_TIMEOUT_MS = 8000;
+const LAPTIMER_STEP_DELAY_MS = 120;
+const DEFAULT_LAPTIMER_HOST = 'laptimer.local';
 
 let offlineDb = null;
 let offlineBackup = null;
@@ -200,6 +203,32 @@ function persistImport(entries, dataset) {
     transaction.oncomplete = resolve;
     transaction.onerror = () => reject(transaction.error || new Error('Import konnte nicht lokal gespeichert werden.'));
     transaction.onabort = () => reject(transaction.error || new Error('Import in die lokale Datenbank wurde abgebrochen.'));
+  });
+}
+
+function readOfflineSetting(key) {
+  return new Promise(resolve => {
+    if (!offlineDb) {
+      resolve(null);
+      return;
+    }
+    let transaction = offlineDb.transaction(['settings'], 'readonly');
+    let request = transaction.objectStore('settings').get(key);
+    request.onsuccess = () => resolve(request.result ? request.result.value : null);
+    request.onerror = () => resolve(null);
+  });
+}
+
+function writeOfflineSetting(key, value) {
+  return new Promise(resolve => {
+    if (!offlineDb) {
+      resolve();
+      return;
+    }
+    let transaction = offlineDb.transaction(['settings'], 'readwrite');
+    transaction.objectStore('settings').put({ key, value });
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => resolve();
   });
 }
 
@@ -752,9 +781,195 @@ function updateFullscreenButton() {
   if (button) button.textContent = document.fullscreenElement ? '⛶ Vollbild verlassen' : '⛶ Vollbild';
 }
 
+function sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeLaptimerBaseUrl(rawInput) {
+  let trimmed = String(rawInput || '').trim();
+  if (!trimmed) {
+    throw new Error('Bitte eine IP-Adresse oder einen Hostnamen (z. B. laptimer.local) eingeben.');
+  }
+  let withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  let parsed;
+  try {
+    parsed = new URL(withScheme);
+  } catch (error) {
+    throw new Error(`Ungültige Lap-Timer-Adresse: "${trimmed}"`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Es werden nur HTTP- oder HTTPS-Adressen unterstützt.');
+  }
+  if (window.location.protocol === 'https:' && parsed.protocol === 'http:') {
+    throw new Error('Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Zugriffe auf lokale IPs. Bitte offline_stats/index.html lokal öffnen.');
+  }
+  return `${parsed.protocol}//${parsed.host}`;
+}
+
+async function fetchLaptimerJson(url, attempt = 0) {
+  let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = controller ? setTimeout(() => controller.abort(), LAPTIMER_FETCH_TIMEOUT_MS) : null;
+
+  try {
+    let response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    });
+    if (response.status === 503 && attempt < 1) {
+      await sleepMs(1000);
+      return fetchLaptimerJson(url, attempt + 1);
+    }
+    if (!response.ok) {
+      let error = new Error(`HTTP ${response.status} bei ${url}`);
+      error.httpStatus = response.status;
+      throw error;
+    }
+    return await response.json();
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error(`Zeitüberschreitung beim Verbinden mit ${url}.`);
+    }
+    if (error && error.httpStatus) throw error;
+    throw new Error(`Verbindung zum Lap Timer fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist der Lap Timer im selben WLAN und hat aktuelle Firmware?`);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function getSessionSignature(session) {
+  if (!session || typeof session !== 'object') return '';
+  let resultsSig = (session.results || [])
+    .map(r => `${r.id || ''}:${r.laps || 0}:${r.bestLap || 0}`)
+    .join(',');
+  return `${session.startTs || 0}|${session.endTs || 0}|${resultsSig}`;
+}
+
+async function syncFromLaptimer() {
+  let hostInput = document.getElementById('laptimerHostInput');
+  let syncButton = document.getElementById('syncLaptimerButton');
+  let exportButton = document.getElementById('exportDatabaseButton');
+
+  let baseUrl;
+  try {
+    baseUrl = normalizeLaptimerBaseUrl(hostInput ? hostInput.value : DEFAULT_LAPTIMER_HOST);
+  } catch (error) {
+    setOfflineStatus(error.message, 'error');
+    return;
+  }
+
+  if (syncButton) syncButton.disabled = true;
+  if (hostInput) hostInput.disabled = true;
+
+  try {
+    if (!await offlineInitialization) return;
+
+    setOfflineStatus(`Verbinde mit ${baseUrl} …`);
+    let versionInfo = await fetchLaptimerJson(`${baseUrl}/api/version`);
+    let firmwareLabel = versionInfo && versionInfo.firmware ? ` (${versionInfo.firmware})` : '';
+
+    await sleepMs(LAPTIMER_STEP_DELAY_MS);
+    setOfflineStatus(`Lade Strecken von ${baseUrl}${firmwareLabel} …`);
+    let rawTracks = await fetchLaptimerJson(`${baseUrl}/api/tracks`);
+
+    await sleepMs(LAPTIMER_STEP_DELAY_MS);
+    setOfflineStatus(`Lade Fahrernamen von ${baseUrl}${firmwareLabel} …`);
+    let names = await fetchLaptimerJson(`${baseUrl}/api/names`);
+
+    await sleepMs(LAPTIMER_STEP_DELAY_MS);
+    setOfflineStatus(`Lade Sessions-Index von ${baseUrl}${firmwareLabel} …`);
+    let sessionsDoc = await fetchLaptimerJson(`${baseUrl}/api/sessions`);
+    let sessions = Array.isArray(sessionsDoc) ? sessionsDoc : (sessionsDoc && sessionsDoc.sessions) || [];
+    if (!Array.isArray(sessions)) {
+      throw new Error('Der Lap Timer hat keine gültige Sessions-Liste geliefert.');
+    }
+
+    let snapshot = await readDatabaseSnapshot();
+    let fileMap = getStoredFileMap(snapshot);
+    let current = getDatasetFromSnapshot(snapshot, fileMap);
+    let existingByKey = new Map();
+    (current.sessions || []).forEach(s => {
+      let key = getSessionKey(s);
+      if (key) existingByKey.set(key, s);
+    });
+
+    let sessionsToFetch = sessions.filter(session => {
+      let relPath = normalizeStoredPath(session.file);
+      if (!relPath || !isStatisticPath(relPath)) return false;
+      if (!fileMap.has(relPath)) return true;
+      let existing = existingByKey.get(getSessionKey(session));
+      return getSessionSignature(existing) !== getSessionSignature(session);
+    });
+
+    let sessionFiles = {};
+    let entries = [];
+    let skippedMissing = 0;
+
+    for (let i = 0; i < sessionsToFetch.length; i++) {
+      let session = sessionsToFetch[i];
+      let relPath = normalizeStoredPath(session.file);
+      setOfflineStatus(`Lade Session-Datei ${i + 1}/${sessionsToFetch.length}: ${relPath} …`);
+      await sleepMs(LAPTIMER_STEP_DELAY_MS);
+      try {
+        let fileData = await fetchLaptimerJson(`${baseUrl}/api/sessionfile?file=${encodeURIComponent('/' + relPath)}`);
+        sessionFiles['/' + relPath] = fileData;
+        entries.push({
+          path: relPath,
+          content: fileData,
+          size: JSON.stringify(fileData).length,
+          modifiedAt: Date.now()
+        });
+      } catch (error) {
+        if (error && error.httpStatus === 404) {
+          skippedMissing++;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    let trackDocument = getOfflineTrackDocument({ tracks: rawTracks });
+    let payload = {
+      tracks: trackDocument,
+      sessions,
+      names: (names && typeof names === 'object' && !Array.isArray(names)) ? names : {},
+      sessionFiles
+    };
+
+    let imported = await importIntoLocalDatabase(payload, entries);
+    await writeOfflineSetting('laptimerHost', baseUrl.replace(/^https?:\/\//i, ''));
+    await refreshOfflineViews(imported.dataset, imported.fileMap);
+    if (exportButton) exportButton.disabled = false;
+
+    let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
+    document.getElementById('offlineBackupSummary').textContent = summary;
+
+    let status = `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    if (skippedMissing > 0) {
+      status += ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`;
+    } else if (imported.missingSessionFiles > 0) {
+      status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
+    }
+    setOfflineStatus(status, (skippedMissing > 0 || imported.missingSessionFiles > 0) ? 'error' : 'success');
+  } catch (error) {
+    setOfflineStatus(error.message || 'Daten konnten nicht vom Lap Timer geladen werden.', 'error');
+  } finally {
+    if (syncButton) syncButton.disabled = false;
+    if (hostInput) hostInput.disabled = false;
+  }
+}
+
 document.getElementById('backupFileInput').addEventListener('change', async event => {
   await loadOfflineFile(event.target.files[0]);
   event.target.value = '';
+});
+document.getElementById('syncLaptimerButton').addEventListener('click', syncFromLaptimer);
+document.getElementById('laptimerHostInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    syncFromLaptimer();
+  }
 });
 document.getElementById('exportDatabaseButton').addEventListener('click', downloadStatisticsDatabase);
 document.getElementById('fullscreenButton').addEventListener('click', toggleOfflineFullscreen);
@@ -763,6 +978,11 @@ document.addEventListener('fullscreenchange', updateFullscreenButton);
 offlineInitialization = (async function initializeOfflineStatistics() {
   try {
     offlineDb = await openOfflineDatabase();
+    let savedHost = await readOfflineSetting('laptimerHost');
+    let hostInput = document.getElementById('laptimerHostInput');
+    if (hostInput && savedHost) {
+      hostInput.value = savedHost;
+    }
     await restoreLocalDatabase();
     return true;
   } catch (error) {

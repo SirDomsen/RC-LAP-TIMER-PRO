@@ -7,7 +7,7 @@ Die Offline-Statistik ist eine lokale, vollbildfähige Auswertung für Lap-Timer
 - Einstieg: `offline_stats/index.html`
 - Implementierung des Offline-Datenadapters, ZIP-Import/-Export und IndexedDB: `offline_stats/offline_stats.js`
 - Gemeinsame Statistikdarstellung: `data/stats.js`
-- Aktuelle Offline-App-Version: **0.8.2**
+- Aktuelle Offline-App-Version: **0.9.0**
 - Speicherung: IndexedDB `rc-lap-timer-offline-stats`
 
 Die Statistikansicht ist offline schreibgeschützt. Geräteaktionen wie Session-Löschen oder Flash-Reparaturen werden nicht als lokale Änderungen ausgeführt.
@@ -18,6 +18,7 @@ Unterstützte Eingaben:
 
 - LittleFS-ZIP-Backups des Lap Timers
 - Statistik-JSON-Backups der Versionen 3, 4 und 5
+- Direkter WLAN-Abruf vom Lap Timer (`📡 Vom Lap Timer laden` über IP oder `laptimer.local`): Lädt `tracks`, `names`, `sessions` sowie nur neue oder geänderte Session-Dateien sequenziell nach und führt sie lokal zusammen (erfordert Lap-Timer-Firmware mit CORS-Header ab `v4.7.15`).
 
 Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. Neue Sessiondateien speichern Fahrer und Fahrzeug als Snapshot (`d`/`v`) beim ersten Auftreten einer ID. Kompakte Header- und Sektor-Keys reduzieren die Dateigröße; das aktuelle Backupformat ist Version 5. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
 

@@ -24,6 +24,12 @@ extern "C" {
 #include <esp_now.h>
 #endif
 
+static void addCorsHeader(AsyncWebServerResponse *response) {
+  if (response) {
+    response->addHeader("Access-Control-Allow-Origin", "*");
+  }
+}
+
 void handleGetLaps(AsyncWebServerRequest *request) {
   if (isHeapCriticalForLiveData()) {
     AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
@@ -366,6 +372,7 @@ void handleGetNames(AsyncWebServerRequest *request) {
     response->printf("\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}", i, driverNames[i].c_str(), carNames[i].c_str());
   }
   response->print("}");
+  addCorsHeader(response);
   request->send(response);
 }
 
@@ -374,7 +381,9 @@ void handleGetVersion(AsyncWebServerRequest *request) {
   String json;
   json.reserve(64);
   json = "{\"firmware\":\"" FIRMWARE_VERSION "\"}";
-  request->send(200, "application/json", json);
+  AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
+  addCorsHeader(response);
+  request->send(response);
 }
 
 void handlePostSetFilter(AsyncWebServerRequest *request) {
@@ -453,12 +462,14 @@ void handleGetSessions(AsyncWebServerRequest *request) {
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
+    addCorsHeader(response);
     request->send(response);
   } else {
     AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"sessions\":[]}");
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("Pragma", "no-cache");
     response->addHeader("Expires", "0");
+    addCorsHeader(response);
     request->send(response);
   }
 }
@@ -475,12 +486,14 @@ void handleGetSessionFile(AsyncWebServerRequest *request) {
       response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       response->addHeader("Pragma", "no-cache");
       response->addHeader("Expires", "0");
+      addCorsHeader(response);
       request->send(response);
       return;
     }
   }
   AsyncWebServerResponse *response = request->beginResponse(404, "application/json", "{\"laps\":[]}");
   response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  addCorsHeader(response);
   request->send(response);
 }
 
@@ -564,13 +577,19 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
 void handleGetTracks(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   if (LittleFS.exists("/tracks.json")) {
-    request->send(LittleFS, "/tracks.json", "application/json");
+    AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
+    addCorsHeader(response);
+    request->send(response);
   } else {
     saveTracksToFS();
     if (LittleFS.exists("/tracks.json")) {
-      request->send(LittleFS, "/tracks.json", "application/json");
+      AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
+      addCorsHeader(response);
+      request->send(response);
     } else {
-      request->send(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Test-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
+      AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Test-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
+      addCorsHeader(response);
+      request->send(response);
     }
   }
 }
