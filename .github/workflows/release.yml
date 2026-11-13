@@ -1,0 +1,84 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('LT_Base/platformio.ini', 'LT_SectorStation/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      - name: Build LT_Base (ESP8266 & ESP32-S3 + LittleFS)
+        run: |
+          pio run -d LT_Base -e basisstation
+          pio run -d LT_Base -e basisstation -t buildfs
+          pio run -d LT_Base -e basisstation_s3
+          pio run -d LT_Base -e basisstation_s3 -t buildfs
+
+      - name: Build LT_SectorStation (SZ1, SZ2, SZ3)
+        run: |
+          pio run -d LT_SectorStation -e sz1
+          pio run -d LT_SectorStation -e sz2
+          pio run -d LT_SectorStation -e sz3
+
+      - name: Build Offline-Stats Standalone (1-File)
+        run: pwsh LT_Base/offline_stats/build_standalone.ps1
+
+      - name: Collect Release Assets
+        run: |
+          mkdir -p dist
+
+          cp LT_Base/.pio/build/basisstation/firmware.bin dist/LT_Base_ESP8266_firmware.bin
+          cp LT_Base/.pio/build/basisstation/littlefs.bin dist/LT_Base_ESP8266_littlefs.bin
+
+          cp LT_Base/.pio/build/basisstation_s3/firmware.bin dist/LT_Base_ESP32-S3_firmware.bin
+          cp LT_Base/.pio/build/basisstation_s3/bootloader.bin dist/LT_Base_ESP32-S3_bootloader.bin
+          cp LT_Base/.pio/build/basisstation_s3/partitions.bin dist/LT_Base_ESP32-S3_partitions.bin
+          cp LT_Base/.pio/build/basisstation_s3/littlefs.bin dist/LT_Base_ESP32-S3_littlefs.bin
+
+          cp LT_SectorStation/.pio/build/sz1/firmware.bin dist/LT_SectorStation_SZ1_firmware.bin
+          cp LT_SectorStation/.pio/build/sz2/firmware.bin dist/LT_SectorStation_SZ2_firmware.bin
+          cp LT_SectorStation/.pio/build/sz3/firmware.bin dist/LT_SectorStation_SZ3_firmware.bin
+
+          (cd LT_Base/data && zip -r ../../dist/LT_Base_Frontend.zip .)
+          cp LT_Base/offline_stats/offline_stats_standalone.html dist/offline_stats_standalone.html
+
+          ls -lh dist
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-lap-timer-pro-release-assets
+          path: dist/*
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

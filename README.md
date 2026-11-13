@@ -62,8 +62,73 @@ Die komplette Steuerung und Live-Zeitnahme läuft direkt über eine im Browser b
 ### Transponder (`attiny13_tx`)
 
 * **MCU:** ATtiny13A (9,6 MHz intern)
-* **`PB3` (Pin 2):** 38-kHz-IR-LED (empfohlen über BC337-Transistor)
+* **`PB3` (Pin 2):** 38-kHz-IR-LED (über BC337-Transistor)
 * **Protokoll:** 12-Bit-Frame (~16 ms) aus 6-Bit-Car-ID (`1`–`15`, ID `0` = Startschranke) + 6-Bit-invertierter Car-ID sowie 15–30 ms LFSR-Pseudozufallspause gegen Überlagerungen im Pulk.
+
+### Schaltplan & Verdrahtung (Übersicht)
+
+#### 1. Basisstation (ESP8266 / ESP32-S3)
+
+```text
+  ESP8266 (NodeMCU) / ESP32-S3
+  ============================
+  3.3V -----------------------+
+                              |
+                         [TSOP4838] (IR-Empfänger, Stütz-C an VCC/GND empfohlen)
+  D2 / GPIO4  <-- OUT --------+
+  GND ------------------------+
+
+  D5 / GPIO5  --> [220–330 Ω] --> (LED Grün: Ready)  --> GND
+  D6 / GPIO6  --> [220–330 Ω] --> (LED Gelb: Signal) --> GND
+
+  Arcade-Speaker (optional, 32 Ω):
+  5V / VIN --> (+) Speaker (-) --> Collector [BC337] Emitter --> GND
+                                               ^
+                                             Basis
+                                               |
+  D1 / GPIO7 ----------------------------> [ 1 kΩ ]
+```
+*(Im Standby wird der Speaker-Pin fest auf `LOW` gehalten, sodass der BC337 sperrt und kein Ruhestrom fließt.)*
+
+#### 2. Sektorstation (`SZ1`–`SZ3`, ESP-01S)
+
+```text
+  ESP-01S (3.3V)
+  ==============
+  3.3V -----------------------+
+  GPIO3 (RX)  <-- OUT -- [TSOP4838]
+  GND ------------------------+
+
+  GPIO1 (TX)  --> Hart auf LOW geschaltet (Massebezug, kein Serial)
+  GPIO0       --> Batterie-Check (INPUT_PULLUP; HIGH = Akku leer)
+  A0          --> Akkumessung über Spannungsteiler (8,2 kΩ / 1,8 kΩ)
+```
+
+#### 3. IR-Transponder (ATtiny13A)
+
+```text
+  ATtiny13A (3.3V–5V, KerKo 100 nF an VCC/GND)
+  =============================================
+  VCC --> (+) IR-LED (940 nm) (-) --> Collector [BC337] Emitter --> GND
+                                                  ^
+                                                Basis
+                                                  |
+  PB3 (Pin 2) ------------------------------> [Basis-R]
+```
+
+> Eine ausführlichere Schaltungsdokumentation liegt zusätzlich in [`SChaltplanASCII.docx`](SChaltplanASCII.docx).
+
+---
+
+## 📥 Fertige Downloads (GitHub Releases)
+
+Für alle, die nicht selbst kompilieren möchten, stehen unter **Releases** auf GitHub automatisch gebaute Pakete zum direkten Download bereit:
+
+* **Basisstation ESP8266:** `LT_Base_ESP8266_firmware.bin` + `LT_Base_ESP8266_littlefs.bin`
+* **Basisstation ESP32-S3:** `LT_Base_ESP32-S3_firmware.bin`, `LT_Base_ESP32-S3_bootloader.bin`, `LT_Base_ESP32-S3_partitions.bin` + `LT_Base_ESP32-S3_littlefs.bin`
+* **Sektorstationen (`SZ1`–`SZ3`):** `LT_SectorStation_SZ1_firmware.bin`, `SZ2`, `SZ3`
+* **Web-Frontend (OTA-Upload über `update.html`):** `LT_Base_Frontend.zip`
+* **Offline-Statistik (1-Datei-HTML):** `offline_stats_standalone.html` (direkt im Browser öffnen, kein Server nötig)
 
 ---
 
