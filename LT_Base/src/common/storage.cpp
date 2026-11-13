@@ -9,6 +9,98 @@
 #include <time.h>
 #include <memory>
 
+class LargeJsonAllocator : public ArduinoJson::Allocator {
+ public:
+  static LargeJsonAllocator* instance() {
+    static LargeJsonAllocator inst;
+    return &inst;
+  }
+  void* allocate(size_t size) override {
+    return PlatformRuntime::allocLargeBuffer(size);
+  }
+  void deallocate(void* ptr) override {
+    PlatformRuntime::freeLargeBuffer(ptr);
+  }
+  void* reallocate(void* ptr, size_t new_size) override {
+    return PlatformRuntime::reallocLargeBuffer(ptr, new_size);
+  }
+};
+
+namespace {
+
+constexpr size_t PSRAM_FILE_CACHE_MAX_BYTES = 1024UL * 1024UL;
+
+struct JsonCacheSlot {
+  const char* path;
+  std::shared_ptr<CachedJsonSnapshot> snapshot;
+};
+
+JsonCacheSlot jsonCacheSlots[] = {
+  { "/tracks.json", nullptr },
+  { "/sessions.json", nullptr }
+};
+
+JsonCacheSlot* findJsonCacheSlot(const char* path) {
+  if (!path) return nullptr;
+  for (size_t i = 0; i < (sizeof(jsonCacheSlots) / sizeof(jsonCacheSlots[0])); i++) {
+    if (strcmp(jsonCacheSlots[i].path, path) == 0) {
+      return &jsonCacheSlots[i];
+    }
+  }
+  return nullptr;
+}
+
+} // namespace
+
+void invalidateCachedJsonFile(const char* path) {
+  if (!path) return;
+  PlatformRuntime::StorageLock lock;
+  JsonCacheSlot* slot = findJsonCacheSlot(path);
+  if (slot) {
+    slot->snapshot.reset();
+  }
+}
+
+std::shared_ptr<CachedJsonSnapshot> getCachedJsonFileSnapshot(const char* path) {
+  if (!path || !PlatformRuntime::supportsPsramFileCache()) return nullptr;
+  PlatformRuntime::StorageLock lock;
+  JsonCacheSlot* slot = findJsonCacheSlot(path);
+  if (!slot) return nullptr;
+  if (slot->snapshot) return slot->snapshot;
+
+  if (!LittleFS.exists(path)) return nullptr;
+  File f = LittleFS.open(path, "r");
+  if (!f) return nullptr;
+
+  size_t fileSize = f.size();
+  if (fileSize == 0 || fileSize > PSRAM_FILE_CACHE_MAX_BYTES) {
+    f.close();
+    return nullptr;
+  }
+
+  std::shared_ptr<CachedJsonSnapshot> snap = std::make_shared<CachedJsonSnapshot>();
+  snap->data = (uint8_t*)PlatformRuntime::allocLargeBuffer(fileSize);
+  if (!snap->data) {
+    f.close();
+    return nullptr;
+  }
+
+  size_t totalRead = 0;
+  while (totalRead < fileSize) {
+    int r = f.read(snap->data + totalRead, fileSize - totalRead);
+    if (r <= 0) break;
+    totalRead += (size_t)r;
+  }
+  f.close();
+
+  if (totalRead != fileSize) {
+    return nullptr;
+  }
+  snap->len = fileSize;
+  slot->snapshot = snap;
+  return snap;
+}
+
 String driverNames[MAX_CARS + 1];
 String carNames[MAX_CARS + 1];
 
@@ -534,11 +626,13 @@ static int8_t findMatchingRecordIndex(const RecordEntry* list, uint8_t count, ui
 #define TRACK_OBJ_MAX 3072
 
 static bool atomicReplaceFile(const char* tmpPath, const char* targetPath) {
+  PlatformRuntime::StorageLock lock;
   PlatformRuntime::feedWatchdog();
   if (!LittleFS.rename(tmpPath, targetPath)) {
     LittleFS.remove(tmpPath);
     return false;
   }
+  invalidateCachedJsonFile(targetPath);
   return true;
 }
 
@@ -547,10 +641,11 @@ static bool atomicReplaceFile(const char* tmpPath, const char* targetPath) {
 // (Schreibmodus: Datei bleibt unveraendert; Lesemodus: Suche beendet, kein Fehler).
 template <typename Fn>
 static bool streamTracks(const String* activeId, Fn visit) {
+  PlatformRuntime::StorageLock lock;
   if (!LittleFS.exists("/tracks.json")) return false;
   File in = LittleFS.open("/tracks.json", "r");
   if (!in) return false;
-  char* buf = (char*)malloc(TRACK_OBJ_MAX);
+  char* buf = (char*)PlatformRuntime::allocLargeBuffer(TRACK_OBJ_MAX);
   if (!buf) { in.close(); return false; }
 
   const char* tmpPath = "/tracks.json.tmp";
@@ -558,7 +653,7 @@ static bool streamTracks(const String* activeId, Fn visit) {
   bool writing = (activeId != nullptr);
   if (writing) {
     out = LittleFS.open(tmpPath, "w");
-    if (!out) { free(buf); in.close(); return false; }
+    if (!out) { PlatformRuntime::freeLargeBuffer(buf); in.close(); return false; }
     out.print("{\"active\":\"");
     out.print(*activeId);
     out.print("\",\"tracks\":[");
@@ -588,7 +683,7 @@ static bool streamTracks(const String* activeId, Fn visit) {
     else if (c == '}' && --depth == 0) {
       if (overflow) { if (writing) ok = false; continue; }
       buf[len] = '\0';
-      JsonDocument d;
+      JsonDocument d(LargeJsonAllocator::instance());
       if (deserializeJson(d, buf)) { if (writing) ok = false; continue; }
       int r = visit(d);
       if (r == 2) { stopped = true; break; }
@@ -599,7 +694,7 @@ static bool streamTracks(const String* activeId, Fn visit) {
       }
     }
   }
-  free(buf);
+  PlatformRuntime::freeLargeBuffer(buf);
   in.close();
   if (!writing) return ok;
 
@@ -610,6 +705,7 @@ static bool streamTracks(const String* activeId, Fn visit) {
 }
 
 bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
+  PlatformRuntime::StorageLock lock;
   String targetId = trackId.length() > 0 ? trackId : activeTrackId;
   uint32_t deletedLap = 0;
   uint8_t deletedCarId = 0;
@@ -797,6 +893,7 @@ static void copySessionName(char* output, size_t capacity, const String& value) 
 }
 
 void updateFsUsageCache() {
+  PlatformRuntime::StorageLock lock;
 #if defined(ESP8266)
   FSInfo fs_info;
   if (LittleFS.info(fs_info) && fs_info.totalBytes > 0) {
@@ -822,6 +919,7 @@ void updateFsUsageCache() {
 }
 
 void initFS() {
+  PlatformRuntime::StorageLock lock;
 #if defined(ESP8266)
   if (LittleFS.begin()) {
     updateFsUsageCache();
@@ -873,6 +971,7 @@ static void updateResetLogClock() {
   PlatformRuntime::saveRtcClock(nowSec, clientTzOffsetSec);
   if (!syncLogged) {
     syncLogged = true;
+    PlatformRuntime::StorageLock lock;
     File f = LittleFS.open("/crash.log", "a");
     if (f) {
       f.print("[ZEITSYNC] ");
@@ -886,6 +985,7 @@ static void updateResetLogClock() {
 }
 
 void recordBootResetReason() {
+  PlatformRuntime::StorageLock lock;
   PlatformRuntime::ResetDiagnosis diag = PlatformRuntime::readBootResetDiagnosis();
   lastResetReason = diag.reason;
   lastResetInfo = diag.info;
@@ -927,6 +1027,7 @@ void recordBootResetReason() {
 }
 
 String getCrashLog() {
+  PlatformRuntime::StorageLock lock;
   if (!LittleFS.exists("/crash.log")) {
     return "Keine Reset-Eintraege vorhanden.";
   }
@@ -938,6 +1039,7 @@ String getCrashLog() {
 }
 
 bool clearCrashLog() {
+  PlatformRuntime::StorageLock lock;
   return !LittleFS.exists("/crash.log") || LittleFS.remove("/crash.log");
 }
 
@@ -1003,6 +1105,7 @@ static String getActiveTrackIdFromFS() {
 }
 
 void loadTracksFromFS() {
+  PlatformRuntime::StorageLock lock;
   bool loaded = false;
   bool needsSaveBack = false;
   String act = getActiveTrackIdFromFS();
@@ -1051,7 +1154,7 @@ static void writeRecordArrayStream(File& out, const char* key, const RecordEntry
   bool first = true;
   for (uint8_t i = 0; i < count && i < MAX_TRACK_RECORDS; i++) {
     if (list[i].lapMs == 0) continue;
-    JsonDocument item;
+    JsonDocument item(LargeJsonAllocator::instance());
     item["lap"] = list[i].lapMs;
     item["carId"] = list[i].carId;
     item["driver"] = list[i].driver;
@@ -1083,7 +1186,7 @@ static void writeRecordArrayStream(File& out, const char* key, const RecordEntry
 static void writeActiveTrackStream(File& out) {
   String head;
   {
-    JsonDocument t;
+    JsonDocument t(LargeJsonAllocator::instance());
     t["id"] = activeTrackId;
     t["name"] = activeTrackName;
     t["recordLap"] = allTimeBestLapMs;
@@ -1108,19 +1211,20 @@ static void writeActiveTrackStream(File& out) {
 // Streaming: tracks.json wird Strecke fuer Strecke nach /tracks.json.tmp kopiert (hoechstens ein Streckenobjekt im RAM),
 // die aktive Strecke kommt direkt aus den RAM-Listen. Erst danach ersetzt rename das Original.
 void saveTracksToFS() {
+  PlatformRuntime::StorageLock lock;
   markLapDeleteSubStep(10);
   syncTopRecordVars();
   markLapDeleteSubStep(101);
   String today = getCurrentLocalDateStr();
 
   markLapDeleteSubStep(102);
-  char* buf = (char*)malloc(TRACK_OBJ_MAX);
+  char* buf = (char*)PlatformRuntime::allocLargeBuffer(TRACK_OBJ_MAX);
   if (!buf) return;
 
   const char* tmpPath = "/tracks.json.tmp";
   markLapDeleteSubStep(104);
   File out = LittleFS.open(tmpPath, "w");
-  if (!out) { free(buf); return; }
+  if (!out) { PlatformRuntime::freeLargeBuffer(buf); return; }
 
   markLapDeleteSubStep(105);
   out.print("{\"active\":\"");
@@ -1182,7 +1286,7 @@ void saveTracksToFS() {
       else if (c == '}' && --depth == 0) {
         if (!overflow) {
           buf[len] = '\0';
-          JsonDocument d;
+          JsonDocument d(LargeJsonAllocator::instance());
           bool parsed = !deserializeJson(d, buf);
           if (parsed && d["id"].as<String>() == activeTrackId) {
             writeActiveTrackStream(out);
@@ -1207,7 +1311,7 @@ void saveTracksToFS() {
     }
     in.close();
   }
-  free(buf);
+  PlatformRuntime::freeLargeBuffer(buf);
   markLapDeleteSubStep(12);
 
   if (!activeWritten) {
@@ -1260,6 +1364,7 @@ void deferPendingTrackSync() {
 // 2. Falls eine fehlt: nur fuer diese EINE Strecke Top-5 All-Time & Tagesbestzeit sammeln und an /tracks.json anhaengen.
 // Rueckgabe: true wenn noch weitere fehlende Strecken uebrig sind.
 static bool stepImportMissingTrackFromSessions() {
+  PlatformRuntime::StorageLock lock;
   if (!LittleFS.exists("/sessions.json")) return false;
 
   String missingId = "";
@@ -1296,7 +1401,7 @@ static bool stepImportMissingTrackFromSessions() {
           braceDepth--;
           if (braceDepth == 1) {
             if (currentObj.length() < 1536) currentObj += '}';
-            JsonDocument doc;
+            JsonDocument doc(LargeJsonAllocator::instance());
             if (!deserializeJson(doc, currentObj)) {
               String tid = doc["trackId"] | "";
               if (tid.length() > 0) {
@@ -1378,7 +1483,7 @@ static bool stepImportMissingTrackFromSessions() {
           braceDepth--;
           if (braceDepth == 1) {
             if (currentObj.length() < 1536) currentObj += '}';
-            JsonDocument doc;
+            JsonDocument doc(LargeJsonAllocator::instance());
             if (!deserializeJson(doc, currentObj)) {
               String tid = doc["trackId"] | "";
               if (tid == missingId && doc["results"].is<JsonArray>()) {
@@ -1423,9 +1528,9 @@ static bool stepImportMissingTrackFromSessions() {
 
   if (LittleFS.exists("/tracks.json")) {
     File in = LittleFS.open("/tracks.json", "r");
-    char* buf = in ? (char*)malloc(TRACK_OBJ_MAX) : nullptr;
+    char* buf = in ? (char*)PlatformRuntime::allocLargeBuffer(TRACK_OBJ_MAX) : nullptr;
     if (!in || !buf) {
-      if (buf) free(buf);
+      if (buf) PlatformRuntime::freeLargeBuffer(buf);
       if (in) in.close();
       out.close();
       LittleFS.remove(tmpPath);
@@ -1456,12 +1561,12 @@ static bool stepImportMissingTrackFromSessions() {
         }
       }
     }
-    free(buf);
+    PlatformRuntime::freeLargeBuffer(buf);
     in.close();
   }
 
   if (!firstOut) out.print(",");
-  JsonDocument t;
+  JsonDocument t(LargeJsonAllocator::instance());
   t["id"] = missingId;
   t["name"] = missingName;
   if (allTimeCount > 0) {
@@ -1514,7 +1619,8 @@ void importMissingTracksFromSessions() {
 }
 
 bool selectTrackById(const String& trackId) {
-  JsonDocument found;
+  PlatformRuntime::StorageLock lock;
+  JsonDocument found(LargeJsonAllocator::instance());
   bool hit = false;
   streamTracks(nullptr, [&](JsonDocument& t) -> int {
     if (t["id"].as<String>() == trackId) { found = t; hit = true; return 2; }
@@ -1534,6 +1640,7 @@ bool selectTrackById(const String& trackId) {
 }
 
 bool addOrSelectTrack(const String& rawName) {
+  PlatformRuntime::StorageLock lock;
   String cleanName = rawName;
   cleanName.trim();
   if (cleanName.length() == 0) return false;
@@ -1541,7 +1648,7 @@ bool addOrSelectTrack(const String& rawName) {
 
   String slug = sanitizeTrackSlug(cleanName);
 
-  JsonDocument found;
+  JsonDocument found(LargeJsonAllocator::instance());
   bool exists = false;
   int trackCount = 0;
   streamTracks(nullptr, [&](JsonDocument& t) -> int {
@@ -1604,6 +1711,7 @@ static void removeDirectoryRecursive(const String& dirPath) {
 
 // Hilfsfunktion: Filtert /sessions.json im Streaming-Verfahren ohne RAM-Spitzen
 static void filterSessionsIndexFile(const String& removeSessionId, const String& removeTrackId, const String& replaceSessionId, const String& replacementJson) {
+  PlatformRuntime::StorageLock lock;
   if (!LittleFS.exists("/sessions.json")) return;
 
   File fIn = LittleFS.open("/sessions.json", "r");
@@ -1724,6 +1832,7 @@ static void filterSessionsIndexFile(const String& removeSessionId, const String&
 }
 
 bool deleteTrackById(const String& trackId) {
+  PlatformRuntime::StorageLock lock;
   if (!LittleFS.exists("/tracks.json")) return false;
 
   startNewSessionFrame((uint8_t)currentMode);
@@ -1745,7 +1854,7 @@ bool deleteTrackById(const String& trackId) {
   }
   filterSessionsIndexFile("", trackId, "", "");
 
-  JsonDocument next;
+  JsonDocument next(LargeJsonAllocator::instance());
   bool haveNext = false;
   if (firstRemainingId.length() > 0) {
     streamTracks(nullptr, [&](JsonDocument& t) -> int {
@@ -1775,10 +1884,11 @@ bool deleteTrackById(const String& trackId) {
 }
 
 void loadWifiConfigFromFS() {
+  PlatformRuntime::StorageLock lock;
   if (LittleFS.exists("/wifi.json")) {
     File f = LittleFS.open("/wifi.json", "r");
     if (f) {
-      JsonDocument doc;
+      JsonDocument doc(LargeJsonAllocator::instance());
       DeserializationError err = deserializeJson(doc, f);
       f.close();
       if (!err) {
@@ -1801,6 +1911,7 @@ void loadWifiConfigFromFS() {
 }
 
 void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, const String& hsSsid, const String& hsPass, const String& aSsid, const String& aPass) {
+  PlatformRuntime::StorageLock lock;
   activeWifiMode = mode;
   homeSSID = hSsid;
   homePass = hPass;
@@ -1809,7 +1920,7 @@ void saveWifiConfigToFS(uint8_t mode, const String& hSsid, const String& hPass, 
   if (aSsid.length() > 0) apSSID = aSsid;
   if (aPass.length() > 0) apPass = aPass;
 
-  JsonDocument doc;
+  JsonDocument doc(LargeJsonAllocator::instance());
   doc["mode"] = activeWifiMode;
   doc["homeSSID"] = homeSSID;
   doc["homePass"] = homePass;
@@ -1844,6 +1955,7 @@ void saveHotspotConfigToFS(const String& ssid, const String& pass) {
 }
 
 void loadNamesFromFS() {
+  PlatformRuntime::StorageLock lock;
   for (int i = 1; i <= MAX_CARS; i++) {
     driverNames[i] = defaultDrivers[i];
     carNames[i] = defaultCars[i];
@@ -1852,7 +1964,7 @@ void loadNamesFromFS() {
   if (LittleFS.exists("/names.json")) {
     File f = LittleFS.open("/names.json", "r");
     if (f) {
-      JsonDocument doc;
+      JsonDocument doc(LargeJsonAllocator::instance());
       DeserializationError error = deserializeJson(doc, f);
       f.close();
 
@@ -1921,7 +2033,8 @@ void loadSettingsFromEEPROM() {
 }
 
 bool saveNamesToEEPROM(const String& namesJson) {
-  JsonDocument names;
+  PlatformRuntime::StorageLock lock;
+  JsonDocument names(LargeJsonAllocator::instance());
   if (deserializeJson(names, namesJson) || !names.is<JsonObject>()) return false;
 
   JsonObject root = names.as<JsonObject>();
@@ -2038,6 +2151,7 @@ static String buildSessionEntryJson(const String& sId, const String& sFile, cons
 }
 
 void flushCurrentSessionToIndex() {
+  PlatformRuntime::StorageLock lock;
   if (!currentSessionActive || currentSessionId.length() == 0) {
     sessionIndexDirty = false;
     return;
@@ -2070,6 +2184,7 @@ void flushCurrentSessionToIndex() {
       currentSessionIndexLen = entryJson.length();
       f.close();
     }
+    invalidateCachedJsonFile(indexPath);
     sessionIndexDirty = false;
     lastIndexFlushMs = millis();
     updateFsUsageCache();
@@ -2083,6 +2198,7 @@ void flushCurrentSessionToIndex() {
   if (fSize < 14) {
     f.close();
     LittleFS.remove(indexPath);
+    invalidateCachedJsonFile(indexPath);
     flushCurrentSessionToIndex();
     return;
   }
@@ -2135,6 +2251,7 @@ void flushCurrentSessionToIndex() {
     f.close();
   }
 
+  invalidateCachedJsonFile(indexPath);
   sessionIndexDirty = false;
   lastIndexFlushMs = millis();
   updateFsUsageCache();
@@ -2198,6 +2315,7 @@ bool queueFileDeletion(const String& path) {
 }
 
 static void processFileDeletion(const String& filename) {
+  PlatformRuntime::StorageLock lock;
   int lastSlash = filename.lastIndexOf('/');
   if (lastSlash > 0 && filename.endsWith(".json")) {
     String baseName = filename.substring(lastSlash + 1, filename.length() - 5);
@@ -2205,6 +2323,9 @@ static void processFileDeletion(const String& filename) {
   }
   if (LittleFS.exists(filename)) {
     LittleFS.remove(filename);
+    if (filename == "/tracks.json" || filename == "/sessions.json") {
+      invalidateCachedJsonFile(filename.c_str());
+    }
   }
   updateFsUsageCache();
 }
@@ -2322,9 +2443,10 @@ void processStorageQueue() {
   static bool resumeChecked = false;
   if (!resumeChecked && millis() > 8000 && lapDeleteState != LAP_DELETE_PENDING) {
     resumeChecked = true;
+    PlatformRuntime::StorageLock lock;
     if (LittleFS.exists("/pending_del.json")) {
       File pf = LittleFS.open("/pending_del.json", "r");
-      JsonDocument pd;
+      JsonDocument pd(LargeJsonAllocator::instance());
       bool okParse = pf && !deserializeJson(pd, pf);
       if (pf) pf.close();
       uint8_t attempts = okParse ? (pd["a"] | 0) : 9;
@@ -2350,6 +2472,7 @@ void processStorageQueue() {
 
   if (lapDeleteState == LAP_DELETE_PENDING) {
     // Pro loop()-Durchlauf genau ein kleines Haeppchen, damit der 4-KB-Stack zwischen den Phasen abgebaut wird
+    PlatformRuntime::StorageLock lock;
     bool done = false;
     if (lapDeleteJob.type == JOB_TRACK_DELETE) done = stepTrackDeletion();
     else if (lapDeleteJob.type == JOB_DRIVER_DELETE) done = stepDriverHistoryDeletion();
@@ -2369,7 +2492,7 @@ void processStorageQueue() {
     return;
   }
 
-  if (millis() - lastStorageWrite < 120) return;
+  if ((uint32_t)(millis() - lastStorageWrite) < PlatformRuntime::getStorageWriteCooldownMs()) return;
 
   if (queueHead != queueTail) { 
     PendingLap lap = lapQueue[queueTail];
@@ -2385,6 +2508,7 @@ void processStorageQueue() {
 void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap) {
   // 1. Nicht speichern bevor Time-Sync erfolgt ist
   if (baseUnixTimestampSec == 0) return;
+  PlatformRuntime::StorageLock lock;
 
   // 2. Falls Modus gewechselt hat, sauberen neuen Session-Rahmen öffnen
   if (currentSessionActive && currentSessionMode != mode) {
@@ -2573,6 +2697,7 @@ static void preserveSessionNamesOnFirstLaps(JsonArray laps, const String* driver
 }
 
 void deleteSessionById(const String& sessionId) {
+  PlatformRuntime::StorageLock lock;
   if (sessionId.length() == 0) return;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
@@ -2641,7 +2766,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
     String hdrJson = head.substring(0, head.length() - 5);
     if (hdrJson.endsWith(",")) hdrJson.remove(hdrJson.length() - 1);
     hdrJson += "}";
-    JsonDocument hdr;
+    JsonDocument hdr(LargeJsonAllocator::instance());
     if (deserializeJson(hdr, hdrJson)) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
     r.trackId = hdr["t"] | (hdr["trackId"] | "");
     r.trackName = hdr["n"] | (hdr["trackName"] | "");
@@ -2656,7 +2781,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
   int idx = 0;
   int targetIdx = -1;
   while (readNextLapObject(in, buf, LAP_OBJ_MAX, overflow)) {
-    JsonDocument d;
+    JsonDocument d(LargeJsonAllocator::instance());
     if (deserializeJson(d, buf)) { parseError = true; break; }
     uint8_t c = d["c"] | (d["carId"] | 0);
     uint16_t lNum = d["l"] | (d["lap"] | 0);
@@ -2711,7 +2836,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
   idx = 0;
   while (ok && readNextLapObject(in, buf, LAP_OBJ_MAX, overflow)) {
     if (idx++ == targetIdx) continue;
-    JsonDocument d;
+    JsonDocument d(LargeJsonAllocator::instance());
     if (deserializeJson(d, buf)) { ok = false; break; }
     uint8_t c = d["c"] | (d["carId"] | 0);
     if (c >= 1 && c <= MAX_CARS && !seen[c]) {
@@ -2962,6 +3087,7 @@ static bool stepLapDeletion() {
 }
 
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
+  PlatformRuntime::StorageLock lock;
   if (!queueLapDeletion(sessionId, filePath, carId, lapNum, lapTimeMs)) return LAP_DELETE_PENDING;
   while (lapDeleteState == LAP_DELETE_PENDING) {
     if (stepLapDeletion()) break;
@@ -3010,7 +3136,7 @@ static bool stepTrackDeletion() {
   }
 
   if (lapDeleteJob.phase == 3) {
-    JsonDocument next;
+    JsonDocument next(LargeJsonAllocator::instance());
     bool haveNext = false;
     if (trackDeleteNextId.length() > 0) {
       streamTracks(nullptr, [&](JsonDocument& t) -> int {
@@ -3106,7 +3232,7 @@ static bool stepDriverHistoryDeletion() {
     driverDelIdx++;
     if (!LittleFS.exists(sFile)) continue;
 
-    JsonDocument doc;
+    JsonDocument doc(LargeJsonAllocator::instance());
     File fRead = LittleFS.open(sFile, "r");
     if (!fRead) continue;
     if (deserializeJson(doc, fRead)) { fRead.close(); continue; }
@@ -3176,6 +3302,7 @@ static bool stepDriverHistoryDeletion() {
 }
 
 void deleteDriverHistory(const String& driverName) {
+  PlatformRuntime::StorageLock lock;
   if (driverName.length() == 0) return;
   if (sessionIndexDirty) flushCurrentSessionToIndex();
 
@@ -3231,7 +3358,7 @@ void deleteDriverHistory(const String& driverName) {
     String sFile = sessionFiles[idx];
     if (!LittleFS.exists(sFile)) continue;
 
-    JsonDocument doc;
+    JsonDocument doc(LargeJsonAllocator::instance());
     File fRead = LittleFS.open(sFile, "r");
     if (!fRead) continue;
     if (deserializeJson(doc, fRead)) { fRead.close(); continue; }
@@ -3294,6 +3421,7 @@ void deleteDriverHistory(const String& driverName) {
 }
 
 void deleteAllHistory() {
+  PlatformRuntime::StorageLock lock;
   currentSessionActive = false;
   currentSessionId = "";
   currentSessionFilePath = "";
@@ -3352,6 +3480,7 @@ void deleteAllHistory() {
 
   if (LittleFS.exists("/sessions.json")) {
     LittleFS.remove("/sessions.json");
+    invalidateCachedJsonFile("/sessions.json");
   }
   if (LittleFS.exists("/daily_best.json")) {
     LittleFS.remove("/daily_best.json");

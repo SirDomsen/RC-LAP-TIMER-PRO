@@ -91,6 +91,34 @@ bool isHighPerfPlatform() {
   return false;
 }
 
+uint16_t getStorageWriteCooldownMs() {
+  return 120;
+}
+
+bool supportsPsramFileCache() {
+  return false;
+}
+
+void* allocLargeBuffer(size_t size) {
+  return malloc(size > 0 ? size : 1);
+}
+
+void* reallocLargeBuffer(void* ptr, size_t size) {
+  if (size == 0) {
+    free(ptr);
+    return nullptr;
+  }
+  return realloc(ptr, size);
+}
+
+void freeLargeBuffer(void* ptr) {
+  free(ptr);
+}
+
+StorageLock::StorageLock() {}
+
+StorageLock::~StorageLock() {}
+
 ResetDiagnosis readBootResetDiagnosis() {
   ResetDiagnosis diag;
   diag.reason = ESP.getResetReason();

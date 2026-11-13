@@ -30,6 +30,27 @@ static void addCorsHeader(AsyncWebServerResponse *response) {
   }
 }
 
+static void sendCachedJsonSnapshot(AsyncWebServerRequest *request, const std::shared_ptr<CachedJsonSnapshot>& snap, bool noCache) {
+  AsyncWebServerResponse *response = request->beginResponse(
+    "application/json",
+    snap->len,
+    [snap](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+      if (index >= snap->len) return 0;
+      size_t avail = snap->len - index;
+      size_t toCopy = (avail < maxLen) ? avail : maxLen;
+      memcpy(buffer, snap->data + index, toCopy);
+      return toCopy;
+    }
+  );
+  if (noCache) {
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+  }
+  addCorsHeader(response);
+  request->send(response);
+}
+
 void handleGetLaps(AsyncWebServerRequest *request) {
   if (isHeapCriticalForLiveData()) {
     AsyncWebServerResponse *res = request->beginResponse(503, "application/json", "{\"error\":\"busy\"}");
@@ -469,11 +490,19 @@ void handlePostSyncTime(AsyncWebServerRequest *request) {
 }
 
 void handleGetSessions(AsyncWebServerRequest *request) {
+  PlatformRuntime::StorageLock lock;
   flushCurrentSessionToIndex();
   updateFsUsageCache();
   String filepath = "/sessions.json";
   if (!LittleFS.exists(filepath) && LittleFS.exists("/sessions.tmp")) {
     filepath = "/sessions.tmp";
+  }
+  if (filepath == "/sessions.json") {
+    std::shared_ptr<CachedJsonSnapshot> snap = getCachedJsonFileSnapshot("/sessions.json");
+    if (snap) {
+      sendCachedJsonSnapshot(request, snap, true);
+      return;
+    }
   }
   if (LittleFS.exists(filepath)) {
     AsyncWebServerResponse *response = request->beginResponse(LittleFS, filepath, "application/json");
@@ -493,6 +522,7 @@ void handleGetSessions(AsyncWebServerRequest *request) {
 }
 
 void handleGetSessionFile(AsyncWebServerRequest *request) {
+  PlatformRuntime::StorageLock lock;
   flushCurrentSessionToIndex();
   if (request->hasParam("file")) {
     String fn = request->getParam("file")->value();
@@ -602,13 +632,24 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
 
 // --- STRECKEN-HANDLERS & TOP-5 REKORDVERWALTUNG ---
 void handleGetTracks(AsyncWebServerRequest *request) {
+  PlatformRuntime::StorageLock lock;
   checkDailyBestDateRollover();
+  std::shared_ptr<CachedJsonSnapshot> snap = getCachedJsonFileSnapshot("/tracks.json");
+  if (snap) {
+    sendCachedJsonSnapshot(request, snap, false);
+    return;
+  }
   if (LittleFS.exists("/tracks.json")) {
     AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
     addCorsHeader(response);
     request->send(response);
   } else {
     saveTracksToFS();
+    snap = getCachedJsonFileSnapshot("/tracks.json");
+    if (snap) {
+      sendCachedJsonSnapshot(request, snap, false);
+      return;
+    }
     if (LittleFS.exists("/tracks.json")) {
       AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
       addCorsHeader(response);
@@ -732,6 +773,7 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request) {
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
   static char cleanPath[64];
   static uint32_t targetMtime = 0;
+  PlatformRuntime::StorageLock lock;
 
   if (!index) {
     deferPendingTrackSync();
@@ -745,6 +787,8 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
     } else {
       snprintf(cleanPath, sizeof(cleanPath), "%s", filename.c_str());
     }
+
+    invalidateCachedJsonFile(cleanPath);
 
     String pathStr = String(cleanPath);
     int slashIdx = pathStr.indexOf('/', 1);
@@ -790,6 +834,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
         settimeofday(&oldTv, nullptr);
       }
 
+      invalidateCachedJsonFile(cleanPath);
       if (filename.indexOf("names.json") >= 0) {
         scheduleReloadNamesFromFS();
         deferPendingTrackSync();

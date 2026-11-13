@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <esp_attr.h>
 #include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "platform_runtime.h"
 #include "hardware_config.h"
 
@@ -37,10 +39,15 @@ uint32_t calcRtcStepCheck(const RtcStepBlock& b) {
   return b.magic ^ b.step ^ b.freeHeap ^ 0x5A5A5A5AUL;
 }
 
+static SemaphoreHandle_t sStorageMutex = nullptr;
+
 } // namespace
 
 void init() {
   setCpuFrequencyMhz(240);
+  if (sStorageMutex == nullptr) {
+    sStorageMutex = xSemaphoreCreateRecursiveMutex();
+  }
   Serial.begin(115200);
   uint32_t cdcWait = millis();
   while (!Serial && (millis() - cdcWait < 1500)) {
@@ -99,6 +106,51 @@ const char* getPlatformName() {
 
 bool isHighPerfPlatform() {
   return true;
+}
+
+uint16_t getStorageWriteCooldownMs() {
+  return 15;
+}
+
+bool supportsPsramFileCache() {
+  return psramFound();
+}
+
+void* allocLargeBuffer(size_t size) {
+  if (size == 0) size = 1;
+  if (psramFound()) {
+    void* p = ps_malloc(size);
+    if (p) return p;
+  }
+  return malloc(size);
+}
+
+void* reallocLargeBuffer(void* ptr, size_t size) {
+  if (size == 0) {
+    free(ptr);
+    return nullptr;
+  }
+  if (psramFound()) {
+    void* p = ptr ? ps_realloc(ptr, size) : ps_malloc(size);
+    if (p) return p;
+  }
+  return realloc(ptr, size);
+}
+
+void freeLargeBuffer(void* ptr) {
+  free(ptr);
+}
+
+StorageLock::StorageLock() {
+  if (sStorageMutex != nullptr) {
+    xSemaphoreTakeRecursive(sStorageMutex, portMAX_DELAY);
+  }
+}
+
+StorageLock::~StorageLock() {
+  if (sStorageMutex != nullptr) {
+    xSemaphoreGiveRecursive(sStorageMutex);
+  }
 }
 
 ResetDiagnosis readBootResetDiagnosis() {

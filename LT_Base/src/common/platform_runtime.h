@@ -35,6 +35,19 @@ void feedWatchdog();
 const char* getPlatformId();
 const char* getPlatformName();
 bool isHighPerfPlatform();
+uint16_t getStorageWriteCooldownMs();
+bool supportsPsramFileCache();
+void* allocLargeBuffer(size_t size);
+void* reallocLargeBuffer(void* ptr, size_t size);
+void freeLargeBuffer(void* ptr);
+
+class StorageLock {
+ public:
+  StorageLock();
+  ~StorageLock();
+  StorageLock(const StorageLock&) = delete;
+  StorageLock& operator=(const StorageLock&) = delete;
+};
 
 ResetDiagnosis readBootResetDiagnosis();
 void saveRtcClock(uint32_t epochSec, int32_t tzSec);

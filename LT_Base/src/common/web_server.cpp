@@ -130,10 +130,17 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
   }
 
   String gzPath = path + ".gz";
-  bool hasGz = LittleFS.exists(gzPath);
-  bool hasRaw = !hasGz && LittleFS.exists(path);
-
-  if (!hasGz && !hasRaw) return false;
+  AsyncWebServerResponse *response = nullptr;
+  bool isGz = false;
+  {
+    PlatformRuntime::StorageLock lock;
+    bool hasGz = LittleFS.exists(gzPath);
+    bool hasRaw = !hasGz && LittleFS.exists(path);
+    if (!hasGz && !hasRaw) return false;
+    isGz = hasGz;
+    const char* mime = getContentType(path);
+    response = request->beginResponse(LittleFS, hasGz ? gzPath : path, mime);
+  }
 
   activeStaticTransfers++;
   lastStaticTransferMs = millis();
@@ -141,9 +148,7 @@ static bool serveStaticWithHeapGuard(AsyncWebServerRequest *request, String path
     if (activeStaticTransfers > 0) activeStaticTransfers--;
   });
 
-  const char* mime = getContentType(path);
-  AsyncWebServerResponse *response = request->beginResponse(LittleFS, hasGz ? gzPath : path, mime);
-  if (hasGz) {
+  if (isGz) {
     response->addHeader("Content-Encoding", "gzip");
   }
   if (path.endsWith(".html")) {
@@ -469,12 +474,16 @@ void initNetworkAndServer() {
   });
 
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
-    flushCurrentSessionToIndex();
-    updateFsUsageCache();
+    {
+      PlatformRuntime::StorageLock lock;
+      flushCurrentSessionToIndex();
+      updateFsUsageCache();
+    }
 
     auto st = std::make_shared<FilesStreamState>();
     AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
       [st](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+        PlatformRuntime::StorageLock lock;
         if (index == 0) {
           st->pendingLen = st->pendingOff = 0;
           st->phase = 0;
@@ -611,6 +620,7 @@ void initNetworkAndServer() {
       fn.replace("%2f", "/");
       while (fn.startsWith("/")) fn = fn.substring(1);
       fn = "/" + fn;
+      PlatformRuntime::StorageLock lock;
       if (LittleFS.exists(fn)) {
         request->send(LittleFS, fn, "application/octet-stream", true);
         return;

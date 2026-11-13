@@ -2,7 +2,9 @@
 #define STORAGE_H
 
 #include "config.h"
+#include "platform_runtime.h"
 #include <IPAddress.h>
+#include <memory>
 
 #define MAX_TRACK_RECORDS 5
 
@@ -141,5 +143,20 @@ extern bool lastResetIsCrash;
 void recordBootResetReason();
 String getCrashLog();
 bool clearCrashLog();
+
+// PSRAM-Datei-Snapshot-Cache (/tracks.json, /sessions.json)
+struct CachedJsonSnapshot {
+  uint8_t* data = nullptr;
+  size_t len = 0;
+  ~CachedJsonSnapshot() {
+    if (data) {
+      PlatformRuntime::freeLargeBuffer(data);
+      data = nullptr;
+    }
+  }
+};
+
+std::shared_ptr<CachedJsonSnapshot> getCachedJsonFileSnapshot(const char* path);
+void invalidateCachedJsonFile(const char* path);
 
 #endif
