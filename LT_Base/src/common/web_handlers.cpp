@@ -554,8 +554,13 @@ void handlePostDeleteDriverStats(AsyncWebServerRequest *request) {
   }
   if (request->hasParam("driver")) {
     String driverName = request->getParam("driver")->value();
-    deleteDriverHistory(driverName);
-    request->send(200, "text/plain", "OK");
+    if (PlatformRuntime::isHeapCritical(12000, 100, 0)) {
+      request->send(503, "text/plain", "Zu wenig freier Speicher");
+    } else if (queueDriverHistoryDeletion(driverName)) {
+      request->send(202, "text/plain", "PENDING");
+    } else {
+      request->send(503, "text/plain", "Loeschauftrag laeuft bereits");
+    }
   } else {
     request->send(400, "text/plain", "Bad Request");
   }
@@ -642,10 +647,14 @@ void handlePostDeleteTrack(AsyncWebServerRequest *request) {
   }
   if (request->hasParam("id")) {
     String id = request->getParam("id")->value();
-    if (deleteTrackById(id)) {
-      request->send(200, "text/plain", activeTrackId);
-      return;
+    if (PlatformRuntime::isHeapCritical(12000, 100, 0)) {
+      request->send(503, "text/plain", "Zu wenig freier Speicher");
+    } else if (queueTrackDeletion(id)) {
+      request->send(202, "text/plain", "PENDING");
+    } else {
+      request->send(503, "text/plain", "Loeschauftrag laeuft bereits");
     }
+    return;
   }
   request->send(400, "text/plain", "Fehler beim Loeschen");
 }

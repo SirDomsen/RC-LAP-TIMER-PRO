@@ -1894,8 +1894,11 @@ async function confirmDeleteDriverStats() {
   });
   if (!ok) return;
   try {
-    let response = await fetch('/api/deletedriverstats?driver=' + encodeURIComponent(driverName), { method: 'POST' });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
+    let state = await deleteLapOnDevice('/api/deletedriverstats?driver=' + encodeURIComponent(driverName));
+    if (state !== 'ok') {
+      await showAlert({ title: "❌ NICHT GELÖSCHT", theme: "danger", message: deleteLapFailText(state) });
+      return;
+    }
     sessionFileCache = {};
     if (typeof loadTracks === 'function') await loadTracks();
     await fetchSessionsAndStorageInfo();

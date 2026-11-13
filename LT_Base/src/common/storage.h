@@ -113,8 +113,10 @@ enum LapDeleteState : uint8_t {
 };
 
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath = "", uint8_t carId = 0, uint16_t lapNum = 0, uint32_t lapTimeMs = 0);
-// Einzel-Rundenloeschung: Webserver reiht nur ein, die Arbeit laeuft in processStorageQueue() im loop()
+// Einzel-Runden-, Strecken- und Fahrer-Loeschung: Webserver reiht nur ein, die Arbeit laeuft in processStorageQueue() im loop()
 bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs);
+bool queueTrackDeletion(const String& trackId);
+bool queueDriverHistoryDeletion(const String& driverName);
 LapDeleteState getLapDeletionState();
 void deleteDriverHistory(const String& driverName);
 void deleteAllHistory();

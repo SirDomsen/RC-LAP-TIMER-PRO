@@ -2230,13 +2230,15 @@ async function confirmDeleteActiveTrack() {
     if (!ok) return;
   }
   try {
-    let res = await fetch('/api/tracks/delete?id=' + encodeURIComponent(activeTrackId), { method: 'POST' });
-    if (res.ok) {
+    let state = await deleteLapOnDevice('/api/tracks/delete?id=' + encodeURIComponent(activeTrackId));
+    if (state === 'ok') {
       await loadTracks();
       previousLaps = {};
       previousBestLaps = {};
       lastAnnouncedLapMap = {};
       updateData(true);
+    } else {
+      await showAlert({ title: "❌ NICHT GELÖSCHT", theme: "danger", message: deleteLapFailText(state) });
     }
   } catch (e) {
     console.error("Fehler beim Löschen der Strecke:", e);

@@ -2008,7 +2008,14 @@ struct LapRewriteResult {
 
 static std::unique_ptr<LapRewriteResult> lapDeleteRewriteRes;
 
+enum StorageJobType : uint8_t {
+  JOB_LAP_DELETE = 0,
+  JOB_TRACK_DELETE = 1,
+  JOB_DRIVER_DELETE = 2
+};
+
 static struct {
+  StorageJobType type;
   char sessionId[40];
   char file[DELETE_PATH_MAX];
   uint8_t carId;
@@ -2018,9 +2025,15 @@ static struct {
 } lapDeleteJob;
 static volatile LapDeleteState lapDeleteState = LAP_DELETE_IDLE;
 
+static String trackDeleteNextId = "";
+static std::vector<String> driverDelIds;
+static std::vector<String> driverDelFiles;
+static size_t driverDelIdx = 0;
+
 bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
   if (lapDeleteState == LAP_DELETE_PENDING) return false;
   if (sessionId.length() >= sizeof(lapDeleteJob.sessionId) || filePath.length() >= DELETE_PATH_MAX) return false;
+  lapDeleteJob.type = JOB_LAP_DELETE;
   strlcpy(lapDeleteJob.sessionId, sessionId.c_str(), sizeof(lapDeleteJob.sessionId));
   strlcpy(lapDeleteJob.file, filePath.c_str(), DELETE_PATH_MAX);
   lapDeleteJob.carId = carId;
@@ -2032,11 +2045,39 @@ bool queueLapDeletion(const String& sessionId, const String& filePath, uint8_t c
   return true;
 }
 
+bool queueTrackDeletion(const String& trackId) {
+  if (lapDeleteState == LAP_DELETE_PENDING) return false;
+  if (trackId.length() == 0 || trackId.length() >= sizeof(lapDeleteJob.sessionId)) return false;
+  lapDeleteJob.type = JOB_TRACK_DELETE;
+  strlcpy(lapDeleteJob.sessionId, trackId.c_str(), sizeof(lapDeleteJob.sessionId));
+  lapDeleteJob.file[0] = '\0';
+  lapDeleteJob.phase = 0;
+  trackDeleteNextId = "";
+  lapDeleteState = LAP_DELETE_PENDING;
+  return true;
+}
+
+bool queueDriverHistoryDeletion(const String& driverName) {
+  if (lapDeleteState == LAP_DELETE_PENDING) return false;
+  if (driverName.length() == 0 || driverName.length() >= sizeof(lapDeleteJob.sessionId)) return false;
+  lapDeleteJob.type = JOB_DRIVER_DELETE;
+  strlcpy(lapDeleteJob.sessionId, driverName.c_str(), sizeof(lapDeleteJob.sessionId));
+  lapDeleteJob.file[0] = '\0';
+  lapDeleteJob.phase = 0;
+  std::vector<String>().swap(driverDelIds);
+  std::vector<String>().swap(driverDelFiles);
+  driverDelIdx = 0;
+  lapDeleteState = LAP_DELETE_PENDING;
+  return true;
+}
+
 LapDeleteState getLapDeletionState() {
   return lapDeleteState;
 }
 
 static bool stepLapDeletion();
+static bool stepTrackDeletion();
+static bool stepDriverHistoryDeletion();
 
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
@@ -2075,7 +2116,11 @@ void processStorageQueue() {
 
   if (lapDeleteState == LAP_DELETE_PENDING) {
     // Pro loop()-Durchlauf genau ein kleines Haeppchen, damit der 4-KB-Stack zwischen den Phasen abgebaut wird
-    if (stepLapDeletion()) {
+    bool done = false;
+    if (lapDeleteJob.type == JOB_TRACK_DELETE) done = stepTrackDeletion();
+    else if (lapDeleteJob.type == JOB_DRIVER_DELETE) done = stepDriverHistoryDeletion();
+    else done = stepLapDeletion();
+    if (done) {
       updateFsUsageCache();
       lastStorageWrite = millis();
     }
@@ -2691,6 +2736,211 @@ LapDeleteState deleteLapFromSession(const String& sessionId, const String& fileP
     yield();
   }
   return lapDeleteState;
+}
+
+static bool stepTrackDeletion() {
+  String trackId = String(lapDeleteJob.sessionId);
+  if (lapDeleteJob.phase == 0) {
+    if (!LittleFS.exists("/tracks.json")) {
+      lapDeleteState = LAP_DELETE_NOT_FOUND;
+      return true;
+    }
+    startNewSessionFrame((uint8_t)currentMode);
+    trackDeleteNextId = "";
+    String activeCopy = activeTrackId;
+    bool written = streamTracks(&activeCopy, [&](JsonDocument& t) -> int {
+      String id = t["id"].as<String>();
+      if (id == trackId) return 1;
+      if (trackDeleteNextId.length() == 0) trackDeleteNextId = id;
+      return 0;
+    });
+    if (!written) {
+      lapDeleteState = LAP_DELETE_NOT_FOUND;
+      return true;
+    }
+    lapDeleteJob.phase = 1;
+    return false;
+  }
+
+  if (lapDeleteJob.phase == 1) {
+    String trackDir = "/" + trackId;
+    if (LittleFS.exists(trackDir)) {
+      removeDirectoryRecursive(trackDir);
+    }
+    lapDeleteJob.phase = 2;
+    return false;
+  }
+
+  if (lapDeleteJob.phase == 2) {
+    filterSessionsIndexFile("", trackId, "", "");
+    lapDeleteJob.phase = 3;
+    return false;
+  }
+
+  if (lapDeleteJob.phase == 3) {
+    JsonDocument next;
+    bool haveNext = false;
+    if (trackDeleteNextId.length() > 0) {
+      streamTracks(nullptr, [&](JsonDocument& t) -> int {
+        if (t["id"].as<String>() == trackDeleteNextId) { next = t; haveNext = true; return 2; }
+        return 0;
+      });
+    }
+    if (haveNext) {
+      JsonObject nextActive = next.as<JsonObject>();
+      activeTrackId = nextActive["id"].as<String>();
+      activeTrackName = nextActive["name"].as<String>();
+      bool dummy = false;
+      loadActiveTrackRecordsFromJsonObj(nextActive, dummy);
+    } else {
+      activeTrackId = "standard";
+      activeTrackName = "Test-Strecke";
+      clearRecordList(activeAllTimeRecords, activeAllTimeCount);
+      clearRecordList(activeDailyRecords, activeDailyCount);
+      syncTopRecordVars();
+    }
+    trackDeleteNextId = "";
+    lapDeleteJob.phase = 4;
+    return false;
+  }
+
+  saveTracksToFS();
+  resetAllLaps(false);
+  lapDeleteState = LAP_DELETE_OK;
+  return true;
+}
+
+static bool stepDriverHistoryDeletion() {
+  String driverName = String(lapDeleteJob.sessionId);
+  if (lapDeleteJob.phase == 0) {
+    if (driverName.length() == 0 || !LittleFS.exists("/sessions.json")) {
+      lapDeleteState = LAP_DELETE_OK;
+      return true;
+    }
+    if (sessionIndexDirty) flushCurrentSessionToIndex();
+    File f = LittleFS.open("/sessions.json", "r");
+    if (!f) {
+      lapDeleteState = LAP_DELETE_OK;
+      return true;
+    }
+    int braceDepth = 0;
+    bool inQuotes = false;
+    bool escaped = false;
+    String currentObj = "";
+    while (f.available()) {
+      char c = (char)f.read();
+      if (braceDepth == 0) {
+        if (c == '[') braceDepth = 1;
+        continue;
+      }
+      if (escaped) { escaped = false; if (braceDepth >= 2) currentObj += c; continue; }
+      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2) currentObj += c; continue; }
+      if (c == '\"') inQuotes = !inQuotes;
+      if (!inQuotes) {
+        if (c == '{') {
+          if (braceDepth == 1) currentObj = "{";
+          else currentObj += '{';
+          braceDepth++;
+          continue;
+        } else if (c == '}') {
+          braceDepth--;
+          if (braceDepth == 1) {
+            currentObj += '}';
+            int sIdx = currentObj.indexOf("\"id\":\"");
+            int fIdx = currentObj.indexOf("\"file\":\"");
+            if (sIdx >= 0 && fIdx >= 0) {
+              String sId = currentObj.substring(sIdx + 6, currentObj.indexOf("\"", sIdx + 6));
+              String sFile = currentObj.substring(fIdx + 8, currentObj.indexOf("\"", fIdx + 8));
+              driverDelIds.push_back(sId);
+              driverDelFiles.push_back(sFile);
+            }
+            currentObj = "";
+            continue;
+          }
+        } else if (c == ']' && braceDepth == 1) break;
+      }
+      if (braceDepth >= 2) currentObj += c;
+    }
+    f.close();
+    driverDelIdx = 0;
+    lapDeleteJob.phase = 1;
+    return false;
+  }
+
+  // Pro loop()-Takt genau eine Session-Datei bearbeiten
+  while (driverDelIdx < driverDelIds.size()) {
+    String sId = driverDelIds[driverDelIdx];
+    String sFile = driverDelFiles[driverDelIdx];
+    driverDelIdx++;
+    if (!LittleFS.exists(sFile)) continue;
+
+    JsonDocument doc;
+    File fRead = LittleFS.open(sFile, "r");
+    if (!fRead) continue;
+    if (deserializeJson(doc, fRead)) { fRead.close(); continue; }
+    fRead.close();
+
+    JsonArray laps = doc["l"].as<JsonArray>();
+    if (!laps) continue;
+
+    String sessionDrivers[MAX_CARS + 1];
+    String sessionCars[MAX_CARS + 1];
+    readSessionNames(laps, sessionDrivers, sessionCars);
+    for (int i = (int)laps.size() - 1; i >= 0; i--) {
+      uint8_t c = laps[i]["c"] | (laps[i]["carId"] | 0);
+      if (c >= 1 && c <= MAX_CARS && sessionDrivers[c].equalsIgnoreCase(driverName)) {
+        laps.remove(i);
+      }
+    }
+
+    if (laps.size() == 0) {
+      deleteSessionById(sId);
+    } else {
+      preserveSessionNamesOnFirstLaps(laps, sessionDrivers, sessionCars);
+      uint16_t calcLaps[MAX_CARS + 1] = {0};
+      uint32_t calcBest[MAX_CARS + 1] = {0};
+      uint64_t maxTsSec = doc["s"] | (doc["startTs"] | 0);
+      for (JsonObject l : laps) {
+        uint8_t c = l["c"] | (l["carId"] | 0);
+        uint32_t tMs = l["t"] | (l["time"] | 0);
+        uint64_t tsMs = l["s"] | (l["ts"] | 0);
+        if (c >= 1 && c <= MAX_CARS) {
+          calcLaps[c]++;
+          if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) calcBest[c] = tMs;
+          if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
+        }
+      }
+      File fWrite = LittleFS.open(sFile, "w");
+      if (fWrite) { serializeJson(doc, fWrite); fWrite.close(); }
+
+      if (currentSessionActive && currentSessionId == sId) {
+        for (uint8_t c = 1; c <= MAX_CARS; c++) {
+          sessionCarLaps[c] = calcLaps[c];
+          sessionCarBest[c] = calcBest[c];
+          copySessionName(sessionDriverNames[c], sizeof(sessionDriverNames[c]), sessionDrivers[c]);
+          copySessionName(sessionCarNames[c], sizeof(sessionCarNames[c]), sessionCars[c]);
+          if (sessionDrivers[c].length() > 0) sessionNamesWrittenMask |= ((uint16_t)1 << c);
+        }
+      }
+
+      String updatedEntry = buildSessionEntryJson(
+        sId, sFile,
+        doc["t"] | (doc["trackId"] | activeTrackId),
+        doc["n"] | (doc["trackName"] | activeTrackName),
+        doc["m"] | (doc["mode"] | 0),
+        doc["s"] | (doc["startTs"] | 0),
+        maxTsSec, calcLaps, calcBest, nullptr, sessionDrivers, sessionCars
+      );
+      filterSessionsIndexFile("", "", sId, updatedEntry);
+    }
+    return false;
+  }
+
+  std::vector<String>().swap(driverDelIds);
+  std::vector<String>().swap(driverDelFiles);
+  driverDelIdx = 0;
+  lapDeleteState = LAP_DELETE_OK;
+  return true;
 }
 
 void deleteDriverHistory(const String& driverName) {
