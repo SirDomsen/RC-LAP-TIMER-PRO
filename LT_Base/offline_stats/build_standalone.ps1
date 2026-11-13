@@ -12,10 +12,11 @@ $indexPath      = Join-Path $scriptDir 'index.html'
 $offlineCssPath = Join-Path $scriptDir 'offline_stats.css'
 $offlineJsPath  = Join-Path $scriptDir 'offline_stats.js'
 $styleCssPath   = Join-Path $dataDir   'style.css'
+$langEnJsPath   = Join-Path $dataDir   'lang_en.js'
 $statsJsPath    = Join-Path $dataDir   'stats.js'
 $outPath        = Join-Path $scriptDir 'offline_stats_standalone.html'
 
-foreach ($p in @($indexPath, $offlineCssPath, $offlineJsPath, $styleCssPath, $statsJsPath)) {
+foreach ($p in @($indexPath, $offlineCssPath, $offlineJsPath, $styleCssPath, $langEnJsPath, $statsJsPath)) {
   if (-not (Test-Path -LiteralPath $p)) {
     throw "Benötigte Datei nicht gefunden: $p"
   }
@@ -25,6 +26,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 $html       = [System.IO.File]::ReadAllText($indexPath, $utf8)
 $styleCss   = [System.IO.File]::ReadAllText($styleCssPath, $utf8) -replace '(?i)</style>', '<\/style>'
 $offlineCss = [System.IO.File]::ReadAllText($offlineCssPath, $utf8) -replace '(?i)</style>', '<\/style>'
+$langEnJs   = [System.IO.File]::ReadAllText($langEnJsPath, $utf8) -replace '(?i)</script>', '<\/script>'
 $statsJs    = [System.IO.File]::ReadAllText($statsJsPath, $utf8) -replace '(?i)</script>', '<\/script>'
 $offlineJs  = [System.IO.File]::ReadAllText($offlineJsPath, $utf8) -replace '(?i)</script>', '<\/script>'
 
@@ -48,6 +50,10 @@ $html = Replace-TagWithInline -Source $html `
 $html = Replace-TagWithInline -Source $html `
   -Pattern '<link\s+rel="stylesheet"\s+href="offline_stats\.css[^"]*">' `
   -Replacement "<style>`n$offlineCss`n  </style>"
+
+$html = Replace-TagWithInline -Source $html `
+  -Pattern '<script\s+src="\.\./data/lang_en\.js[^"]*"></script>' `
+  -Replacement "<script>`n$langEnJs`n  </script>"
 
 $html = Replace-TagWithInline -Source $html `
   -Pattern '<script\s+src="\.\./data/stats\.js[^"]*"></script>' `

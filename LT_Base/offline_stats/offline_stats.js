@@ -26,6 +26,10 @@ let offlineInitialization = null;
 let lastSyncedLaptimerUrl = null;
 let linkedSaveFileHandle = null;
 
+function _ot(de, en) {
+  return window.LT_LANG === 'en' ? en : de;
+}
+
 function setOfflineStatus(message, state = 'info') {
   let status = document.getElementById('offlineStatus');
   if (!status) return;
@@ -55,7 +59,7 @@ function getOfflineTrackDocument(backup) {
     return { active: trackData[0]?.id || 'standard', tracks: trackData };
   }
   if (trackData && Array.isArray(trackData.tracks)) return trackData;
-  throw new Error('Das Backup enthält keine gültige Streckenliste.');
+  throw new Error(_ot('Das Backup enthält keine gültige Streckenliste.', 'The backup does not contain a valid track list.'));
 }
 
 function getSessionFileEntry(path) {
@@ -73,7 +77,7 @@ function populateOfflineTrackFilter() {
   if (!select) return;
 
   let previousValue = select.value || 'all';
-  let options = ['<option value="all">🌍 Alle Strecken</option>'];
+  let options = [_ot('<option value="all">🌍 Alle Strecken</option>', '<option value="all">🌍 All Tracks</option>')];
   window.allTracksList.forEach(track => {
     options.push(`<option value="${escapeHtml(track.id)}">📍 ${escapeHtml(track.name || track.id)}</option>`);
   });
@@ -121,7 +125,7 @@ window.fetchSessionFileData = async function(filePath) {
 
   let data = getSessionFileEntry(filePath);
   if (!data || typeof data !== 'object') {
-    throw new Error('Session-Datei fehlt in der lokalen Statistikdatenbank: ' + filePath);
+    throw new Error(_ot('Session-Datei fehlt in der lokalen Statistikdatenbank: ', 'Session file missing from local statistics database: ') + filePath);
   }
   let normalized = normalizeSessionFile(data, filePath);
   let session = offlineBackup.sessions.find(item => item.file === filePath);
@@ -164,7 +168,7 @@ window.findSessionForRecord = function(record, trackId) {
 function openOfflineDatabase() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
-      reject(new Error('Dieser Browser unterstützt keine lokale IndexedDB.'));
+      reject(new Error(_ot('Dieser Browser unterstützt keine lokale IndexedDB.', 'This browser does not support local IndexedDB.')));
       return;
     }
 
@@ -176,8 +180,8 @@ function openOfflineDatabase() {
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Lokale Statistikdatenbank konnte nicht geöffnet werden.'));
-    request.onblocked = () => reject(new Error('Die lokale Statistikdatenbank ist in einem anderen Tab geöffnet.'));
+    request.onerror = () => reject(request.error || new Error(_ot('Lokale Statistikdatenbank konnte nicht geöffnet werden.', 'Could not open local statistics database.')));
+    request.onblocked = () => reject(new Error(_ot('Die lokale Statistikdatenbank ist in einem anderen Tab geöffnet.', 'The local statistics database is open in another tab.')));
   });
 }
 
@@ -203,7 +207,7 @@ function persistImport(entries, dataset) {
     entries.forEach(entry => fileStore.put(entry));
     transaction.objectStore('state').put({ key: 'dataset', value: dataset });
     transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error || new Error('Import konnte nicht lokal gespeichert werden.'));
+    transaction.onerror = () => reject(transaction.error || new Error(_ot('Import konnte nicht lokal gespeichert werden.', 'Import could not be saved locally.')));
     transaction.onabort = () => reject(transaction.error || new Error('Import in die lokale Datenbank wurde abgebrochen.'));
   });
 }
@@ -301,7 +305,7 @@ function parseJsonEntry(path, bytes) {
   try {
     content = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch (error) {
-    throw new Error(`Ungültige JSON-Datei "${path}": ${error.message}`);
+    throw new Error(_ot(`Ungültige JSON-Datei "${path}": ${error.message}`, `Invalid JSON file "${path}": ${error.message}`));
   }
   return { path, content, size: bytes.byteLength, modifiedAt: Date.now() };
 }
@@ -343,11 +347,11 @@ function createStatisticsZip(fileMap, dataset) {
     let nameBytes = new TextEncoder().encode(path);
     let dataBytes = new TextEncoder().encode(JSON.stringify(entry.content));
     if (nameBytes.length > 0xffff || dataBytes.length > MAX_STAT_FILE_SIZE) {
-      throw new Error(`Datei kann nicht in das ZIP geschrieben werden: ${path}`);
+      throw new Error(_ot(`Datei kann nicht in das ZIP geschrieben werden: ${path}`, `Cannot write file to ZIP: ${path}`));
     }
     totalSize += dataBytes.length;
     if (totalSize > MAX_TOTAL_STAT_SIZE || localEntries.length / 2 >= MAX_ZIP_ENTRIES) {
-      throw new Error('Die kumulierte Statistikdatenbank überschreitet die ZIP-Grenzwerte.');
+      throw new Error(_ot('Die kumulierte Statistikdatenbank überschreitet die ZIP-Grenzwerte.', 'The accumulated statistics database exceeds ZIP limits.'));
     }
 
     let crc = getCrc32(dataBytes);
@@ -394,7 +398,7 @@ function createStatisticsZip(fileMap, dataset) {
 
   let entryCount = localEntries.length / 2;
   if (entryCount > 0xffff || offset > 0xffffffff) {
-    throw new Error('Die kumulierte Statistikdatenbank ist zu groß für ein ZIP-Archiv.');
+    throw new Error(_ot('Die kumulierte Statistikdatenbank ist zu groß für ein ZIP-Archiv.', 'The accumulated statistics database is too large for a ZIP archive.'));
   }
   let centralDirectorySize = centralEntries.reduce((size, entry) => size + entry.length, 0);
   let endRecord = new Uint8Array(22);
@@ -421,17 +425,17 @@ async function readZipArchive(buffer) {
       break;
     }
   }
-  if (eocdOffset < 0) throw new Error('Ungültiges ZIP-Archiv (End-of-Central-Directory fehlt).');
+  if (eocdOffset < 0) throw new Error(_ot('Ungültiges ZIP-Archiv (End-of-Central-Directory fehlt).', 'Invalid ZIP archive (End-of-Central-Directory missing).'));
   if (view.getUint16(eocdOffset + 4, true) || view.getUint16(eocdOffset + 6, true)) {
-    throw new Error('Mehrteilige ZIP-Archive werden nicht unterstützt.');
+    throw new Error(_ot('Mehrteilige ZIP-Archive werden nicht unterstützt.', 'Multi-part ZIP archives are not supported.'));
   }
 
   let totalEntries = view.getUint16(eocdOffset + 10, true);
   let centralDirectorySize = view.getUint32(eocdOffset + 12, true);
   let centralDirectoryOffset = view.getUint32(eocdOffset + 16, true);
-  if (totalEntries > MAX_ZIP_ENTRIES) throw new Error('Das ZIP-Archiv enthält zu viele Einträge.');
+  if (totalEntries > MAX_ZIP_ENTRIES) throw new Error(_ot('Das ZIP-Archiv enthält zu viele Einträge.', 'The ZIP archive contains too many entries.'));
   if (centralDirectoryOffset + centralDirectorySize > eocdOffset) {
-    throw new Error('Das ZIP-Archiv enthält ein ungültiges Dateiverzeichnis.');
+    throw new Error(_ot('Das ZIP-Archiv enthält ein ungültiges Dateiverzeichnis.', 'The ZIP archive contains an invalid file directory.'));
   }
 
   let offset = centralDirectoryOffset;
@@ -441,7 +445,7 @@ async function readZipArchive(buffer) {
 
   for (let i = 0; i < totalEntries; i++) {
     if (offset + 46 > eocdOffset || view.getUint32(offset, true) !== 0x02014b50) {
-      throw new Error('Ungültiger Eintrag im ZIP-Dateiverzeichnis.');
+      throw new Error(_ot('Ungültiger Eintrag im ZIP-Dateiverzeichnis.', 'Invalid entry in ZIP file directory.'));
     }
 
     let flags = view.getUint16(offset + 8, true);
@@ -453,7 +457,7 @@ async function readZipArchive(buffer) {
     let commentLength = view.getUint16(offset + 32, true);
     let localHeaderOffset = view.getUint32(offset + 42, true);
     let entryEnd = offset + 46 + nameLength + extraLength + commentLength;
-    if (entryEnd > eocdOffset) throw new Error('Abgeschnittener Eintrag im ZIP-Dateiverzeichnis.');
+    if (entryEnd > eocdOffset) throw new Error(_ot('Abgeschnittener Eintrag im ZIP-Dateiverzeichnis.', 'Truncated entry in ZIP file directory.'));
 
     let nameBytes = new Uint8Array(buffer, offset + 46, nameLength);
     let fileName = decoder.decode(nameBytes).replace(/\\/g, '/');
@@ -461,22 +465,22 @@ async function readZipArchive(buffer) {
     if (fileName.endsWith('/') || !isStatisticPath(fileName)) continue;
     let path = normalizeStoredPath(fileName);
     if (!path) continue;
-    if (flags & 1) throw new Error(`Verschlüsselte ZIP-Datei wird nicht unterstützt: ${path}`);
-    if (uncompressedSize > MAX_STAT_FILE_SIZE) throw new Error(`Datei ist zu groß: ${path}`);
+    if (flags & 1) throw new Error(_ot(`Verschlüsselte ZIP-Datei wird nicht unterstützt: ${path}`, `Encrypted ZIP file is not supported: ${path}`));
+    if (uncompressedSize > MAX_STAT_FILE_SIZE) throw new Error(_ot(`Datei ist zu groß: ${path}`, `File is too large: ${path}`));
     totalStatSize += uncompressedSize;
     if (totalStatSize > MAX_TOTAL_STAT_SIZE) {
-      throw new Error('Die Statistikdateien im ZIP überschreiten die zulässige Gesamtgröße.');
+      throw new Error(_ot('Die Statistikdateien im ZIP überschreiten die zulässige Gesamtgröße.', 'Statistics files in ZIP exceed maximum total size.'));
     }
     if (localHeaderOffset + 30 > buffer.byteLength ||
         view.getUint32(localHeaderOffset, true) !== 0x04034b50) {
-      throw new Error(`Ungültiger Datei-Header für "${path}".`);
+      throw new Error(_ot(`Ungültiger Datei-Header für "${path}".`, `Invalid file header for "${path}".`));
     }
 
     let localNameLength = view.getUint16(localHeaderOffset + 26, true);
     let localExtraLength = view.getUint16(localHeaderOffset + 28, true);
     let dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
     let dataEnd = dataOffset + compressedSize;
-    if (dataEnd > buffer.byteLength) throw new Error(`Abgeschnittener Dateiinhalt: ${path}`);
+    if (dataEnd > buffer.byteLength) throw new Error(_ot(`Abgeschnittener Dateiinhalt: ${path}`, `Truncated file content: ${path}`));
 
     let compressedData = new Uint8Array(buffer, dataOffset, compressedSize);
     let data;
@@ -484,16 +488,16 @@ async function readZipArchive(buffer) {
       data = new Uint8Array(compressedData);
     } else if (method === 8) {
       if (typeof DecompressionStream === 'undefined') {
-        throw new Error('Dieser Browser kann komprimierte ZIP-Dateien nicht entpacken.');
+        throw new Error(_ot('Dieser Browser kann komprimierte ZIP-Dateien nicht entpacken.', 'This browser cannot decompress ZIP files.'));
       }
       let stream = new Blob([compressedData]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
       data = new Uint8Array(await new Response(stream).arrayBuffer());
     } else {
-      throw new Error(`Nicht unterstützte ZIP-Kompression (${method}) bei "${path}".`);
+      throw new Error(_ot(`Nicht unterstützte ZIP-Kompression (${method}) bei "${path}".`, `Unsupported ZIP compression (${method}) for "${path}".`));
     }
 
     if (data.byteLength !== uncompressedSize) {
-      throw new Error(`Die entpackte Dateigröße stimmt nicht: ${path}`);
+      throw new Error(_ot(`Die entpackte Dateigröße stimmt nicht: ${path}`, `Decompressed file size mismatch: ${path}`));
     }
     files.push(parseJsonEntry(path, data));
   }
@@ -502,13 +506,13 @@ async function readZipArchive(buffer) {
 }
 
 function validateBackup(data) {
-  if (!data || typeof data !== 'object') throw new Error('Die Datei enthält kein JSON-Backup.');
+  if (!data || typeof data !== 'object') throw new Error(_ot('Die Datei enthält kein JSON-Backup.', 'The file does not contain a JSON backup.'));
   if (data.version !== 3 && data.version !== 4 && data.version !== 5) {
-    throw new Error('Nicht unterstützte JSON-Backup-Version. Erwartet wird Version 3, 4 oder 5.');
+    throw new Error(_ot('Nicht unterstützte JSON-Backup-Version. Erwartet wird Version 3, 4 oder 5.', 'Unsupported JSON backup version. Expected version 3, 4, or 5.'));
   }
-  if (!Array.isArray(data.sessions)) throw new Error('Im Backup fehlt die Sessions-Liste.');
+  if (!Array.isArray(data.sessions)) throw new Error(_ot('Im Backup fehlt die Sessions-Liste.', 'The backup is missing the sessions list.'));
   if (!data.sessionFiles || typeof data.sessionFiles !== 'object' || Array.isArray(data.sessionFiles)) {
-    throw new Error('Im Backup fehlen die Session-Dateien.');
+    throw new Error(_ot('Im Backup fehlen die Session-Dateien.', 'The backup is missing the session files.'));
   }
   getOfflineTrackDocument(data);
 
@@ -535,19 +539,19 @@ function payloadFromZipEntries(entries) {
   let tracks = byPath.get('tracks.json');
   let sessionsDocument = byPath.get('sessions.json');
   if (!tracks || !sessionsDocument) {
-    throw new Error('Das ZIP enthält keine vollständige Statistik-Sicherung (tracks.json und sessions.json fehlen).');
+    throw new Error(_ot('Das ZIP enthält keine vollständige Statistik-Sicherung (tracks.json und sessions.json fehlen).', 'The ZIP does not contain a complete statistics backup (tracks.json and sessions.json are missing).'));
   }
 
   let trackDocument = Array.isArray(tracks) ? { active: tracks[0]?.id || 'standard', tracks } : tracks;
   if (!trackDocument || !Array.isArray(trackDocument.tracks)) {
-    throw new Error('tracks.json im ZIP enthält keine gültige Streckenliste.');
+    throw new Error(_ot('tracks.json im ZIP enthält keine gültige Streckenliste.', 'tracks.json in ZIP does not contain a valid track list.'));
   }
   let sessions = Array.isArray(sessionsDocument) ? sessionsDocument : sessionsDocument.sessions;
-  if (!Array.isArray(sessions)) throw new Error('sessions.json im ZIP enthält keine Sessions-Liste.');
+  if (!Array.isArray(sessions)) throw new Error(_ot('sessions.json im ZIP enthält keine Sessions-Liste.', 'sessions.json in ZIP does not contain a sessions list.'));
 
   let names = byPath.get('names.json') || {};
   if (!names || typeof names !== 'object' || Array.isArray(names)) {
-    throw new Error('names.json im ZIP enthält kein gültiges Fahrernamen-Objekt.');
+    throw new Error(_ot('names.json im ZIP enthält kein gültiges Fahrernamen-Objekt.', 'names.json in ZIP does not contain a valid driver names object.'));
   }
   let sessionFiles = {};
   entries.forEach(entry => {
@@ -565,14 +569,14 @@ async function readImportFile(file) {
     return { entries, payload: payloadFromZipEntries(entries) };
   }
   if (!file.name.toLowerCase().endsWith('.json')) {
-    throw new Error('Bitte ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup auswählen.');
+    throw new Error(_ot('Bitte ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup auswählen.', 'Please select a Lap Timer ZIP or a statistics JSON backup.'));
   }
 
   let backup;
   try {
     backup = JSON.parse(await file.text());
   } catch (error) {
-    throw new Error('Die JSON-Datei konnte nicht gelesen werden: ' + error.message);
+    throw new Error(_ot('Die JSON-Datei konnte nicht gelesen werden: ', 'Could not read JSON file: ') + error.message);
   }
   let entries = validateBackup(backup);
   let trackDocument = getOfflineTrackDocument(backup);
@@ -685,7 +689,7 @@ async function refreshOfflineViews(dataset, fileMap) {
 
 async function loadOfflineFile(file) {
   if (!file) return;
-  setOfflineStatus(`Lese ${file.name} …`);
+  setOfflineStatus(_ot(`Lese ${file.name} …`, `Reading ${file.name} …`));
 
   try {
     if (!await offlineInitialization) return;
@@ -694,17 +698,26 @@ async function loadOfflineFile(file) {
     await refreshOfflineViews(imported.dataset, imported.fileMap);
     updateSaveButtonsUI(true);
 
-    let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
+    let summary = _ot(
+      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+    );
     document.getElementById('offlineBackupSummary').textContent = summary;
-    let status = `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    let status = _ot(
+      `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
+      `${file.name}: ${imported.added} new, ${imported.updated} updated; database now has ${imported.dataset.sessions.length} sessions.`
+    );
     let autoSaveNote = await tryAutoSaveStatusNote();
     if (autoSaveNote) status += autoSaveNote;
     if (imported.missingSessionFiles) {
-      status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
+      status += _ot(
+        ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`,
+        ` ${imported.missingSessionFiles} session file(s) for lap details are missing.`
+      );
     }
     setOfflineStatus(status, imported.missingSessionFiles ? 'error' : 'success');
   } catch (error) {
-    setOfflineStatus(error.message || 'Das Backup konnte nicht importiert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Das Backup konnte nicht importiert werden.', 'Could not import the backup.'), 'error');
   }
 }
 
@@ -718,10 +731,12 @@ function updateSaveButtonsUI(hasData) {
 
   if (saveButton) {
     saveButton.disabled = !hasData;
-    saveButton.textContent = '💾 Speichern';
+    saveButton.textContent = _ot('💾 Speichern', '💾 Save');
     saveButton.title = linkedSaveFileHandle
-      ? `Speichert direkt in „${linkedSaveFileHandle.name}“`
-      : (canPick ? 'Speicherort für statistics.zip wählen und speichern' : 'statistics.zip herunterladen');
+      ? _ot(`Speichert direkt in „${linkedSaveFileHandle.name}“`, `Saves directly to "${linkedSaveFileHandle.name}"`)
+      : (canPick
+        ? _ot('Speicherort für statistics.zip wählen und speichern', 'Choose location for statistics.zip and save')
+        : _ot('statistics.zip herunterladen', 'Download statistics.zip'));
   }
 }
 
@@ -758,7 +773,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
   let fileMap = getStoredFileMap(snapshot);
   let dataset = getDatasetFromSnapshot(snapshot, fileMap);
   if (!dataset.tracks) {
-    throw new Error('Es sind noch keine Statistikdaten zum Speichern vorhanden.');
+    throw new Error(_ot('Es sind noch keine Statistikdaten zum Speichern vorhanden.', 'No statistics data available to save yet.'));
   }
 
   if (supportsFileSystemSave()) {
@@ -769,7 +784,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
           suggestedName: linkedSaveFileHandle ? linkedSaveFileHandle.name : 'statistics.zip',
           startIn: linkedSaveFileHandle || 'documents',
           types: [{
-            description: 'RC Lap Timer Statistik-ZIP',
+            description: _ot('RC Lap Timer Statistik-ZIP', 'RC Lap Timer Statistics ZIP'),
             accept: { 'application/zip': ['.zip'] }
           }]
         });
@@ -781,7 +796,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
       let allowed = await ensureWritePermission(linkedSaveFileHandle, !autoSaveOnly);
       if (!allowed) {
         if (autoSaveOnly) return { saved: false, reason: 'permission' };
-        throw new Error('Schreibberechtigung für die Speicherdatei wurde nicht erteilt.');
+        throw new Error(_ot('Schreibberechtigung für die Speicherdatei wurde nicht erteilt.', 'Write permission for the save file was not granted.'));
       }
 
       let archive = createStatisticsZip(fileMap, dataset);
@@ -792,7 +807,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
           linkedSaveFileHandle = null;
           await writeOfflineSetting('saveFileHandle', null);
           updateSaveButtonsUI(true);
-          throw new Error('Die verknüpfte Speicherdatei wurde verschoben oder gelöscht. Bitte erneut auf „💾 Speichern“ klicken.');
+          throw new Error(_ot('Die verknüpfte Speicherdatei wurde verschoben oder gelöscht. Bitte erneut auf „💾 Speichern“ klicken.', 'The linked save file was moved or deleted. Please click "💾 Save" again.'));
         }
         throw writeError;
       }
@@ -818,17 +833,26 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
 
 async function tryAutoSaveStatusNote() {
   if (!supportsFileSystemSave()) {
-    return ' Tipp: Über „💾 Speichern“ kannst du statistics.zip als Backup herunterladen (direktes Überschreiben unterstützt dieser Browser nicht).';
+    return _ot(
+      ' Tipp: Über „💾 Speichern“ kannst du statistics.zip als Backup herunterladen (direktes Überschreiben unterstützt dieser Browser nicht).',
+      ' Tip: Click "💾 Save" to download statistics.zip as a backup (this browser does not support direct file overwriting).'
+    );
   }
   if (!linkedSaveFileHandle) {
-    return ' Tipp: Über „💾 Speichern“ kannst du eine lokale statistics.zip verknüpfen.';
+    return _ot(
+      ' Tipp: Über „💾 Speichern“ kannst du eine lokale statistics.zip verknüpfen.',
+      ' Tip: Click "💾 Save" to link a local statistics.zip file.'
+    );
   }
   let result = await saveDatabaseToFile({ autoSaveOnly: true });
   if (result.saved) {
-    return ` Direkt in „${result.fileName}“ gespeichert.`;
+    return _ot(` Direkt in „${result.fileName}“ gespeichert.`, ` Saved directly to "${result.fileName}".`);
   }
   if (result.reason === 'permission') {
-    return ` Klicke auf „💾 Speichern“, um „${linkedSaveFileHandle.name}“ zu aktualisieren.`;
+    return _ot(
+      ` Klicke auf „💾 Speichern“, um „${linkedSaveFileHandle.name}“ zu aktualisieren.`,
+      ` Click "💾 Save" to update "${linkedSaveFileHandle.name}".`
+    );
   }
   return '';
 }
@@ -836,32 +860,38 @@ async function tryAutoSaveStatusNote() {
 async function downloadStatisticsDatabase({ forcePicker = false } = {}) {
   let button = document.getElementById('exportDatabaseButton');
   if (!offlineDb || !await offlineInitialization) {
-    setOfflineStatus('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'error');
+    setOfflineStatus(_ot('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'The local statistics database is not available yet.'), 'error');
     return;
   }
   if (button) button.disabled = true;
   try {
     let result = await saveDatabaseToFile({ forcePicker });
     if (!result.saved && result.reason === 'cancelled') {
-      setOfflineStatus('Speichern abgebrochen.', 'info');
+      setOfflineStatus(_ot('Speichern abgebrochen.', 'Save cancelled.'), 'info');
       return;
     }
     if (result.method === 'handle') {
       setOfflineStatus(
-        `In „${result.fileName}“ gespeichert (${(result.size / 1024).toFixed(1)} KB).`,
+        _ot(
+          `In „${result.fileName}“ gespeichert (${(result.size / 1024).toFixed(1)} KB).`,
+          `Saved to "${result.fileName}" (${(result.size / 1024).toFixed(1)} KB).`
+        ),
         'success'
       );
     } else {
       let extra = !supportsFileSystemSave()
-        ? ' (Dieser Browser unterstützt kein direktes Überschreiben lokaler Dateien.)'
+        ? _ot(' (Dieser Browser unterstützt kein direktes Überschreiben lokaler Dateien.)', ' (This browser does not support direct overwriting of local files.)')
         : '';
       setOfflineStatus(
-        `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`,
+        _ot(
+          `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`,
+          `Statistics ZIP downloaded: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`
+        ),
         'success'
       );
     }
   } catch (error) {
-    setOfflineStatus(error.message || 'Statistikdatenbank konnte nicht gespeichert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Statistikdatenbank konnte nicht gespeichert werden.', 'Could not save statistics database.'), 'error');
   } finally {
     updateSaveButtonsUI(Boolean(offlineBackup && offlineBackup.tracks));
   }
@@ -877,11 +907,19 @@ async function restoreLocalDatabase() {
   }
 
   await refreshOfflineViews(dataset, fileMap);
-  document.getElementById('offlineBackupSummary').textContent =
-    `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
-  let status = `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`;
+  document.getElementById('offlineBackupSummary').textContent = _ot(
+    `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+    `${dataset.sessions.length} sessions · ${fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+  );
+  let status = _ot(
+    `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`,
+    `Local database loaded: ${dataset.sessions.length} sessions, ${fileMap.size} statistics files.`
+  );
   if (linkedSaveFileHandle) {
-    status += ` Verknüpfte Speicherdatei: „${linkedSaveFileHandle.name}“.`;
+    status += _ot(
+      ` Verknüpfte Speicherdatei: „${linkedSaveFileHandle.name}“.`,
+      ` Linked save file: "${linkedSaveFileHandle.name}".`
+    );
   }
   setOfflineStatus(status, 'success');
   updateSaveButtonsUI(true);
@@ -894,16 +932,20 @@ async function toggleOfflineFullscreen() {
     } else if (document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen();
     } else {
-      throw new Error('Der Browser unterstützt keinen Vollbildmodus.');
+      throw new Error(_ot('Der Browser unterstützt keinen Vollbildmodus.', 'This browser does not support fullscreen mode.'));
     }
   } catch (error) {
-    setOfflineStatus(error.message || 'Vollbild konnte nicht aktiviert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Vollbild konnte nicht aktiviert werden.', 'Could not activate fullscreen mode.'), 'error');
   }
 }
 
 function updateFullscreenButton() {
   let button = document.getElementById('fullscreenButton');
-  if (button) button.textContent = document.fullscreenElement ? '⛶ Vollbild verlassen' : '⛶ Vollbild';
+  if (button) {
+    button.textContent = document.fullscreenElement
+      ? _ot('⛶ Vollbild verlassen', '⛶ Exit Fullscreen')
+      : _ot('⛶ Vollbild', '⛶ Fullscreen');
+  }
 }
 
 function sleepMs(ms) {
@@ -913,20 +955,20 @@ function sleepMs(ms) {
 function normalizeLaptimerBaseUrl(rawInput) {
   let trimmed = String(rawInput || '').trim();
   if (!trimmed) {
-    throw new Error('Bitte eine IP-Adresse oder einen Hostnamen (z. B. laptimer.local) eingeben.');
+    throw new Error(_ot('Bitte eine IP-Adresse oder einen Hostnamen (z. B. laptimer.local) eingeben.', 'Please enter an IP address or hostname (e.g. laptimer.local).'));
   }
   let withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   let parsed;
   try {
     parsed = new URL(withScheme);
   } catch (error) {
-    throw new Error(`Ungültige Lap-Timer-Adresse: "${trimmed}"`);
+    throw new Error(_ot(`Ungültige Lap-Timer-Adresse: "${trimmed}"`, `Invalid Lap Timer address: "${trimmed}"`));
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Es werden nur HTTP- oder HTTPS-Adressen unterstützt.');
+    throw new Error(_ot('Es werden nur HTTP- oder HTTPS-Adressen unterstützt.', 'Only HTTP or HTTPS addresses are supported.'));
   }
   if (window.location.protocol === 'https:' && parsed.protocol === 'http:') {
-    throw new Error('Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Zugriffe auf lokale IPs. Bitte offline_stats/index.html lokal öffnen.');
+    throw new Error(_ot('Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Zugriffe auf lokale IPs. Bitte offline_stats/index.html lokal öffnen.', 'Browsers block HTTP requests to local IPs from an HTTPS page. Please open offline_stats/index.html locally.'));
   }
   return `${parsed.protocol}//${parsed.host}`;
 }
@@ -947,17 +989,20 @@ async function fetchLaptimerJson(url, attempt = 0) {
       return fetchLaptimerJson(url, attempt + 1);
     }
     if (!response.ok) {
-      let error = new Error(`HTTP ${response.status} bei ${url}`);
+      let error = new Error(_ot(`HTTP ${response.status} bei ${url}`, `HTTP ${response.status} at ${url}`));
       error.httpStatus = response.status;
       throw error;
     }
     return await response.json();
   } catch (error) {
     if (error && error.name === 'AbortError') {
-      throw new Error(`Zeitüberschreitung beim Verbinden mit ${url}.`);
+      throw new Error(_ot(`Zeitüberschreitung beim Verbinden mit ${url}.`, `Timeout connecting to ${url}.`));
     }
     if (error && error.httpStatus) throw error;
-    throw new Error(`Verbindung zum Lap Timer fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist der Lap Timer im selben WLAN und hat aktuelle Firmware?`);
+    throw new Error(_ot(
+      `Verbindung zum Lap Timer fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist der Lap Timer im selben WLAN und hat aktuelle Firmware?`,
+      `Connection to Lap Timer failed (${error.message || 'Network/CORS'}). Is the Lap Timer on the same Wi-Fi and running current firmware?`
+    ));
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -993,24 +1038,24 @@ async function syncFromLaptimer() {
   try {
     if (!await offlineInitialization) return;
 
-    setOfflineStatus(`Verbinde mit ${baseUrl} …`);
+    setOfflineStatus(_ot(`Verbinde mit ${baseUrl} …`, `Connecting to ${baseUrl} …`));
     let versionInfo = await fetchLaptimerJson(`${baseUrl}/api/version`);
     let firmwareLabel = versionInfo && versionInfo.firmware ? ` (${versionInfo.firmware})` : '';
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Strecken von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Strecken von ${baseUrl}${firmwareLabel} …`, `Loading tracks from ${baseUrl}${firmwareLabel} …`));
     let rawTracks = await fetchLaptimerJson(`${baseUrl}/api/tracks`);
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Fahrernamen von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Fahrernamen von ${baseUrl}${firmwareLabel} …`, `Loading driver names from ${baseUrl}${firmwareLabel} …`));
     let names = await fetchLaptimerJson(`${baseUrl}/api/names`);
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Sessions-Index von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Sessions-Index von ${baseUrl}${firmwareLabel} …`, `Loading sessions index from ${baseUrl}${firmwareLabel} …`));
     let sessionsDoc = await fetchLaptimerJson(`${baseUrl}/api/sessions`);
     let sessions = Array.isArray(sessionsDoc) ? sessionsDoc : (sessionsDoc && sessionsDoc.sessions) || [];
     if (!Array.isArray(sessions)) {
-      throw new Error('Der Lap Timer hat keine gültige Sessions-Liste geliefert.');
+      throw new Error(_ot('Der Lap Timer hat keine gültige Sessions-Liste geliefert.', 'The Lap Timer did not return a valid sessions list.'));
     }
 
     let snapshot = await readDatabaseSnapshot();
@@ -1037,7 +1082,10 @@ async function syncFromLaptimer() {
     for (let i = 0; i < sessionsToFetch.length; i++) {
       let session = sessionsToFetch[i];
       let relPath = normalizeStoredPath(session.file);
-      setOfflineStatus(`Lade Session-Datei ${i + 1}/${sessionsToFetch.length}: ${relPath} …`);
+      setOfflineStatus(_ot(
+        `Lade Session-Datei ${i + 1}/${sessionsToFetch.length}: ${relPath} …`,
+        `Loading session file ${i + 1}/${sessionsToFetch.length}: ${relPath} …`
+      ));
       await sleepMs(LAPTIMER_STEP_DELAY_MS);
       try {
         let fileData = await fetchLaptimerJson(`${baseUrl}/api/sessionfile?file=${encodeURIComponent('/' + relPath)}`);
@@ -1072,20 +1120,32 @@ async function syncFromLaptimer() {
     lastSyncedLaptimerUrl = baseUrl;
     if (clearButton) clearButton.disabled = false;
 
-    let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
+    let summary = _ot(
+      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+    );
     document.getElementById('offlineBackupSummary').textContent = summary;
 
-    let status = `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    let status = _ot(
+      `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
+      `Lap Timer${firmwareLabel}: ${imported.added} new, ${imported.updated} updated; database now has ${imported.dataset.sessions.length} sessions.`
+    );
     let autoSaveNote = await tryAutoSaveStatusNote();
     if (autoSaveNote) status += autoSaveNote;
     if (skippedMissing > 0) {
-      status += ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`;
+      status += _ot(
+        ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`,
+        ` ${skippedMissing} session file(s) not found on the Lap Timer.`
+      );
     } else if (imported.missingSessionFiles > 0) {
-      status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
+      status += _ot(
+        ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`,
+        ` ${imported.missingSessionFiles} session file(s) for lap details are missing.`
+      );
     }
     setOfflineStatus(status, (skippedMissing > 0 || imported.missingSessionFiles > 0) ? 'error' : 'success');
   } catch (error) {
-    setOfflineStatus(error.message || 'Daten konnten nicht vom Lap Timer geladen werden.', 'error');
+    setOfflineStatus(error.message || _ot('Daten konnten nicht vom Lap Timer geladen werden.', 'Could not load data from the Lap Timer.'), 'error');
   } finally {
     if (syncButton) syncButton.disabled = false;
     if (hostInput) hostInput.disabled = false;
@@ -1129,14 +1189,14 @@ function showUniversalDialog(opts) {
     const activeColor = themeColors[cleanTheme] || 'var(--neon-cyan)';
     if (title) {
       title.style.color = activeColor;
-      title.innerHTML = opts.title || 'HINWEIS';
+      title.innerHTML = opts.title || _ot('HINWEIS', 'NOTICE');
     }
 
     if (box) {
       if (opts.boxContent) {
         box.style.display = 'block';
         box.style.borderColor = activeColor;
-        if (boxLabel) boxLabel.innerText = opts.boxLabel || 'Details:';
+        if (boxLabel) boxLabel.innerText = opts.boxLabel || _ot('Details:', 'Details:');
         if (boxContent) boxContent.innerText = opts.boxContent;
         if (boxSub) {
           if (opts.boxSub) {
@@ -1164,17 +1224,17 @@ function showUniversalDialog(opts) {
     if (opts.isAlert) {
       if (cancelBtn) cancelBtn.style.display = 'none';
       if (confirmBtn) {
-        confirmBtn.innerText = opts.confirmText || 'VERSTANDEN';
+        confirmBtn.innerText = opts.confirmText || _ot('VERSTANDEN', 'GOT IT');
         confirmBtn.className = btnClass;
         confirmBtn.style.flex = '1';
       }
     } else {
       if (cancelBtn) {
         cancelBtn.style.display = 'block';
-        cancelBtn.innerText = opts.cancelText || 'ABBRECHEN';
+        cancelBtn.innerText = opts.cancelText || _ot('ABBRECHEN', 'CANCEL');
       }
       if (confirmBtn) {
-        confirmBtn.innerText = opts.confirmText || 'BESTÄTIGEN';
+        confirmBtn.innerText = opts.confirmText || _ot('BESTÄTIGEN', 'CONFIRM');
         confirmBtn.className = btnClass;
       }
     }
@@ -1203,19 +1263,22 @@ window.showAlert = function(opts) {
 
 async function clearLaptimerStorage() {
   if (!lastSyncedLaptimerUrl) {
-    setOfflineStatus('Bitte zuerst die Daten erfolgreich vom Lap Timer laden.', 'error');
+    setOfflineStatus(_ot('Bitte zuerst die Daten erfolgreich vom Lap Timer laden.', 'Please load data from the Lap Timer successfully first.'), 'error');
     return;
   }
 
   let confirmed = await window.showConfirm({
-    title: '🗑️ LAP-TIMER LEEREN?',
+    title: _ot('🗑️ LAP-TIMER LEEREN?', '🗑️ CLEAR LAP TIMER?'),
     theme: 'danger',
-    boxLabel: 'Zielgerät im WLAN:',
+    boxLabel: _ot('Zielgerät im WLAN:', 'Target device on Wi-Fi:'),
     boxContent: lastSyncedLaptimerUrl,
-    boxSub: 'Alle Sessions, Tagesbestzeiten & Streckenrekorde auf dem Gerät werden entfernt',
-    message: 'Möchtest du die Statistikdaten auf dem Lap Timer wirklich löschen, um Speicherplatz freizugeben?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Deine lokale Offline-Statistikdatenbank in diesem Browser bleibt vollständig erhalten.</span>',
-    confirmText: 'JETZT LÖSCHEN 🗑️',
-    cancelText: 'ABBRECHEN'
+    boxSub: _ot('Alle Sessions, Tagesbestzeiten & Streckenrekorde auf dem Gerät werden entfernt', 'All sessions, daily bests & track records on the device will be removed'),
+    message: _ot(
+      'Möchtest du die Statistikdaten auf dem Lap Timer wirklich löschen, um Speicherplatz freizugeben?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Deine lokale Offline-Statistikdatenbank in diesem Browser bleibt vollständig erhalten.</span>',
+      'Do you really want to delete the statistics data on the Lap Timer to free up storage?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Your local offline statistics database in this browser will remain completely intact.</span>'
+    ),
+    confirmText: _ot('JETZT LÖSCHEN 🗑️', 'DELETE NOW 🗑️'),
+    cancelText: _ot('ABBRECHEN', 'CANCEL')
   });
   if (!confirmed) return;
 
@@ -1227,7 +1290,7 @@ async function clearLaptimerStorage() {
   if (clearButton) clearButton.disabled = true;
   if (syncButton) syncButton.disabled = true;
   if (hostInput) hostInput.disabled = true;
-  setOfflineStatus(`Lösche Statistikdaten auf ${lastSyncedLaptimerUrl} …`);
+  setOfflineStatus(_ot(`Lösche Statistikdaten auf ${lastSyncedLaptimerUrl} …`, `Deleting statistics data on ${lastSyncedLaptimerUrl} …`));
 
   let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer = controller ? setTimeout(() => controller.abort(), LAPTIMER_FETCH_TIMEOUT_MS) : null;
@@ -1240,22 +1303,25 @@ async function clearLaptimerStorage() {
       signal: controller ? controller.signal : undefined
     });
     if (response.status === 423) {
-      throw new Error('Löschen während eines laufenden Rennens auf dem Lap Timer gesperrt.');
+      throw new Error(_ot('Löschen während eines laufenden Rennens auf dem Lap Timer gesperrt.', 'Deletion blocked while a race is running on the Lap Timer.'));
     }
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} beim Löschen auf dem Lap Timer.`);
+      throw new Error(_ot(`HTTP ${response.status} beim Löschen auf dem Lap Timer.`, `HTTP ${response.status} while deleting on the Lap Timer.`));
     }
     lastSyncedLaptimerUrl = null;
     setOfflineStatus(
-      'Speicherplatz auf dem Lap Timer wurde freigegeben. Deine lokale Offline-Datenbank bleibt erhalten.',
+      _ot(
+        'Speicherplatz auf dem Lap Timer wurde freigegeben. Deine lokale Offline-Datenbank bleibt erhalten.',
+        'Storage space on the Lap Timer has been freed. Your local offline database remains intact.'
+      ),
       'success'
     );
   } catch (error) {
     if (clearButton && lastSyncedLaptimerUrl) clearButton.disabled = false;
     if (error && error.name === 'AbortError') {
-      setOfflineStatus('Zeitüberschreitung beim Löschen auf dem Lap Timer.', 'error');
+      setOfflineStatus(_ot('Zeitüberschreitung beim Löschen auf dem Lap Timer.', 'Timeout while deleting on the Lap Timer.'), 'error');
     } else {
-      setOfflineStatus(error.message || 'Statistikdaten auf dem Lap Timer konnten nicht gelöscht werden.', 'error');
+      setOfflineStatus(error.message || _ot('Statistikdaten auf dem Lap Timer konnten nicht gelöscht werden.', 'Could not delete statistics data on the Lap Timer.'), 'error');
     }
   } finally {
     if (timer) clearTimeout(timer);
@@ -1302,7 +1368,7 @@ offlineInitialization = (async function initializeOfflineStatistics() {
     await restoreLocalDatabase();
     return true;
   } catch (error) {
-    setOfflineStatus(error.message || 'Lokale Statistikdatenbank konnte nicht initialisiert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Lokale Statistikdatenbank konnte nicht initialisiert werden.', 'Could not initialize local statistics database.'), 'error');
     return false;
   }
 })();

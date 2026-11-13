@@ -1,4 +1,6 @@
 (function() {
+  if (window.LT_LANG !== 'en') return;
+
   const dict = {
     // --- Allgemeine UI & Rollen ---
     "Zurück": "Back",
@@ -574,13 +576,43 @@
     ") werden direkt im Browser vor dem Senden komprimiert": ") are compressed right in the browser before upload",
     ". Das originale PC-Änderungsdatum bleibt exakt erhalten": ". Original file timestamps are preserved",
     "Wartungsmodus an alle Sektorstationen funken?": "Broadcast maintenance mode to all sector stations?",
-    "Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!": "Timing will be interrupted until the stations are restarted!"
+    "Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!": "Timing will be interrupted until the stations are restarted!",
+
+    // --- Offline-Statistik HTML ---
+    "RC Lap Timer Pro – Offline-Statistik 0.9.5": "RC Lap Timer Pro – Offline Statistics 0.9.5",
+    "Offline-Statistikauswertung": "Offline Statistics",
+    "· Daten bleiben auf diesem Gerät": "· Data stays on this device",
+    "Lap-Timer (IP/Host):": "Lap Timer (IP/Host):",
+    "laptimer.local oder IP": "laptimer.local or IP",
+    "Lap-Timer IP-Adresse oder Hostname im WLAN": "Lap Timer IP address or hostname on Wi-Fi",
+    "📡 Vom Lap Timer laden": "📡 Load from Lap Timer",
+    "🗑️ Lap-Timer leeren": "🗑️ Clear Lap Timer",
+    "Erst nach erfolgreicher Übertragung verfügbar": "Available after successful transfer",
+    "📂 Laden": "📂 Load",
+    "Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON": "Loads full Lap Timer backup (.zip), statistics.zip, or statistics JSON",
+    "💾 Speichern": "💾 Save",
+    "⛶ Vollbild": "⛶ Fullscreen",
+    "Lade eine Statistik-/Backup-Datei oder verbinde dich mit dem Lap Timer im WLAN.": "Load a statistics/backup file or connect to the Lap Timer on Wi-Fi.",
+    "Deine Rennstatistik – ganz ohne ESP-Verbindung": "Your race statistics – without needing an ESP connection",
+    "Lade ein Lap-Timer-Vollbackup, eine gespeicherte": "Load a full Lap Timer backup, a saved",
+    "bzw. ein JSON-Backup oder lies den Lap Timer direkt im WLAN aus. Die Datenbank wächst lokal mit jedem Import.": "or JSON backup, or read directly from the Lap Timer on Wi-Fi. The database grows locally with every import.",
+    "📍 STRECKE:": "📍 TRACK:",
+    "🌍 Alle Strecken": "🌍 All Tracks",
+    "🏆 Streckenrekord:": "🏆 Track Record:",
+    "⏱️ Tagesbestzeit:": "⏱️ Daily Best:",
+    "Statistikbereiche": "Statistics sections",
+    "← Zur Statistik": "← Back to Statistics",
+    "Fahrer-Profil": "Driver Profile",
+    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln"
   };
 
   window.LT_I18N = Object.assign(window.LT_I18N || {}, dict);
 
   window.applyI18nDOM = function() {
     document.documentElement.lang = 'en';
+    if (document.title && window.LT_I18N[document.title.trim()]) {
+      document.title = window.LT_I18N[document.title.trim()];
+    }
 
     if (document.body) {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
@@ -603,8 +635,8 @@
         }
       }
 
-      document.querySelectorAll('[title],[placeholder],[alt],input[type="button"],input[type="submit"]').forEach(el => {
-        ['title', 'placeholder', 'alt'].forEach(attr => {
+      document.querySelectorAll('[title],[placeholder],[alt],[aria-label],input[type="button"],input[type="submit"]').forEach(el => {
+        ['title', 'placeholder', 'alt', 'aria-label'].forEach(attr => {
           const val = el.getAttribute(attr);
           if (val && window.LT_I18N[val.trim()]) {
             el.setAttribute(attr, window.LT_I18N[val.trim()]);

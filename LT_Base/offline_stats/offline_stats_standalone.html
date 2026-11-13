@@ -906,6 +906,75 @@ input[type="number"]:focus, input[type="text"]:focus, input[type="password"]:foc
   border-color: var(--neon-cyan);
 }
 
+input[type="password"] {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 2px;
+}
+
+input[type="password"]::placeholder {
+  font-family: var(--font-body);
+  letter-spacing: normal;
+}
+
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+.wifi-input {
+  width: 100%;
+  margin-top: 3px;
+  background: #161b22 !important;
+  border-color: #30363d !important;
+  height: 36px;
+}
+
+.wifi-input:focus {
+  border-color: var(--neon-orange) !important;
+  box-shadow: 0 0 8px rgba(255, 153, 0, 0.25);
+}
+
+.wifi-input:-webkit-autofill,
+.wifi-input:-webkit-autofill:hover,
+.wifi-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #161b22 inset;
+  -webkit-text-fill-color: #fff;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.wifi-pass-wrap {
+  position: relative;
+  margin-top: 3px;
+}
+
+.wifi-pass-wrap .wifi-input {
+  margin-top: 0;
+  padding: 6px 34px;
+}
+
+.wifi-pass-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.wifi-pass-toggle:hover,
+.wifi-pass-toggle.is-visible {
+  color: var(--neon-orange);
+  background: rgba(255, 153, 0, 0.1);
+}
+
 table { 
   width: 100%; 
   border-collapse: collapse; 
@@ -1968,6 +2037,17 @@ body.offline-app {
 }
 
   </style>
+  <script>
+    window.LT_LANG = localStorage.getItem('lt_lang') || 'de';
+    window.LT_I18N = window.LT_I18N || {};
+    window.t = function(s) {
+      return (window.LT_LANG === 'en' && window.LT_I18N[s]) ? window.LT_I18N[s] : s;
+    };
+    window.toggleLanguage = function() {
+      localStorage.setItem('lt_lang', window.LT_LANG === 'en' ? 'de' : 'en');
+      location.reload();
+    };
+  </script>
 </head>
 <body class="offline-app">
   <header class="offline-toolbar">
@@ -1986,6 +2066,7 @@ body.offline-app {
       <input id="backupFileInput" type="file" accept=".zip,.json,application/zip,application/json">
       <button class="btn btn-green" id="exportDatabaseButton" type="button" disabled>💾 Speichern</button>
       <button class="btn" id="fullscreenButton" type="button">⛶ Vollbild</button>
+      <button class="btn" id="langToggleBtn" type="button" onclick="toggleLanguage()" title="Sprache wechseln / Switch language">🇬🇧 EN</button>
     </div>
     <div class="offline-status" id="offlineStatus" role="status" aria-live="polite">
       Lade eine Statistik-/Backup-Datei oder verbinde dich mit dem Lap Timer im WLAN.
@@ -2073,6 +2154,672 @@ body.offline-app {
   </div>
 
   <script>
+(function() {
+  if (window.LT_LANG !== 'en') return;
+
+  const dict = {
+    // --- Allgemeine UI & Rollen ---
+    "Zurück": "Back",
+    "Schließen": "Close",
+    "SCHLIESSEN": "CLOSE",
+    "ABBRECHEN": "CANCEL",
+    "STARTEN": "START",
+    "BESTÄTIGEN": "CONFIRM",
+    "OK": "OK",
+    "Lade...": "Loading...",
+    "⏳ Lade...": "⏳ Loading...",
+    "Unbekannt": "Unknown",
+    "Fahrer": "Driver",
+    "Auto": "Car",
+    "Fahrzeug": "Car",
+    "Fahrzeug unbekannt": "Unknown car",
+    "Alle Fahrzeuge": "All cars",
+    "Alle Fahrer": "All drivers",
+    "Alle Strecken": "All tracks",
+    "von": "by",
+    "Ziel": "Finish",
+    "ZIEL": "FINISH",
+    "Platz": "Place",
+    "WLAN:": "Wi-Fi:",
+    "Speicher:": "Storage:",
+    "VOLL! Keine Aufzeichnung!": "FULL! Recording stopped!",
+    "Fast voll!": "Almost full!",
+    "🛑 Speicher voll ({pct}%)! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.": "🛑 Storage full ({pct}%)! Sessions are no longer saved. Please delete existing sessions first.",
+
+    // --- Rollen-Badges & Navigation ---
+    "🏎️ Aktueller Modus: Fahrer. Zu Rennleiter wechseln 👑": "🏎️ Current mode: Driver. Switch to Race Director 👑",
+    "Klicken, um zum Rennleiter-Bereich zu wechseln": "Click to switch to Race Director view",
+    "👑 Aktueller Modus: Rennleiter. Zu Fahrer wechseln 🏎️": "👑 Current mode: Race Director. Switch to Driver view 🏎️",
+    "Zurück zur Fahrer-Ansicht wechseln": "Switch back to Driver view",
+    "Dashboard schließen": "Close dashboard",
+    "Top 5 Bestenliste öffnen": "Open Top 5 leaderboard",
+    "Klicken für Geister-Einstellungen": "Click for Ghost settings",
+    "← Zurück zum Rennleiter": "← Back to Race Director",
+    "← Zurück": "← Back",
+
+    // --- Status-Bar & Live-Tabelle ---
+    "Modus": "Mode",
+    "Restzeit": "Time Left",
+    "Führende Runde": "Leading Lap",
+    "🏎️ Schnellste Runde": "🏎️ Fastest Lap",
+    "Status": "Status",
+    "Sektorstationen": "Sector Stations",
+    "Sektorstationen:": "Sector Stations:",
+    "Website Status": "Website Status",
+    "Verbindung zur Basisstation": "Connection to base station",
+    "📋 Top 5 ▾": "📋 Top 5 ▾",
+    "Klicken für Top 5 Bestenliste": "Click for Top 5 leaderboard",
+    "🏆 STRECKENREKORD:": "🏆 TRACK RECORD:",
+    "⏱️ TAGESBESTZEIT:": "⏱️ DAILY BEST:",
+    "👑 QUALIFYING BEENDET – POLE POSITION 👑": "👑 QUALIFYING FINISHED – POLE POSITION 👑",
+    "👑 GEIST GESCHLAGEN – NEUE BESTZEIT! 👑": "👑 GHOST BEATEN – NEW BEST LAP! 👑",
+    "DER GEIST (ZIEL) ⚙️": "THE GHOST (TARGET) ⚙️",
+    "Klicken, um Geist-Ziel zu wählen / ändern": "Click to select / change ghost target",
+    "Strecke:": "Track:",
+    "Strecke": "Track",
+    "Aktive Strecke:": "Active Track:",
+    "Runde": "Lap",
+    "Letzte Zeit": "Last Lap",
+    "Beste Zeit": "Best Lap",
+    "Abstand": "Gap",
+    "Pos": "Pos",
+    "Fahrer / Auto": "Driver / Car",
+    "Warte auf Transponder-Signal...": "Waiting for transponder signal...",
+    "Keine Autos erfasst": "No cars detected yet",
+    "Tagesbestzeit:": "Daily Best:",
+    "Streckenrekord:": "Track Record:",
+    "Noch kein Streckenrekord": "No track record yet",
+    "Noch keine Bestzeit heute": "No daily best yet",
+    "Kein Streckenrekord": "No track record",
+    "Keine Bestzeit heute": "No daily best today",
+    "QUALI BEENDET": "QUALI FINISHED",
+    "LETZTE RUNDE": "FINAL LAP",
+
+    // --- Debug & Update Seiten ---
+    "⚠️ TAB MINIMIERT - POLLING & AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG": "⚠️ TAB MINIMIZED - POLLING & RECORDING PAUSED TO SAVE ESP RESOURCES",
+    "ESP8266 Systemlast": "ESP8266 System Load",
+    "Metriken abfragen (3s)": "Poll metrics (3s)",
+    "Laufzeit": "Uptime",
+    "CPU Takt": "CPU Clock",
+    "Freier Heap": "Free Heap",
+    "Fragmentierung": "Fragmentation",
+    "Max. Loop-Dauer": "Max. Loop Time",
+    "Debug-Modus ist deaktiviert.": "Debug mode is disabled.",
+    "🚀 LITTLEFS DATEI- & SPEICHER-MANAGER": "🚀 LITTLEFS FILE & STORAGE MANAGER",
+    "LittleFS Flash-Speicher": "LittleFS Flash Storage",
+
+    // --- Rennmodi ---
+    "Freies Training": "Free Practice",
+    "FREIES TRAINING": "FREE PRACTICE",
+    "TRAINING": "PRACTICE",
+    "Qualifying (Beendet)": "Qualifying (Finished)",
+    "QUALIFYING (BEENDET)": "QUALIFYING (FINISHED)",
+    "Rennen (Runden)": "Race (Laps)",
+    "RENNEN (RUNDEN)": "RACE (LAPS)",
+    "RENNEN ({cur}/{tot} RND)": "RACE ({cur}/{tot} LAPS)",
+    "Rennen (Zeit)": "Race (Time)",
+    "RENNEN (ZEIT)": "RACE (TIME)",
+    "Freies Training gestartet": "Free practice started",
+    "eine Minute": "one minute",
+    "Minuten": "minutes",
+    "Qualifying gestartet für {dur}!": "Qualifying started for {dur}!",
+    "Dragrace gestartet! Zeiterfassung startet bei Überfahrt der Basis.": "Drag race started! Timing begins when crossing the base station.",
+    "Durchgang gestoppt. Freies Training.": "Session stopped. Free practice.",
+
+    // --- Buttons in Fahrer & Admin Ansicht ---
+    "📱 Dashboard": "📱 Dashboard",
+    "📊 Statistiken": "📊 Statistics",
+    "🔊 Ton: AN": "🔊 Audio: ON",
+    "🔇 Ton: AUS": "🔇 Audio: OFF",
+    "Sprachausgabe aktiviert": "Voice output enabled",
+    "🔊 Mein Auto ansagen": "🔊 Announce my car",
+    "📱 iOS Ton": "📱 iOS Audio",
+    "✅ iOS Ton Aktiv": "✅ iOS Audio Active",
+    "📱 QR-Code": "📱 QR Code",
+    "👻 Ghosthunt": "👻 Ghosthunt",
+    "👻 Ghost Battle": "👻 Ghost Battle",
+    "⚙️ Einstellungen": "⚙️ Settings",
+    "📼 Arcade Audio": "📼 Arcade Audio",
+    "🛠️ Web-Update": "🛠️ Web Update",
+    "🩺 Diagnose": "🩺 Diagnostics",
+    "🏁 Freies Training": "🏁 Free Practice",
+    "⏱️ Start Quali": "⏱️ Start Quali",
+    "🏎️ Start Runden": "🏎️ Start Laps",
+    "⏳ Start Zeit": "⏳ Start Time",
+    "🚀 Start Dragrace": "🚀 Start Drag Race",
+    "⏹️ Durchgang Stoppen": "⏹️ Stop Session",
+    "🔄 Komplett-Reset": "🔄 Full Reset",
+    "➕ Neue Strecke": "➕ New Track",
+    "💾 Speichern & Schließen": "💾 Save & Close",
+
+    // --- Ghosthunt & Ghost Battle ---
+    "Geist": "Ghost",
+    "Streckenrekord": "Track Record",
+    "Tagesbestzeit": "Daily Best",
+    "Persönliche Bestzeit": "Personal Best",
+    "Zielzeit": "Target Time",
+    "Session-Führender": "Session Leader",
+    "Fallback: Eigene PB": "Fallback: Personal Best",
+    "mit Sektoren": "with sectors",
+    "Start/Ziel": "Start/Finish",
+    "Noch kein Streckenrekord (erste Runde setzt Geist)": "No track record yet (first lap sets ghost)",
+    "Noch keine Tagesbestzeit": "No daily best yet",
+    "Deine Bestzeit:": "Your Best Lap:",
+    "Eigener Geist:": "Personal Ghost:",
+    "Erste gezeitete Runde dieser Session setzt deinen Geist!": "First timed lap of this session sets your ghost!",
+    "Freie Zielzeit:": "Custom Target Time:",
+    "Gib unten deine Wunsch-Rundenzeit in Sekunden ein.": "Enter your desired lap time in seconds below.",
+    "Session-Führender:": "Session Leader:",
+    "Noch keine gezeitete Runde in dieser Session!": "No timed lap in this session yet!",
+    "↩️ Admin-Geist übernehmen": "↩️ Use Admin Ghost",
+    "⏹️ Ghosthunt beenden": "⏹️ Stop Ghosthunt",
+    "👻 Ghosthunt starten": "👻 Start Ghosthunt",
+    "🚀 Ghost Battle für alle starten": "🚀 Start Ghost Battle for all",
+    "🔄 Geist Aktualisieren": "🔄 Update Ghost",
+    "Bitte eine gültige Zielzeit in Sekunden eingeben (z. B. 12.5)!": "Please enter a valid target time in seconds (e.g. 12.5)!",
+    "Ghosthunt aktiviert! Schnapp dir den Geist!": "Ghosthunt activated! Catch the ghost!",
+    "Ghosthunt gegen den Streckenrekord!": "Ghosthunt against the track record!",
+    "Ghosthunt gegen die Tagesbestzeit!": "Ghosthunt against today's best!",
+    "Ghosthunt gegen deine persönliche Bestzeit!": "Ghosthunt against your personal best!",
+    "Ghosthunt aktiviert! Deine erste Runde setzt den Geist!": "Ghosthunt activated! Your first lap sets the ghost!",
+    "Ghosthunt gegen Zielzeit!": "Ghosthunt against target time!",
+    "Ghosthunt gegen {driver}!": "Ghosthunt against {driver}!",
+    "Noch keine Runden in dieser Session! Erste Runde setzt den Geist.": "No laps in this session yet! First lap sets the ghost.",
+    "Zurück zum Session-Geist.": "Back to session ghost.",
+    "Ghosthunt beendet.": "Ghosthunt ended.",
+    "Ghost Battle gestartet!": "Ghost Battle started!",
+    "Ghost Battle beendet.": "Ghost Battle ended.",
+    "Geist geschlagen! Neue Bestzeit!": "Ghost beaten! New best lap!",
+    "{driver} hat den Geist geschlagen!": "{driver} beat the ghost!",
+    "Geist gesetzt: {sec} Sekunden! Schnapp ihn dir!": "Ghost set: {sec} seconds! Go catch it!",
+
+    // --- TTS Ansagen ---
+    "Achtung, gleich geht's los!": "Drivers ready, starting soon!",
+    "Los!": "Go!",
+    "Das Rennen ist beendet!": "The race has finished!",
+    "Ziel! Das Rennen ist beendet! Herzlichen Glückwunsch an {driver} auf {car} zum Sieg!": "Finish! The race has ended! Congratulations to {driver} driving {car} on the victory!",
+    "Platz 2 geht an {p2}, und Platz 3 an {p3}!": "Second place goes to {p2}, and third place to {p3}!",
+    "Platz 2 geht an {p2}!": "Second place goes to {p2}!",
+    "Auf den weiteren Plätzen:": "Followed by:",
+    "Platz {pos} {driver}.": "Place {pos} {driver}.",
+    "{driver} gestartet!": "{driver} started!",
+    "{driver}, neue absolute Bestzeit! {time} Sekunden!": "{driver}, new overall best time! {time} seconds!",
+    "{driver}, persönliche Bestzeit! {time} Sekunden!": "{driver}, personal best! {time} seconds!",
+    "{driver}, Ziel! {time} Sekunden!": "{driver}, finish! {time} seconds!",
+    "{driver}, absolute Bestzeit Sektor {sector}!": "{driver}, overall best sector {sector}!",
+    "{driver}, Bestzeit Sektor {sector}!": "{driver}, best sector {sector}!",
+    "Noch 5 Runden!": "5 laps remaining!",
+    "Noch 3 Runden!": "3 laps remaining!",
+    "Letzte Runde!": "Final lap!",
+    "Neuer Führender! {driver} übernimmt die Spitze!": "New leader! {driver} takes the lead!",
+    "{driver}, Outlap beendet!": "{driver}, outlap complete!",
+    "du bist der Schnellste!": "you are the fastest!",
+    "du hast derzeit die {pos}. schnellste Zeit,": "you currently have the {pos}. fastest time,",
+    "schnellste Rennrunde!": "fastest race lap!",
+    "schnellste Runde!": "fastest lap!",
+    "neuer Streckenrekord!": "new track record!",
+    "neue Tagesbestzeit!": "new daily best!",
+    "persönliche Bestzeit!": "personal best!",
+    "Noch eine Minute!": "One minute remaining!",
+    "Noch 30 Sekunden!": "30 seconds remaining!",
+    "Noch 10 Sekunden!": "10 seconds remaining!",
+    "Die Zeit ist abgelaufen! Letzte Runde!": "Time is up! Final lap!",
+    "Qualifying beendet! Herzlichen Glückwunsch {driver} auf {car} zur Pole Position mit {time}!": "Qualifying finished! Congratulations to {driver} driving {car} on pole position with {time}!",
+    "Auf Platz 2 folgen {p2} und {p3} auf Platz 3.": "Second place is {p2} and third place is {p3}.",
+    "Auf Platz 2 folgt {p2}.": "Second place is {p2}.",
+    "Platz {pos} geht an {driver}.": "Place {pos} goes to {driver}.",
+    "Das Qualifying ist beendet!": "Qualifying has finished!",
+    "Die Zeit ist abgelaufen! Durchgang beendet!": "Time is up! Session finished!",
+    "{driver} verlässt die Box": "{driver} leaving the pits",
+    "{driver} wieder gestartet": "{driver} restarted",
+    "{driver} auf Outlap!": "{driver} on outlap!",
+    "{n1} ist aktiver Jäger. {n2} ist Zuhörer.": "{n1} is the active hunter. {n2} is listening.",
+    "Sprachausgabe aktiv für {n1} und {n2}": "Voice output active for {n1} and {n2}",
+    "Sprachausgabe aktiv für {n1} auf {c1}": "Voice output active for {n1} driving {c1}",
+    "Sprachausgabe für alle Fahrzeuge aktiv": "Voice output active for all cars",
+
+    // --- Config & WLAN Modals ---
+    "🏠 Heim-WLAN": "🏠 Home Wi-Fi",
+    "📱 Hotspot": "📱 Hotspot",
+    "📡 AP-Modus": "📡 AP Mode",
+    "Heim-WLAN": "Home Wi-Fi",
+    "Hotspot": "Hotspot",
+    "unbekannt": "unknown",
+    "Fallback von": "Fallback from",
+    "aktiv": "active",
+    "⚠️ SESSION WIRD BEENDET": "⚠️ SESSION WILL END",
+    "Aktuelle Session wird beendet und ein neues Freies Training gestartet.": "Current session will end and a new Free Practice will start.",
+    "Das laufende Rennen wird beendet!": "The current race will be stopped!",
+    "Namen gelten immer für die gesamte Session.": "Names always apply to the entire session.",
+    "BEENDEN & NEU STARTEN": "END & RESTART",
+    "❌ SPEICHERFEHLER": "❌ SAVE ERROR",
+    "Die Änderungen an den Fahrer-/Auto-Zuordnungen konnten nicht vollständig gespeichert werden. Bitte prüfe die Verbindung und kontrolliere die Zuordnungen erneut.": "Changes to driver/car mappings could not be saved completely. Please check your connection and verify the mappings.",
+    "⚠️ FEHLENDE EINGABE": "⚠️ MISSING INPUT",
+    "Bitte erst eine Hotspot-SSID in den WLAN-Einstellungen eintragen!": "Please enter a Hotspot SSID in the Wi-Fi settings first!",
+    "Heimnetzwerk": "HomeNetwork",
+    "[IP-Adresse]": "[IP-Address]",
+    "<IP aus Geister-WLAN>": "<IP from Helper Wi-Fi>",
+    "1. Im Smartphone-WLAN nach Geister-WLAN suchen:": "1. Look for the helper Wi-Fi on your phone:",
+    "2. Im Heim-WLAN im Browser öffnen:": "2. Open in browser on your home Wi-Fi:",
+    "Der Laptimer verbindet sich mit deinem Heim-WLAN per DHCP. Die vom Router vergebene IP liest du einfach am Ende des Geister-WLAN-Namens ab!": "The Lap Timer connects to your home Wi-Fi via DHCP. Simply read the assigned IP from the end of the helper Wi-Fi name!",
+    "💡 <strong>Super praktisch:</strong> Die Box speichert diese Heim-IP automatisch auch für den AP-Modus! Unterwegs an der Rennstrecke öffnest du den Laptimer also unter exakt derselben Adresse.": "💡 <strong>Super handy:</strong> The box saves this home IP for AP mode too! At the track, you open the Lap Timer at the exact same address.",
+    "1. Geister-WLAN oder Hotspot-Liste am Handy prüfen:": "1. Check helper Wi-Fi or your phone's hotspot client list:",
+    "2. Im Browser aufrufen:": "2. Open in your browser:",
+    "Der Laptimer verbindet sich mit deinem Handy-Hotspot. Lies die vergebene IP aus dem Geister-WLAN oder der Hotspot-Übersicht deines Smartphones ab.": "The Lap Timer connects to your phone hotspot. Read the assigned IP from the helper Wi-Fi name or your phone's hotspot client list.",
+    "📱 <strong>Tipp:</strong> Sobald dein Handy die Verbindung per Browser aufruft, schaltet sich das Geister-WLAN nach 20 Sekunden stromsparend ab.": "📱 <strong>Tip:</strong> As soon as your phone opens the page, the helper Wi-Fi turns off automatically after 20 seconds.",
+    "1. Smartphone direkt mit Laptimer-WLAN verbinden:": "1. Connect your phone directly to the Lap Timer Wi-Fi:",
+    "2. Im Browser öffnen (gewohnte Heim-IP):": "2. Open in browser (learned home IP):",
+    "Der Laptimer spannt sein eigenes Direkt-WLAN an der Rennstrecke auf (kein Router erforderlich).": "The Lap Timer creates its own direct Wi-Fi at the track (no router needed).",
+    "🎯 <strong>Dank IP-Sync:</strong> Dein Handy verbindet sich mit dem Laptimer-WLAN und nutzt dieselbe IP wie daheim ({ip})!": "🎯 <strong>Thanks to IP-Sync:</strong> Your phone connects to the Lap Timer Wi-Fi using the same IP as at home ({ip})!",
+    "Sende Trigger-Signal an Sektorstationen...": "Sending trigger signal to sector stations...",
+    "⚠️ Fehler:": "⚠️ Error:",
+    "✅ Signal erfolgreich gesendet!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Die Stationen blinken nun schnell (3Hz) und verbinden sich mit dem aktuellen Netzwerk.<br>Flash-Vorgang per OTA kann gestartet werden.</span>": "✅ Signal sent!<br><br><span style='color:var(--text-main);font-size:13px;font-weight:normal;'>Stations are now blinking fast (3Hz) and connecting to the current network.<br>You can start OTA flashing now.</span>",
+    "❌ Fehler beim Senden:": "❌ Send error:",
+    "Passwort verbergen": "Hide password",
+    "Passwort anzeigen": "Show password",
+
+    // --- Top 5 & Delete Modals ---
+    "🏆 STRECKENREKORD – TOP 5 (ALL-TIME)": "🏆 TRACK RECORD – TOP 5 (ALL-TIME)",
+    "Noch kein Streckenrekord auf dieser Strecke": "No track record on this track yet",
+    "⏱️ TAGESBESTZEIT – TOP 5 (HEUTE)": "⏱️ DAILY BEST – TOP 5 (TODAY)",
+    "Heute noch keine Zeit auf dieser Strecke gefahren": "No lap time recorded on this track today",
+    "Pro Fahrer & Fahrzeug wird jeweils die schnellste Zeit geführt.": "Only the fastest lap per driver & car is listed.",
+    "Beim Löschen einer Fehlmessung rückt die vorherige Bestzeit des Fahrers automatisch nach.": "Deleting a false reading automatically promotes the driver's previous best time.",
+    "⏳ Runde wird gelöscht – bitte Seite nicht neu laden und das Gerät nicht trennen.": "⏳ Deleting lap – please do not reload the page or disconnect power.",
+    "Löschen ist während eines laufenden Rennens gesperrt.": "Deleting is locked while a race is running.",
+    "Zu wenig freier Speicher im Basisgerät. Bitte später erneut versuchen (z. B. weniger Geräte verbunden). Es wurde nichts verändert.": "Not enough free memory on the base station. Please try again later (e.g. fewer connected clients). Nothing was changed.",
+    "Kein Platz im Dateisystem für das sichere Umschreiben der Session (Flash fast voll). Es wurde nichts verändert.": "Not enough filesystem space to safely rewrite the session (flash almost full). Nothing was changed.",
+    "Das Basisgerät bearbeitet gerade einen anderen Löschauftrag. Bitte kurz warten und erneut versuchen.": "The base station is currently processing another delete request. Please wait a moment and try again.",
+    "Keine Rückmeldung vom Basisgerät. Bitte Zustand prüfen.": "No response from the base station. Please check device status.",
+    "Die Runde wurde in der Session-Datei nicht gefunden (evtl. altes Datenformat). Es wurde nichts verändert.": "Lap not found in the session file (possibly legacy format). Nothing was changed.",
+    "🔒 GESPERRT": "🔒 LOCKED",
+    "⏱️ TAGESBESTZEIT LÖSCHEN": "⏱️ DELETE DAILY BEST",
+    "🏆 STRECKENREKORD LÖSCHEN": "🏆 DELETE TRACK RECORD",
+
+    // --- Stats UI ---
+    "🏆 All-Time Rekorde": "🏆 All-Time Records",
+    "⏱️ Tagesbestzeiten (Heute)": "⏱️ Daily Bests (Today)",
+    "Offizielle Strecken-Rekordliste": "Official track record list",
+    "📌 Offizielle Rekorde": "📌 Official Records",
+    "Aus allen Sessions ermittelt": "Calculated from all sessions",
+    "📊 Aus Sessions": "📊 From Sessions",
+    "📍 STRECKE:": "📍 TRACK:",
+    "🏎️ FAHRZEUG:": "🏎️ CAR:",
+    "👤 FAHRER:": "👤 DRIVER:",
+    "SORTIERUNG:": "SORT BY:",
+    "⚡ Zeit": "⚡ Time",
+    "👤 Fahrer": "👤 Driver",
+    "🏎️ Fahrzeug": "🏎️ Car",
+    "📅 Datum": "📅 Date",
+    "Keine Rekorde für die ausgewählten Kriterien auf {track} vorhanden.": "No records found for the selected criteria on {track}.",
+    "🔄 Runden": "🔄 Laps",
+    "⚡ Bestzeit": "⚡ Best Lap",
+    "Direkt zur Session dieser Strecken-Bestzeit springen": "Jump directly to the session of this track best",
+    "Gefahrene Runden:": "Completed Laps:",
+    "Bestzeit": "Best Lap",
+    "Profil öffnen ▶": "Open profile ▶",
+    "Keine Fahrerdaten vorhanden.": "No driver data available.",
+    "🔄 Index aus Dateisystem neu aufbauen": "🔄 Rebuild index from filesystem",
+    "Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.": "No saved sessions found in the index for this selection.",
+    "Läufe": "Runs",
+    "Runden": "Laps",
+    "Laufzeiten": "Run Times",
+    "Rundenzeiten": "Lap Times",
+
+    // --- Fehlende Buttons, Labels & Modals aus index.html & admin.html ---
+    "RC Lap Timer Pro - Rennleiter": "RC Lap Timer Pro - Race Director",
+    "Streckenrekord (": "Track Record (",
+    "DEINE RUNDE (": "YOUR LAP (",
+    "Runde 0": "Lap 0",
+    "Fahrer 1": "Driver 1",
+    "Fahrer 2": "Driver 2",
+    "BOX": "PIT",
+    "Keine aktiven Fahrzeuge auf der Strecke": "No active cars on track",
+    "🏎️ Keine aktiven Fahrzeuge auf der Strecke": "🏎️ No active cars on track",
+    "🎧 FAHRZEUGE FÜR SPRACHANSAGE & DASHBOARD:": "🎧 CARS FOR VOICE OUTPUT & DASHBOARD:",
+    "Wähle bis zu 2 Fahrer für Sprachausgabe und Splitscreen-Dashboard.": "Select up to 2 drivers for voice output and splitscreen dashboard.",
+    "🎧 Fahrer 1 wählen...": "🎧 Select Driver 1...",
+    "➕ Fahrer 2 (optional)...": "➕ Driver 2 (optional)...",
+    "🎧 MEIN FAHRZEUG FÜR SPRACHANSAGE:": "🎧 MY CAR FOR VOICE OUTPUT:",
+    "Wähle dein Auto – Rundenzeiten & Sektoren werden live vorgelesen": "Select your car – lap times & sectors are announced live",
+    "🔊 Alle Fahrzeuge ansagen": "🔊 Announce all cars",
+    "Sprachausgabe für:": "Voice output for:",
+    "Warte auf Signal...": "Waiting for signal...",
+    "🏎️ Dashboard": "🏎️ Dashboard",
+    "📲 QR-Code": "📲 QR Code",
+    "⬆ Web-Update": "⬆ Web Update",
+    "📡 Debug": "📡 Debug",
+    "📍 AKTUELLE STRECKE:": "📍 ACTIVE TRACK:",
+    "🏆 Top 5": "🏆 Top 5",
+    "PRACTICE": "PRACTICE",
+    "Min.": "Min.",
+    "Start Quali": "Start Quali",
+    "Rnd.": "Laps",
+    "Start Runden": "Start Laps",
+    "Start Zeit": "Start Time",
+    "Start Dragrace": "Start Drag Race",
+    "⏹ Durchgang Stoppen": "⏹ Stop Session",
+    "Komplett-Reset": "Full Reset",
+    "LIVE SENSOR DEBUG (LETZTE 5 IDS)": "LIVE SENSOR DEBUG (LAST 5 IDS)",
+    "🏆 TOP 5 BESTENLISTE": "🏆 TOP 5 LEADERBOARD",
+    "🏆 TOP 5 BESTENLISTE & KORREKTUR": "🏆 TOP 5 LEADERBOARD & EDIT",
+    "Lade Top 5...": "Loading Top 5...",
+    "📊 Zur Rekord-Statistik": "📊 Go to Record Stats",
+    "👻 GHOSTHUNT (GEISTER-AUSWAHL)": "👻 GHOSTHUNT (SELECT GHOST)",
+    "👻 GHOST BATTLE (MODUS 5)": "👻 GHOST BATTLE (MODE 5)",
+    "Wähle deinen Gegner (Der Geist):": "Choose your opponent (The Ghost):",
+    "🏆 Streckenrekord-Geist (All-Time P1)": "🏆 Track Record Ghost (All-Time P1)",
+    "⏱️ Tagesbestzeit-Geist (Heutiges P1)": "⏱️ Daily Best Ghost (Today's P1)",
+    "👤 Eigener Geist / Session-PB": "👤 Personal Ghost / Session PB",
+    "🏎️ Live-Führender der Session": "🏎️ Live Session Leader",
+    "🎯 Freie Wunsch-Zielzeit": "🎯 Custom Target Time",
+    "Lade Streckenrekord...": "Loading track record...",
+    "Zielzeit in Sekunden (z. B. 12.500):": "Target time in seconds (e.g. 12.500):",
+    "🚀 Ghost Battle Starten": "🚀 Start Ghost Battle",
+    "⚙️ FAHRER-EINSTELLUNGEN": "⚙️ DRIVER SETTINGS",
+    "🎙️ Sprachansagen": "🎙️ Voice Announcements",
+    "📢 Sektor-Bestzeiten Sprachansage": "📢 Sector Best Voice Announcements",
+    "Sagt neue absolute und persönliche Sektor-Bestzeiten an": "Announces new overall and personal best sector times",
+    "⏱️ SZ-Durchfahrts-Ticks (SZ1–SZ3 Beep)": "⏱️ Sector Crossing Ticks (SZ1–SZ3 Beep)",
+    "A7 Chiptune-Tick: Fahrer 1 einfacher Beep, Fahrer 2 doppelter Beep": "A7 chiptune tick: Driver 1 single beep, Driver 2 double beep",
+    "👻 Ghost Sektor-Pieptöne (Buzzer & Beeps)": "👻 Ghost Sector Beeps (Buzzer & Beeps)",
+    "Hoher Doppel-Beep bei Vorsprung, Bass-Beep bei Rückstand": "High double-beep when ahead, low bass-beep when behind",
+    "🗣️ Ghost Sektor-Sprachausgabe (Delta)": "🗣️ Ghost Sector Voice Delta",
+    "Sagt Vorsprung/Rückstand auf Hundertstel an (z. B. „Minus eins fünfundzwanzig“)": "Announces lead/gap to the hundredth (e.g. 'Minus one twenty-five')",
+    "📢 Rundenzeiten im Rennen ansagen": "📢 Announce lap times in races",
+    "Platzierungen werden im Rennen immer angesagt": "Positions are always announced during races",
+    "(Platzierungen werden immer angesagt)": "(Positions are always announced)",
+    "🚦 Countdown-Sprachansage stummschalten": "🚦 Mute countdown voice",
+    "Kein Sprach-Countdown (3-2-1), sondern nur der synchrone Startampel-Buzzer": "No voice countdown (3-2-1), only the synchronized start light buzzer",
+    "(Kein Sprach-Countdown 3-2-1, sondern nur der synchrone Startampel-Buzzer)": "(No voice countdown 3-2-1, only the synchronized start light buzzer)",
+    "👑 ZUM RENMLEITER WECHSELN?": "👑 SWITCH TO RACE DIRECTOR?",
+    "Im Rennleiter-Bereich können Rennmodi gesteuert, Durchgänge gestartet/gestoppt und Systemeinstellungen geändert werden.": "In the Race Director view you can control race modes, start/stop sessions, and change system settings.",
+    "Ja, wirklich zum Rennleiter-Bereich wechseln": "Yes, switch to Race Director view",
+    "WEITER ZUM ADMIN 👑": "CONTINUE TO ADMIN 👑",
+    "📊 STATISTIKEN & RENN-HISTORIE": "📊 STATISTICS & RACE HISTORY",
+    "🌐 Alle Strecken": "🌐 All Tracks",
+    "🔄 Index neu aufbauen": "🔄 Rebuild Index",
+    "🏆 Rekorde": "🏆 Records",
+    "⏱️ Qualifying": "⏱️ Qualifying",
+    "🏎️ Rennen (Runden)": "🏎️ Race (Laps)",
+    "⏳ Rennen (Zeit)": "⏳ Race (Time)",
+    "⚡ Dragrace": "⚡ Drag Race",
+    "Alle Statistiken löschen": "Delete all statistics",
+    "Fahrer-Profil": "Driver Profile",
+    "Lade Fahrer-Statistik...": "Loading driver statistics...",
+    "Alle Statistiken dieses Fahrers löschen": "Delete all statistics for this driver",
+    "SYSTEM-EINSTELLUNGEN": "SYSTEM SETTINGS",
+    "Sektorstationen & Modi": "Sector Stations & Modes",
+    "SZ1 verwenden": "Use SZ1",
+    "SZ2 verwenden": "Use SZ2",
+    "SZ3 verwenden": "Use SZ3",
+    "Checkpoint-Modus (Alle aktiven SZ Pflicht)": "Checkpoint Mode (All active sectors required)",
+    "📶 WLAN Kontrollzentrum": "📶 Wi-Fi Control Center",
+    "Hier Daten für alle Netzwerke pflegen. Ein Klick auf die Buttons zwingt die Basis sofort ins gewählte WLAN.": "Manage credentials for all networks here. Clicking a button switches the base station immediately.",
+    "Heim-WLAN SSID:": "Home Wi-Fi SSID:",
+    "Passwort:": "Password:",
+    "Hotspot SSID:": "Hotspot SSID:",
+    "AP SSID (Name):": "AP SSID (Name):",
+    "Passwort (AP):": "Password (AP):",
+    "🏠 Zu Heim-WLAN": "🏠 To Home Wi-Fi",
+    "📱 Zu Hotspot": "📱 To Hotspot",
+    "📡 Zu AP-Modus": "📡 To AP Mode",
+    "🎙️ Sprachausgabe für dieses Handy": "🎙️ Voice Output for This Phone",
+    "Wähle, welche Fahrzeuge auf": "Select which cars should be",
+    "diesem Gerät": "this device",
+    "angesagt werden sollen": "announced on",
+    "Alle anhaken": "Select all",
+    "Alle abwählen": "Deselect all",
+    "Mindest-Rundenzeit / Deadtime (Sek.):": "Minimum Lap Time / Deadtime (sec):",
+    "2-Frame Entprellung aktivieren": "Enable 2-frame debounce",
+    "Verhindert Geister-Runden und Fehlauslösungen, indem jedes Transponder-Signal doppelt verifiziert wird. Empfohlen in engen Umgebungen.": "Prevents ghost laps and false triggers by verifying each transponder signal twice. Recommended in tight spaces.",
+    "Transponder-IDs zuweisen (Fahrer & Auto)": "Assign Transponder IDs (Driver & Car)",
+    "Speichern & Schließen": "Save & Close",
+    "⚠️ KOMPLETT-RESET": "⚠️ FULL RESET",
+    "Möchtest du wirklich alle aktuellen Runden, Sektorzeiten und den laufenden Durchgang komplett zurücksetzen?": "Do you really want to reset all current laps, sector times, and the active session?",
+    "⏱️ Tagesbestzeit (Top 5 heute) ebenfalls zurücksetzen": "⏱️ Also reset today's daily bests (Top 5 today)",
+    "(Der ewige Streckenrekord bleibt erhalten)": "(The all-time track record will be preserved)",
+    "JETZT ZURÜCKSETZEN": "RESET NOW",
+    "🚀 WLAN WIRD GEWECHSELT": "🚀 SWITCHING WI-FI",
+    "Das System bricht nun alle aktuellen Verbindungen ab und startet den Wechsel.": "The system will now drop all active connections and start switching.",
+    "1. Scanne nach diesem Geister-WLAN:": "1. Scan for this helper Wi-Fi:",
+    "2. Öffne im Browser:": "2. Open in browser:",
+    "ALLES KLAR, AUSFÜHREN!": "GOT IT, PROCEED!",
+    "📍 NEUE STRECKE ANLEGEN": "📍 CREATE NEW TRACK",
+    "Gib den Namen der Rennstrecke ein. Für jede Strecke wird ein eigenes Verzeichnis mit 5 Statistik-Kategorien und eigenem Streckenrekord geführt.": "Enter the track name. Each track gets its own folder with 5 stat categories and its own track record.",
+    "ANLEGEN & WÄHLEN": "CREATE & SELECT",
+    "🛑 SPEICHER VOLL!": "🛑 STORAGE FULL!",
+    "Speicher voll! Sessions werden nicht mehr gespeichert. Bitte erst bestehende Sessions löschen.": "Storage full! Sessions are no longer saved. Please delete existing sessions first.",
+    "Der Flash-Speicher hat die Obergrenze von 95% erreicht (": "Flash storage has reached the 95% limit (",
+    "). Die Live-Zeitmessung funktioniert weiterhin, wird aber nicht mehr im Dateisystem aufgezeichnet.": "). Live timing continues to work, but sessions are no longer written to flash.",
+    "📊 SESSIONS VERWALTEN": "📊 MANAGE SESSIONS",
+    "VERSTANDEN": "GOT IT",
+    "Original Accolade MS-DOS PC-Speaker Chiptunes (1987–1990) direkt über den Hardware-Buzzer des ESP8266 abspielen.": "Play original Accolade MS-DOS PC-speaker chiptunes (1987–1990) directly on the ESP8266 hardware buzzer.",
+    "Soundtrack auswählen:": "Select Soundtrack:",
+    "Endlosschleife (Loop)": "Loop continuously",
+    "▶ Abspielen": "▶ Play",
+    "⏹ Stopp": "⏹ Stop",
+    "Status: Bereit": "Status: Ready",
+    "Renn-Soundeffekte testen:": "Test Race Sound Effects:",
+    "🚦 Startampel": "🚦 Start Lights",
+    "⏱️ Runden-Tick": "⏱️ Lap Tick",
+    "🏆 Rekord-Fanfare": "🏆 Record Fanfare",
+    "📲 MIT ZEITMESSUNG VERBINDEN": "📲 CONNECT TO TIMING",
+    "Scanne den QR-Code mit der Handykamera, um die Zeitmessung direkt im Browser zu öffnen:": "Scan the QR code with your phone camera to open live timing directly in your browser:",
+    "Direkt-Link:": "Direct Link:",
+
+    // --- Attributes (title & placeholder) ---
+    "Öffnet das Renn-Dashboard": "Opens the race dashboard",
+    "QR-Code zum Verbinden anzeigen": "Show QR code to connect",
+    "QR-Code für Fahrer anzeigen": "Show QR code for drivers",
+    "Dateisystem durchsuchen und Sessions-Index reparieren": "Scan filesystem and rebuild sessions index",
+    "Top 5 Bestenliste & Verwaltung öffnen": "Open Top 5 leaderboard & management",
+    "Klicken für Top 5 Bestenliste & Löschfunktion": "Click for Top 5 leaderboard & delete options",
+    "Top 5 Streckenrekorde & Tagesbestzeiten verwalten": "Manage Top 5 track records & daily bests",
+    "Aktuelle Strecke samt zugehöriger Sessions löschen": "Delete current track and all its sessions",
+    "Accolade PC-Speaker Arcade Audio Jukebox": "Accolade PC-Speaker Arcade Audio Jukebox",
+    "WLAN Name": "Wi-Fi Name",
+    "Passwort": "Password",
+    "z.B. Poco F7": "e.g. Poco F7",
+    "z.B. RC-LapTimer": "e.g. RC-LapTimer",
+    "z.B. Indoor Teppich, Gartenkurs...": "e.g. Indoor Carpet, Backyard Track...",
+
+    // --- Debug & Update HTML ---
+    "⚠️ TAB MINIMIERT - POLLING & AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG": "⚠️ TAB MINIMIZED - POLLING & RECORDING PAUSED TO SAVE ESP RESOURCES",
+    "Ping (Latenz)": "Ping (Latency)",
+    "Letzter Boot / Reset-Grund": "Last Boot / Reset Reason",
+    "📋 Reset- & Crash-Log": "📋 Reset & Crash Log",
+    "🔍 Frontend & Asset Live-Diagnose": "🔍 Frontend & Asset Live Diagnostics",
+    "🚀 Alle Assets jetzt testen": "🚀 Test All Assets Now",
+    "Prüft HTTP-Status, GZIP-Kompression, WebSocket-Handshake und parst JavaScript live im Browser auf Syntax- und Encoding-Fehler.": "Checks HTTP status, GZIP compression, WebSocket handshake, and parses JavaScript live in the browser for syntax and encoding errors.",
+    "Größe": "Size",
+    "Syntax- & Header-Prüfung": "Syntax & Header Check",
+    "Nicht getestet": "Not tested",
+    "Audio & Buzzer Test-Konsole": "Audio & Buzzer Test Console",
+    "Bereit": "Ready",
+    "Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des ESP8266 (GPIO5), lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.": "Tests all audio outputs of the system: physical ESP8266 hardware buzzer (GPIO5), local Web Audio synthesizer beeps, and Web Speech (TTS) voice announcements on your phone.",
+    "1. ESP8266 Hardware-Buzzer (PC-Speaker an GPIO5 / D1)": "1. ESP8266 Hardware Buzzer (PC Speaker on GPIO5 / D1)",
+    "Sendet HTTP-Kommandos an": "Sends HTTP commands to",
+    "zur direkten Tonausgabe über den Basisstations-Lautsprecher.": "for direct audio output via the base station speaker.",
+    "Renn-Soundeffekte (FX):": "Race Sound Effects (FX):",
+    "🚦 Startampel (2-1-GO!)": "🚦 Start Lights (2-1-GO!)",
+    "🏆 Streckenrekord-Fanfare": "🏆 Track Record Fanfare",
+    "👻 Sieg über Geist": "👻 Ghost Victory",
+    "🟢 Sektor Grün (Vorsprung)": "🟢 Sector Green (Ahead)",
+    "🔴 Sektor Rot (Rückstand)": "🔴 Sector Red (Behind)",
+    "⏹️ Ton Stoppen": "⏹️ Stop Audio",
+    "▶ Track starten": "▶ Start Track",
+    "2. Smartphone Web Audio Synthesizer (Lokal im Browser)": "2. Smartphone Web Audio Synthesizer (Local in Browser)",
+    "Wird via Web Audio API (Square-Wave Oszillator) latenzfrei direkt auf dem Handy-Lautsprecher erzeugt.": "Generated with zero latency via Web Audio API (square-wave oscillator) directly on your phone speaker.",
+    "⏱️ SZ-Tick F1 (A7 einfach 25ms)": "⏱️ Sector Tick D1 (A7 single 25ms)",
+    "⏱️ SZ-Tick F2 (A7 doppelt 25/50/25ms)": "⏱️ Sector Tick D2 (A7 double 25/50/25ms)",
+    "🟢 Sektor-Vorsprung (Doppel-Beep)": "🟢 Sector Ahead (Double Beep)",
+    "🔴 Sektor-Rückstand (Bass-Beep)": "🔴 Sector Behind (Bass Beep)",
+    "👻 Geist geschlagen (Fanfare)": "👻 Ghost Beaten (Fanfare)",
+    "⏱️ Runden-Tick (1760 Hz)": "⏱️ Lap Tick (1760 Hz)",
+    "🚦 Startampel (Rot-Rot-Grün)": "🚦 Start Lights (Red-Red-Green)",
+    "🔓 Audio freischalten (iOS)": "🔓 Unlock Audio (iOS)",
+    "3. Smartphone Sprachausgabe (Web Speech API / TTS)": "3. Smartphone Voice Output (Web Speech API / TTS)",
+    "Rennleiter-Sprachausgabe im Browser mit phonetischer Optimierung für deutsche Aussprache.": "Race director voice output in the browser.",
+    "🚦 Start-Countdown (3-2-1-Los)": "🚦 Start Countdown (3-2-1-Go)",
+    "⏱️ Rundenansage": "⏱️ Lap Announcement",
+    "🟢 Delta Vorsprung (-0.35s)": "🟢 Delta Ahead (-0.35s)",
+    "🔴 Delta Rückstand (+1.12s)": "🔴 Delta Behind (+1.12s)",
+    "🔋 Akku-Warnung": "🔋 Battery Warning",
+    "🏁 Siegerehrung (Ziel)": "🏁 Podium Ceremony (Finish)",
+    "⏹️ TTS Stopp": "⏹️ Stop TTS",
+    "ESP-NOW Funkpakete (Lokale Historie)": "ESP-NOW Radio Packets (Local History)",
+    "Paket-Aufzeichnung aktivieren": "Enable packet recording",
+    "Tabelle einfrieren": "Freeze table",
+    "Station:": "Station:",
+    "Alle": "All",
+    "Basis (Heartbeat)": "Base (Heartbeat)",
+    "🗑️ Log leeren": "🗑️ Clear Log",
+    "Uhrzeit ESP": "ESP Time",
+    "Auto-ID": "Car ID",
+    "Nutzdaten": "Payload",
+    "📋 ESP8266 Reset- & Crash-Log": "📋 ESP8266 Reset & Crash Log",
+    "Lade Log...": "Loading log...",
+    "🗑️ Crash-Log leeren": "🗑️ Clear Crash Log",
+    "Belegt:": "Used:",
+    "Frei:": "Free:",
+    "Gesamt:": "Total:",
+    "Dateien hochladen": "Upload Files",
+    "Ziel: 📁 / (Hauptverzeichnis)": "Target: 📁 / (Root)",
+    "Ziel:": "Target:",
+    "Hauptverzeichnis": "Root",
+    "Auf Hauptverzeichnis zurücksetzen": "Reset to root folder",
+    "Auto-Gzip aktiv:": "Auto-Gzip active:",
+    ") werden direkt im Browser vor dem Senden komprimiert . Das originale PC-Änderungsdatum bleibt exakt erhalten .": ") are compressed right in the browser before upload. Original file timestamps are preserved.",
+    "⚡ Dateien automatisch vor dem Upload komprimieren (.gz)": "⚡ Automatically compress files before upload (.gz)",
+    "Dateien, Ordner oder .zip-Backup hier ablegen": "Drop files, folders, or .zip backup here",
+    "📄 Dateien wählen": "📄 Select Files",
+    "📁 Ordner wählen": "📁 Select Folder",
+    "📦 Backup (.zip) einspielen": "📦 Restore Backup (.zip)",
+    "✕ Leeren": "✕ Clear",
+    "Upload starten": "Start Upload",
+    "Gespeicherte Dateien im Flash": "Stored Files in Flash",
+    "📁 Ordner-Ansicht": "📁 Folder View",
+    "📥 Backup (.zip) einspielen": "📥 Restore Backup (.zip)",
+    "Aktualisieren 🔄": "Refresh 🔄",
+    "Dateiname": "Filename",
+    "Geändert am": "Modified",
+    "Aktion": "Action",
+    "Lade Dateiliste...": "Loading file list...",
+    "⚡ Firmware OTA Update (.bin)": "⚡ Firmware OTA Update (.bin)",
+    "Hier kann eine kompilierte": "Here you can flash a compiled",
+    "direkt über das WLAN geflasht werden.": "directly over Wi-Fi.",
+    "Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der ESP8266 automatisch neu.": "Progress is shown live in percent. After a successful flash, the ESP8266 reboots automatically.",
+    "📁 Klicke hier, um eine .bin Firmware-Datei auszuwählen": "📁 Click here to select a .bin firmware file",
+    "Firmware jetzt flashen ⚡": "Flash Firmware Now ⚡",
+    "⚙️ Sektorstationen Wartung (OTA)": "⚙️ Sector Stations Maintenance (OTA)",
+    "Versetzt die Sektorstationen in den Flash-Modus. Sie verbinden sich mit dem aktuellen Netzwerk (Ausnahme: Hotspot-Modus nicht unterstützt).": "Puts sector stations into flash mode. They connect to the current network (except hotspot mode, which is not supported).",
+    "⚡ SZ OTA-Wartungsmodus starten": "⚡ Start SZ OTA Maintenance Mode",
+    "ESP8266 Wartung": "ESP8266 Maintenance",
+    "Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .": "After large file uploads, a targeted reboot is recommended to completely defragment heap memory.",
+    "⚡ ESP8266 neu starten (Speicher bereinigen)": "⚡ Reboot ESP8266 (Clean Memory)",
+    "⚡ SZ WARTUNGSMODUS (OTA)": "⚡ SZ MAINTENANCE MODE (OTA)",
+    "Ziel: ---": "Finish: ---",
+    "🏁 Keine aktiven Fahrzeuge auf der Strecke": "🏁 No active cars on track",
+    "🌍 Alle Strecken": "🌍 All Tracks",
+    "💾 Flash:": "💾 Flash:",
+    "🏆 Streckenrekord": "🏆 Track Record",
+    "LT_Netzwerk-IP": "LT_Network-IP",
+    "DIE.ANGEZEIGTE.IP": "THE.SHOWN.IP",
+    "Verlauf aller aufgezeichneten Systemstarts, Reboots und Abstürze im Flash (LittleFS": "History of all recorded boots, reboots, and crashes in flash (LittleFS",
+    "RC Lap Timer Pro - Speicher & Web Update": "RC Lap Timer Pro - Storage & Web Update",
+    "Webdateien (": "Web files (",
+    ") werden direkt im Browser vor dem Senden komprimiert": ") are compressed right in the browser before upload",
+    ". Das originale PC-Änderungsdatum bleibt exakt erhalten": ". Original file timestamps are preserved",
+    "Wartungsmodus an alle Sektorstationen funken?": "Broadcast maintenance mode to all sector stations?",
+    "Die Zeitmessung wird unterbrochen, bis die Stationen neu gestartet wurden!": "Timing will be interrupted until the stations are restarted!",
+
+    // --- Offline-Statistik HTML ---
+    "RC Lap Timer Pro – Offline-Statistik 0.9.5": "RC Lap Timer Pro – Offline Statistics 0.9.5",
+    "Offline-Statistikauswertung": "Offline Statistics",
+    "· Daten bleiben auf diesem Gerät": "· Data stays on this device",
+    "Lap-Timer (IP/Host):": "Lap Timer (IP/Host):",
+    "laptimer.local oder IP": "laptimer.local or IP",
+    "Lap-Timer IP-Adresse oder Hostname im WLAN": "Lap Timer IP address or hostname on Wi-Fi",
+    "📡 Vom Lap Timer laden": "📡 Load from Lap Timer",
+    "🗑️ Lap-Timer leeren": "🗑️ Clear Lap Timer",
+    "Erst nach erfolgreicher Übertragung verfügbar": "Available after successful transfer",
+    "📂 Laden": "📂 Load",
+    "Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON": "Loads full Lap Timer backup (.zip), statistics.zip, or statistics JSON",
+    "💾 Speichern": "💾 Save",
+    "⛶ Vollbild": "⛶ Fullscreen",
+    "Lade eine Statistik-/Backup-Datei oder verbinde dich mit dem Lap Timer im WLAN.": "Load a statistics/backup file or connect to the Lap Timer on Wi-Fi.",
+    "Deine Rennstatistik – ganz ohne ESP-Verbindung": "Your race statistics – without needing an ESP connection",
+    "Lade ein Lap-Timer-Vollbackup, eine gespeicherte": "Load a full Lap Timer backup, a saved",
+    "bzw. ein JSON-Backup oder lies den Lap Timer direkt im WLAN aus. Die Datenbank wächst lokal mit jedem Import.": "or JSON backup, or read directly from the Lap Timer on Wi-Fi. The database grows locally with every import.",
+    "📍 STRECKE:": "📍 TRACK:",
+    "🌍 Alle Strecken": "🌍 All Tracks",
+    "🏆 Streckenrekord:": "🏆 Track Record:",
+    "⏱️ Tagesbestzeit:": "⏱️ Daily Best:",
+    "Statistikbereiche": "Statistics sections",
+    "← Zur Statistik": "← Back to Statistics",
+    "Fahrer-Profil": "Driver Profile",
+    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln"
+  };
+
+  window.LT_I18N = Object.assign(window.LT_I18N || {}, dict);
+
+  window.applyI18nDOM = function() {
+    document.documentElement.lang = 'en';
+    if (document.title && window.LT_I18N[document.title.trim()]) {
+      document.title = window.LT_I18N[document.title.trim()];
+    }
+
+    if (document.body) {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: function(node) {
+          const tag = node.parentElement ? node.parentElement.tagName : '';
+          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+
+      let node;
+      while ((node = walker.nextNode())) {
+        const raw = node.nodeValue;
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        if (window.LT_I18N[trimmed]) {
+          const lead = raw.match(/^\s*/)[0];
+          const trail = raw.match(/\s*$/)[0];
+          node.nodeValue = lead + window.LT_I18N[trimmed] + trail;
+        }
+      }
+
+      document.querySelectorAll('[title],[placeholder],[alt],[aria-label],input[type="button"],input[type="submit"]').forEach(el => {
+        ['title', 'placeholder', 'alt', 'aria-label'].forEach(attr => {
+          const val = el.getAttribute(attr);
+          if (val && window.LT_I18N[val.trim()]) {
+            el.setAttribute(attr, window.LT_I18N[val.trim()]);
+          }
+        });
+        if (el.tagName === 'INPUT' && (el.type === 'button' || el.type === 'submit')) {
+          if (el.value && window.LT_I18N[el.value.trim()]) {
+            el.value = window.LT_I18N[el.value.trim()];
+          }
+        }
+      });
+
+      const langBtn = document.getElementById('langToggleBtn');
+      if (langBtn) langBtn.textContent = '🇩🇪 DE';
+      if (typeof updateUploadTargetUI === 'function') updateUploadTargetUI();
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', window.applyI18nDOM);
+  } else {
+    window.applyI18nDOM();
+  }
+})();
+
+  </script>
+  <script>
 let allSessionsCache = [];
 let sessionFileCache = {};
 let currentStatsTrackFilter = 'all';
@@ -2138,18 +2885,22 @@ function sanitizeDomId(str) {
   return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+function _stT(s, vars) {
+  return (typeof window.t === 'function') ? window.t(s, vars) : s;
+}
+
 function getCarDriverName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.driver) {
     return carNamesMap[carId].driver;
   }
-  return 'Fahrer ' + (carId || '?');
+  return _stT('Fahrer') + ' ' + (carId || '?');
 }
 
 function getCarCarName(carId) {
   if (typeof carNamesMap !== 'undefined' && carNamesMap && carNamesMap[carId]?.car) {
     return carNamesMap[carId].car;
   }
-  return 'Auto ' + (carId || '?');
+  return _stT('Auto') + ' ' + (carId || '?');
 }
 
 function getSessionResultNames(session, result) {
@@ -2261,7 +3012,7 @@ function updateStatsModalDailyBest() {
       if (recBest > 0) {
         allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(recBest)}</span> <small style="color:var(--neon-cyan);">(${recDriver} - ${recTrack})</small>`;
       } else {
-        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Kein Streckenrekord')}</span>`;
       }
     }
 
@@ -2272,7 +3023,7 @@ function updateStatsModalDailyBest() {
     allTracksList.forEach(t => {
       if (t.bestLap > 0 && (best === 0 || t.bestLap < best)) {
         best = t.bestLap;
-        bestDriver = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        bestDriver = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || (_stT('Fahrer') + ' ' + t.bestCarId));
         bestTrack = t.name;
       }
     });
@@ -2280,7 +3031,7 @@ function updateStatsModalDailyBest() {
       if (best > 0) {
         dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(best)}</span> <small style="color:var(--neon-cyan);">(${bestDriver} - ${bestTrack})</small>`;
       } else {
-        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Keine Bestzeit heute')}</span>`;
       }
     }
   } else {
@@ -2288,22 +3039,22 @@ function updateStatsModalDailyBest() {
     if (allTimeElem) {
       let rLap = t ? (t.recordLap || 0) : 0;
       if (t && rLap > 0) {
-        let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || ('Fahrer ' + t.recordCarId));
+        let rd = t.recordDriver || (carNamesMap[t.recordCarId]?.driver || (_stT('Fahrer') + ' ' + t.recordCarId));
         let rc = t.recordCar || (carNamesMap[t.recordCarId]?.car || '');
         let carPart = rc ? ` (${rc})` : '';
         allTimeElem.innerHTML = `<span style="color:var(--neon-gold); font-weight:bold;">${formatLapTime(rLap)}</span> <small style="color:var(--neon-cyan);">(${rd}${carPart})</small>`;
       } else {
-        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Kein Streckenrekord</span>`;
+        allTimeElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Kein Streckenrekord')}</span>`;
       }
     }
     if (dailyElem) {
       if (t && t.bestLap > 0) {
-        let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || ('Fahrer ' + t.bestCarId));
+        let d = t.bestDriver || (carNamesMap[t.bestCarId]?.driver || (_stT('Fahrer') + ' ' + t.bestCarId));
         let c = t.bestCar || (carNamesMap[t.bestCarId]?.car || '');
         let carPart = c ? ` (${c})` : '';
         dailyElem.innerHTML = `<span style="color:var(--neon-green); font-weight:bold;">${formatLapTime(t.bestLap)}</span> <small style="color:var(--neon-cyan);">(${d}${carPart})</small>`;
       } else {
-        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">Keine Bestzeit heute</span>`;
+        dailyElem.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">${_stT('Keine Bestzeit heute')}</span>`;
       }
     }
   }
@@ -2647,54 +3398,54 @@ function renderRecordsOverview() {
   let getArrow = (col) => (recordsSortCol === col ? (recordsSortDir === 'asc' ? ' ▲' : ' ▼') : '');
   let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
 
-  let trackNameHeader = (currentStatsTrackFilter !== 'all') ? getTrackNameById(currentStatsTrackFilter) : 'Alle Strecken';
+  let trackNameHeader = (currentStatsTrackFilter !== 'all') ? getTrackNameById(currentStatsTrackFilter) : _stT('Alle Strecken');
 
   let html = `
     <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:12px; border:1px solid rgba(255,255,255,0.08); margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="btn ${recordsTimeScope === 'alltime' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('alltime')">🏆 All-Time Rekorde</button>
-          <button class="btn ${recordsTimeScope === 'daily' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('daily')">⏱️ Tagesbestzeiten (Heute)</button>
+          <button class="btn ${recordsTimeScope === 'alltime' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('alltime')">${_stT('🏆 All-Time Rekorde')}</button>
+          <button class="btn ${recordsTimeScope === 'daily' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsTimeScope('daily')">${_stT('⏱️ Tagesbestzeiten (Heute)')}</button>
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="btn ${recordsScope === 'all' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('all')" title="Offizielle Strecken-Rekordliste">📌 Offizielle Rekorde</button>
-          <button class="btn ${recordsScope === 'sessions' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('sessions')" title="Aus allen Sessions ermittelt">📊 Aus Sessions</button>
+          <button class="btn ${recordsScope === 'all' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('all')" title="${_stT('Offizielle Strecken-Rekordliste')}">${_stT('📌 Offizielle Rekorde')}</button>
+          <button class="btn ${recordsScope === 'sessions' ? 'btn-purple' : ''}" style="padding:4px 10px; font-size:11px; margin:0;" onclick="setRecordsScope('sessions')" title="${_stT('Aus allen Sessions ermittelt')}">${_stT('📊 Aus Sessions')}</button>
         </div>
       </div>
 
       <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px; margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">📍 STRECKE:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('📍 STRECKE:')}</span>
           <select onchange="onRecordsTrackFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${currentStatsTrackFilter === 'all' ? 'selected' : ''}>Alle Strecken (${sortedTracks.length})</option>
+            <option value="all" ${currentStatsTrackFilter === 'all' ? 'selected' : ''}>${_stT('Alle Strecken')} (${sortedTracks.length})</option>
             ${sortedTracks.map(t => `<option value="${escapeHtml(t.id)}" ${currentStatsTrackFilter === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
           </select>
         </div>
 
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">🏎️ FAHRZEUG:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('🏎️ FAHRZEUG:')}</span>
           <select onchange="onRecordsCarFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${recordsCarFilter === 'all' ? 'selected' : ''}>Alle Fahrzeuge (${sortedCars.length})</option>
+            <option value="all" ${recordsCarFilter === 'all' ? 'selected' : ''}>${_stT('Alle Fahrzeuge')} (${sortedCars.length})</option>
             ${sortedCars.map(c => `<option value="${escapeHtml(c)}" ${recordsCarFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
           </select>
         </div>
 
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">👤 FAHRER:</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('👤 FAHRER:')}</span>
           <select onchange="onRecordsDriverFilterChange(this.value)" style="background:#161b22; color:var(--text-main); border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px;">
-            <option value="all" ${recordsDriverFilter === 'all' ? 'selected' : ''}>Alle Fahrer (${sortedDrivers.length})</option>
+            <option value="all" ${recordsDriverFilter === 'all' ? 'selected' : ''}>${_stT('Alle Fahrer')} (${sortedDrivers.length})</option>
             ${sortedDrivers.map(d => `<option value="${escapeHtml(d)}" ${recordsDriverFilter === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
         </div>
       </div>
 
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-        <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">${_stT('SORTIERUNG:')}</span>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="${getPillClass('lap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('lap')">⚡ Zeit${getArrow('lap')}</button>
-          <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('driver')">👤 Fahrer${getArrow('driver')}</button>
-          <button class="${getPillClass('car')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('car')">🏎️ Fahrzeug${getArrow('car')}</button>
-          <button class="${getPillClass('date')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('date')">📅 Datum${getArrow('date')}</button>
+          <button class="${getPillClass('lap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('lap')">${_stT('⚡ Zeit')}${getArrow('lap')}</button>
+          <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('driver')">${_stT('👤 Fahrer')}${getArrow('driver')}</button>
+          <button class="${getPillClass('car')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('car')">${_stT('🏎️ Fahrzeug')}${getArrow('car')}</button>
+          <button class="${getPillClass('date')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleRecordsSort('date')">${_stT('📅 Datum')}${getArrow('date')}</button>
         </div>
       </div>
     </div>
@@ -2704,7 +3455,7 @@ function renderRecordsOverview() {
     html += `
       <div style="text-align:center; padding:30px 10px; color:var(--text-muted); background:rgba(0,0,0,0.2); border-radius:8px;">
         <div style="font-size:24px; margin-bottom:8px;">⏱️</div>
-        <div>Keine Rekorde für die ausgewählten Kriterien auf <strong>${escapeHtml(trackNameHeader)}</strong> vorhanden.</div>
+        <div>${_stT('Keine Rekorde für die ausgewählten Kriterien auf {track} vorhanden.', { track: '<strong>' + escapeHtml(trackNameHeader) + '</strong>' })}</div>
       </div>`;
     container.innerHTML = html;
     return;
@@ -2881,10 +3632,10 @@ function renderDriversOverview() {
 
   let sortBarHtml = `
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-      <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">SORTIERUNG:</span>
+      <span style="font-size:12px; color:var(--text-muted); font-weight:bold;">${_stT('SORTIERUNG:')}</span>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="${getPillClass('laps')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('laps')">🔄 Runden${getArrow('laps')}</button>
-        <button class="${getPillClass('bestLap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('bestLap')">⚡ Bestzeit${getArrow('bestLap')}</button>
+        <button class="${getPillClass('laps')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('laps')">${_stT('🔄 Runden')}${getArrow('laps')}</button>
+        <button class="${getPillClass('bestLap')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('bestLap')">${_stT('⚡ Bestzeit')}${getArrow('bestLap')}</button>
         <button class="${getPillClass('sessions')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('sessions')">📅 Sessions${getArrow('sessions')}</button>
         <button class="${getPillClass('driver')}" style="padding:3px 10px; font-size:11px; margin:0;" onclick="toggleDriversSort('driver')">👤 Name${getArrow('driver')}</button>
       </div>
@@ -2899,7 +3650,7 @@ function renderDriversOverview() {
       trackPillsHtml = '<div style="margin-top:6px;">';
       tbValues.forEach(tb => {
         let tSec = formatLapTime(tb.bestLap);
-        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.carId})" title="Direkt zur Session dieser Strecken-Bestzeit springen">📍 ${escapeHtml(tb.trackName)}: <strong>${tSec}</strong> 🔗</span>`;
+        trackPillsHtml += `<span class="driver-track-pb-pill" onclick="event.stopPropagation(); jumpToSessionInStats('${tb.sessionId}', ${tb.mode}, '${tb.trackId}', ${tb.carId})" title="${_stT('Direkt zur Session dieser Strecken-Bestzeit springen')}">📍 ${escapeHtml(tb.trackName)}: <strong>${tSec}</strong> 🔗</span>`;
       });
       trackPillsHtml += '</div>';
     }
@@ -2910,19 +3661,19 @@ function renderDriversOverview() {
     cardsHtml += `<div class="driver-select-card" onclick="openDriverStats(decodeURIComponent('${driverArg}'))">
       <div style="flex:1; min-width:0;">
         <strong style="color:var(--neon-cyan); font-size:16px;">${escapeHtml(ds.driver)}</strong>
-        <small style="color:var(--text-muted);">(${escapeHtml(carSummary || 'Fahrzeug unbekannt')} · ID ${idSummary || '?'})</small><br>
-        <span style="font-size:12px; color:var(--text-muted);">Gefahrene Runden: <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
+        <small style="color:var(--text-muted);">(${escapeHtml(carSummary || _stT('Fahrzeug unbekannt'))} · ID ${idSummary || '?'})</small><br>
+        <span style="font-size:12px; color:var(--text-muted);">${_stT('Gefahrene Runden:')} <strong style="color:var(--text-main);">${ds.totalLaps}</strong> &nbsp;|&nbsp; Sessions: <strong style="color:var(--text-main);">${ds.sessionsCount}</strong></span>
         ${trackPillsHtml}
       </div>
       <div style="text-align:right; margin-left:12px; flex-shrink:0;">
         <span style="color:var(--neon-green); font-weight:bold; font-size:16px;">${bestDisp}</span><br>
-        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + escapeHtml(ds.bestTrackName)) : 'Bestzeit'}</span><br>
-        <span style="font-size:11px; color:var(--neon-cyan);">Profil öffnen ▶</span>
+        <span style="font-size:11px; color:var(--text-muted);">${ds.bestTrackName ? ('📍 ' + escapeHtml(ds.bestTrackName)) : _stT('Bestzeit')}</span><br>
+        <span style="font-size:11px; color:var(--neon-cyan);">${_stT('Profil öffnen ▶')}</span>
       </div>
     </div>`;
   });
 
-  list.innerHTML = sortBarHtml + (cardsHtml || '<p style="color:var(--text-muted); text-align:center; padding:20px;">Keine Fahrerdaten vorhanden.</p>');
+  list.innerHTML = sortBarHtml + (cardsHtml || `<p style="color:var(--text-muted); text-align:center; padding:20px;">${_stT('Keine Fahrerdaten vorhanden.')}</p>`);
 }
 
 function sortSessionResults(safeId, col) {
@@ -2953,19 +3704,19 @@ function renderSessionsByMode(mode, containerId) {
 
   let rebuildButtonHtml = window.offlineStatsMode
     ? ''
-    : '<button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">🔄 Index aus Dateisystem neu aufbauen</button>';
+    : `<button class="btn btn-purple" style="font-size:11px; padding:6px 14px;" onclick="rebuildSessionsIndexUI()">${_stT('🔄 Index aus Dateisystem neu aufbauen')}</button>`;
 
   if (sessions.length === 0) {
     container.innerHTML = `
       <div style="text-align:center; padding:30px 15px; color:var(--text-muted);">
-        <p style="font-size:14px; margin-bottom:12px;">Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.</p>
+        <p style="font-size:14px; margin-bottom:12px;">${_stT('Keine gespeicherten Durchgänge für diese Auswahl im Index vorhanden.')}</p>
         ${rebuildButtonHtml}
       </div>`;
     return;
   }
 
-  let roundWord = isDrag ? "Läufe" : "Runden";
-  let roundTimeWord = isDrag ? "Laufzeiten" : "Rundenzeiten";
+  let roundWord = isDrag ? _stT("Läufe") : _stT("Runden");
+  let roundTimeWord = isDrag ? _stT("Laufzeiten") : _stT("Rundenzeiten");
   let isAdmin = (typeof userRole !== 'undefined' && userRole === 'admin');
 
   let html = '';
@@ -4629,6 +5380,10 @@ let offlineInitialization = null;
 let lastSyncedLaptimerUrl = null;
 let linkedSaveFileHandle = null;
 
+function _ot(de, en) {
+  return window.LT_LANG === 'en' ? en : de;
+}
+
 function setOfflineStatus(message, state = 'info') {
   let status = document.getElementById('offlineStatus');
   if (!status) return;
@@ -4658,7 +5413,7 @@ function getOfflineTrackDocument(backup) {
     return { active: trackData[0]?.id || 'standard', tracks: trackData };
   }
   if (trackData && Array.isArray(trackData.tracks)) return trackData;
-  throw new Error('Das Backup enthält keine gültige Streckenliste.');
+  throw new Error(_ot('Das Backup enthält keine gültige Streckenliste.', 'The backup does not contain a valid track list.'));
 }
 
 function getSessionFileEntry(path) {
@@ -4676,7 +5431,7 @@ function populateOfflineTrackFilter() {
   if (!select) return;
 
   let previousValue = select.value || 'all';
-  let options = ['<option value="all">🌍 Alle Strecken</option>'];
+  let options = [_ot('<option value="all">🌍 Alle Strecken</option>', '<option value="all">🌍 All Tracks</option>')];
   window.allTracksList.forEach(track => {
     options.push(`<option value="${escapeHtml(track.id)}">📍 ${escapeHtml(track.name || track.id)}</option>`);
   });
@@ -4724,7 +5479,7 @@ window.fetchSessionFileData = async function(filePath) {
 
   let data = getSessionFileEntry(filePath);
   if (!data || typeof data !== 'object') {
-    throw new Error('Session-Datei fehlt in der lokalen Statistikdatenbank: ' + filePath);
+    throw new Error(_ot('Session-Datei fehlt in der lokalen Statistikdatenbank: ', 'Session file missing from local statistics database: ') + filePath);
   }
   let normalized = normalizeSessionFile(data, filePath);
   let session = offlineBackup.sessions.find(item => item.file === filePath);
@@ -4767,7 +5522,7 @@ window.findSessionForRecord = function(record, trackId) {
 function openOfflineDatabase() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
-      reject(new Error('Dieser Browser unterstützt keine lokale IndexedDB.'));
+      reject(new Error(_ot('Dieser Browser unterstützt keine lokale IndexedDB.', 'This browser does not support local IndexedDB.')));
       return;
     }
 
@@ -4779,8 +5534,8 @@ function openOfflineDatabase() {
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Lokale Statistikdatenbank konnte nicht geöffnet werden.'));
-    request.onblocked = () => reject(new Error('Die lokale Statistikdatenbank ist in einem anderen Tab geöffnet.'));
+    request.onerror = () => reject(request.error || new Error(_ot('Lokale Statistikdatenbank konnte nicht geöffnet werden.', 'Could not open local statistics database.')));
+    request.onblocked = () => reject(new Error(_ot('Die lokale Statistikdatenbank ist in einem anderen Tab geöffnet.', 'The local statistics database is open in another tab.')));
   });
 }
 
@@ -4806,7 +5561,7 @@ function persistImport(entries, dataset) {
     entries.forEach(entry => fileStore.put(entry));
     transaction.objectStore('state').put({ key: 'dataset', value: dataset });
     transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error || new Error('Import konnte nicht lokal gespeichert werden.'));
+    transaction.onerror = () => reject(transaction.error || new Error(_ot('Import konnte nicht lokal gespeichert werden.', 'Import could not be saved locally.')));
     transaction.onabort = () => reject(transaction.error || new Error('Import in die lokale Datenbank wurde abgebrochen.'));
   });
 }
@@ -4904,7 +5659,7 @@ function parseJsonEntry(path, bytes) {
   try {
     content = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch (error) {
-    throw new Error(`Ungültige JSON-Datei "${path}": ${error.message}`);
+    throw new Error(_ot(`Ungültige JSON-Datei "${path}": ${error.message}`, `Invalid JSON file "${path}": ${error.message}`));
   }
   return { path, content, size: bytes.byteLength, modifiedAt: Date.now() };
 }
@@ -4946,11 +5701,11 @@ function createStatisticsZip(fileMap, dataset) {
     let nameBytes = new TextEncoder().encode(path);
     let dataBytes = new TextEncoder().encode(JSON.stringify(entry.content));
     if (nameBytes.length > 0xffff || dataBytes.length > MAX_STAT_FILE_SIZE) {
-      throw new Error(`Datei kann nicht in das ZIP geschrieben werden: ${path}`);
+      throw new Error(_ot(`Datei kann nicht in das ZIP geschrieben werden: ${path}`, `Cannot write file to ZIP: ${path}`));
     }
     totalSize += dataBytes.length;
     if (totalSize > MAX_TOTAL_STAT_SIZE || localEntries.length / 2 >= MAX_ZIP_ENTRIES) {
-      throw new Error('Die kumulierte Statistikdatenbank überschreitet die ZIP-Grenzwerte.');
+      throw new Error(_ot('Die kumulierte Statistikdatenbank überschreitet die ZIP-Grenzwerte.', 'The accumulated statistics database exceeds ZIP limits.'));
     }
 
     let crc = getCrc32(dataBytes);
@@ -4997,7 +5752,7 @@ function createStatisticsZip(fileMap, dataset) {
 
   let entryCount = localEntries.length / 2;
   if (entryCount > 0xffff || offset > 0xffffffff) {
-    throw new Error('Die kumulierte Statistikdatenbank ist zu groß für ein ZIP-Archiv.');
+    throw new Error(_ot('Die kumulierte Statistikdatenbank ist zu groß für ein ZIP-Archiv.', 'The accumulated statistics database is too large for a ZIP archive.'));
   }
   let centralDirectorySize = centralEntries.reduce((size, entry) => size + entry.length, 0);
   let endRecord = new Uint8Array(22);
@@ -5024,17 +5779,17 @@ async function readZipArchive(buffer) {
       break;
     }
   }
-  if (eocdOffset < 0) throw new Error('Ungültiges ZIP-Archiv (End-of-Central-Directory fehlt).');
+  if (eocdOffset < 0) throw new Error(_ot('Ungültiges ZIP-Archiv (End-of-Central-Directory fehlt).', 'Invalid ZIP archive (End-of-Central-Directory missing).'));
   if (view.getUint16(eocdOffset + 4, true) || view.getUint16(eocdOffset + 6, true)) {
-    throw new Error('Mehrteilige ZIP-Archive werden nicht unterstützt.');
+    throw new Error(_ot('Mehrteilige ZIP-Archive werden nicht unterstützt.', 'Multi-part ZIP archives are not supported.'));
   }
 
   let totalEntries = view.getUint16(eocdOffset + 10, true);
   let centralDirectorySize = view.getUint32(eocdOffset + 12, true);
   let centralDirectoryOffset = view.getUint32(eocdOffset + 16, true);
-  if (totalEntries > MAX_ZIP_ENTRIES) throw new Error('Das ZIP-Archiv enthält zu viele Einträge.');
+  if (totalEntries > MAX_ZIP_ENTRIES) throw new Error(_ot('Das ZIP-Archiv enthält zu viele Einträge.', 'The ZIP archive contains too many entries.'));
   if (centralDirectoryOffset + centralDirectorySize > eocdOffset) {
-    throw new Error('Das ZIP-Archiv enthält ein ungültiges Dateiverzeichnis.');
+    throw new Error(_ot('Das ZIP-Archiv enthält ein ungültiges Dateiverzeichnis.', 'The ZIP archive contains an invalid file directory.'));
   }
 
   let offset = centralDirectoryOffset;
@@ -5044,7 +5799,7 @@ async function readZipArchive(buffer) {
 
   for (let i = 0; i < totalEntries; i++) {
     if (offset + 46 > eocdOffset || view.getUint32(offset, true) !== 0x02014b50) {
-      throw new Error('Ungültiger Eintrag im ZIP-Dateiverzeichnis.');
+      throw new Error(_ot('Ungültiger Eintrag im ZIP-Dateiverzeichnis.', 'Invalid entry in ZIP file directory.'));
     }
 
     let flags = view.getUint16(offset + 8, true);
@@ -5056,7 +5811,7 @@ async function readZipArchive(buffer) {
     let commentLength = view.getUint16(offset + 32, true);
     let localHeaderOffset = view.getUint32(offset + 42, true);
     let entryEnd = offset + 46 + nameLength + extraLength + commentLength;
-    if (entryEnd > eocdOffset) throw new Error('Abgeschnittener Eintrag im ZIP-Dateiverzeichnis.');
+    if (entryEnd > eocdOffset) throw new Error(_ot('Abgeschnittener Eintrag im ZIP-Dateiverzeichnis.', 'Truncated entry in ZIP file directory.'));
 
     let nameBytes = new Uint8Array(buffer, offset + 46, nameLength);
     let fileName = decoder.decode(nameBytes).replace(/\\/g, '/');
@@ -5064,22 +5819,22 @@ async function readZipArchive(buffer) {
     if (fileName.endsWith('/') || !isStatisticPath(fileName)) continue;
     let path = normalizeStoredPath(fileName);
     if (!path) continue;
-    if (flags & 1) throw new Error(`Verschlüsselte ZIP-Datei wird nicht unterstützt: ${path}`);
-    if (uncompressedSize > MAX_STAT_FILE_SIZE) throw new Error(`Datei ist zu groß: ${path}`);
+    if (flags & 1) throw new Error(_ot(`Verschlüsselte ZIP-Datei wird nicht unterstützt: ${path}`, `Encrypted ZIP file is not supported: ${path}`));
+    if (uncompressedSize > MAX_STAT_FILE_SIZE) throw new Error(_ot(`Datei ist zu groß: ${path}`, `File is too large: ${path}`));
     totalStatSize += uncompressedSize;
     if (totalStatSize > MAX_TOTAL_STAT_SIZE) {
-      throw new Error('Die Statistikdateien im ZIP überschreiten die zulässige Gesamtgröße.');
+      throw new Error(_ot('Die Statistikdateien im ZIP überschreiten die zulässige Gesamtgröße.', 'Statistics files in ZIP exceed maximum total size.'));
     }
     if (localHeaderOffset + 30 > buffer.byteLength ||
         view.getUint32(localHeaderOffset, true) !== 0x04034b50) {
-      throw new Error(`Ungültiger Datei-Header für "${path}".`);
+      throw new Error(_ot(`Ungültiger Datei-Header für "${path}".`, `Invalid file header for "${path}".`));
     }
 
     let localNameLength = view.getUint16(localHeaderOffset + 26, true);
     let localExtraLength = view.getUint16(localHeaderOffset + 28, true);
     let dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
     let dataEnd = dataOffset + compressedSize;
-    if (dataEnd > buffer.byteLength) throw new Error(`Abgeschnittener Dateiinhalt: ${path}`);
+    if (dataEnd > buffer.byteLength) throw new Error(_ot(`Abgeschnittener Dateiinhalt: ${path}`, `Truncated file content: ${path}`));
 
     let compressedData = new Uint8Array(buffer, dataOffset, compressedSize);
     let data;
@@ -5087,16 +5842,16 @@ async function readZipArchive(buffer) {
       data = new Uint8Array(compressedData);
     } else if (method === 8) {
       if (typeof DecompressionStream === 'undefined') {
-        throw new Error('Dieser Browser kann komprimierte ZIP-Dateien nicht entpacken.');
+        throw new Error(_ot('Dieser Browser kann komprimierte ZIP-Dateien nicht entpacken.', 'This browser cannot decompress ZIP files.'));
       }
       let stream = new Blob([compressedData]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
       data = new Uint8Array(await new Response(stream).arrayBuffer());
     } else {
-      throw new Error(`Nicht unterstützte ZIP-Kompression (${method}) bei "${path}".`);
+      throw new Error(_ot(`Nicht unterstützte ZIP-Kompression (${method}) bei "${path}".`, `Unsupported ZIP compression (${method}) for "${path}".`));
     }
 
     if (data.byteLength !== uncompressedSize) {
-      throw new Error(`Die entpackte Dateigröße stimmt nicht: ${path}`);
+      throw new Error(_ot(`Die entpackte Dateigröße stimmt nicht: ${path}`, `Decompressed file size mismatch: ${path}`));
     }
     files.push(parseJsonEntry(path, data));
   }
@@ -5105,13 +5860,13 @@ async function readZipArchive(buffer) {
 }
 
 function validateBackup(data) {
-  if (!data || typeof data !== 'object') throw new Error('Die Datei enthält kein JSON-Backup.');
+  if (!data || typeof data !== 'object') throw new Error(_ot('Die Datei enthält kein JSON-Backup.', 'The file does not contain a JSON backup.'));
   if (data.version !== 3 && data.version !== 4 && data.version !== 5) {
-    throw new Error('Nicht unterstützte JSON-Backup-Version. Erwartet wird Version 3, 4 oder 5.');
+    throw new Error(_ot('Nicht unterstützte JSON-Backup-Version. Erwartet wird Version 3, 4 oder 5.', 'Unsupported JSON backup version. Expected version 3, 4, or 5.'));
   }
-  if (!Array.isArray(data.sessions)) throw new Error('Im Backup fehlt die Sessions-Liste.');
+  if (!Array.isArray(data.sessions)) throw new Error(_ot('Im Backup fehlt die Sessions-Liste.', 'The backup is missing the sessions list.'));
   if (!data.sessionFiles || typeof data.sessionFiles !== 'object' || Array.isArray(data.sessionFiles)) {
-    throw new Error('Im Backup fehlen die Session-Dateien.');
+    throw new Error(_ot('Im Backup fehlen die Session-Dateien.', 'The backup is missing the session files.'));
   }
   getOfflineTrackDocument(data);
 
@@ -5138,19 +5893,19 @@ function payloadFromZipEntries(entries) {
   let tracks = byPath.get('tracks.json');
   let sessionsDocument = byPath.get('sessions.json');
   if (!tracks || !sessionsDocument) {
-    throw new Error('Das ZIP enthält keine vollständige Statistik-Sicherung (tracks.json und sessions.json fehlen).');
+    throw new Error(_ot('Das ZIP enthält keine vollständige Statistik-Sicherung (tracks.json und sessions.json fehlen).', 'The ZIP does not contain a complete statistics backup (tracks.json and sessions.json are missing).'));
   }
 
   let trackDocument = Array.isArray(tracks) ? { active: tracks[0]?.id || 'standard', tracks } : tracks;
   if (!trackDocument || !Array.isArray(trackDocument.tracks)) {
-    throw new Error('tracks.json im ZIP enthält keine gültige Streckenliste.');
+    throw new Error(_ot('tracks.json im ZIP enthält keine gültige Streckenliste.', 'tracks.json in ZIP does not contain a valid track list.'));
   }
   let sessions = Array.isArray(sessionsDocument) ? sessionsDocument : sessionsDocument.sessions;
-  if (!Array.isArray(sessions)) throw new Error('sessions.json im ZIP enthält keine Sessions-Liste.');
+  if (!Array.isArray(sessions)) throw new Error(_ot('sessions.json im ZIP enthält keine Sessions-Liste.', 'sessions.json in ZIP does not contain a sessions list.'));
 
   let names = byPath.get('names.json') || {};
   if (!names || typeof names !== 'object' || Array.isArray(names)) {
-    throw new Error('names.json im ZIP enthält kein gültiges Fahrernamen-Objekt.');
+    throw new Error(_ot('names.json im ZIP enthält kein gültiges Fahrernamen-Objekt.', 'names.json in ZIP does not contain a valid driver names object.'));
   }
   let sessionFiles = {};
   entries.forEach(entry => {
@@ -5168,14 +5923,14 @@ async function readImportFile(file) {
     return { entries, payload: payloadFromZipEntries(entries) };
   }
   if (!file.name.toLowerCase().endsWith('.json')) {
-    throw new Error('Bitte ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup auswählen.');
+    throw new Error(_ot('Bitte ein Lap-Timer-ZIP oder ein Statistik-JSON-Backup auswählen.', 'Please select a Lap Timer ZIP or a statistics JSON backup.'));
   }
 
   let backup;
   try {
     backup = JSON.parse(await file.text());
   } catch (error) {
-    throw new Error('Die JSON-Datei konnte nicht gelesen werden: ' + error.message);
+    throw new Error(_ot('Die JSON-Datei konnte nicht gelesen werden: ', 'Could not read JSON file: ') + error.message);
   }
   let entries = validateBackup(backup);
   let trackDocument = getOfflineTrackDocument(backup);
@@ -5288,7 +6043,7 @@ async function refreshOfflineViews(dataset, fileMap) {
 
 async function loadOfflineFile(file) {
   if (!file) return;
-  setOfflineStatus(`Lese ${file.name} …`);
+  setOfflineStatus(_ot(`Lese ${file.name} …`, `Reading ${file.name} …`));
 
   try {
     if (!await offlineInitialization) return;
@@ -5297,17 +6052,26 @@ async function loadOfflineFile(file) {
     await refreshOfflineViews(imported.dataset, imported.fileMap);
     updateSaveButtonsUI(true);
 
-    let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
+    let summary = _ot(
+      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+    );
     document.getElementById('offlineBackupSummary').textContent = summary;
-    let status = `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    let status = _ot(
+      `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
+      `${file.name}: ${imported.added} new, ${imported.updated} updated; database now has ${imported.dataset.sessions.length} sessions.`
+    );
     let autoSaveNote = await tryAutoSaveStatusNote();
     if (autoSaveNote) status += autoSaveNote;
     if (imported.missingSessionFiles) {
-      status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
+      status += _ot(
+        ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`,
+        ` ${imported.missingSessionFiles} session file(s) for lap details are missing.`
+      );
     }
     setOfflineStatus(status, imported.missingSessionFiles ? 'error' : 'success');
   } catch (error) {
-    setOfflineStatus(error.message || 'Das Backup konnte nicht importiert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Das Backup konnte nicht importiert werden.', 'Could not import the backup.'), 'error');
   }
 }
 
@@ -5321,10 +6085,12 @@ function updateSaveButtonsUI(hasData) {
 
   if (saveButton) {
     saveButton.disabled = !hasData;
-    saveButton.textContent = '💾 Speichern';
+    saveButton.textContent = _ot('💾 Speichern', '💾 Save');
     saveButton.title = linkedSaveFileHandle
-      ? `Speichert direkt in „${linkedSaveFileHandle.name}“`
-      : (canPick ? 'Speicherort für statistics.zip wählen und speichern' : 'statistics.zip herunterladen');
+      ? _ot(`Speichert direkt in „${linkedSaveFileHandle.name}“`, `Saves directly to "${linkedSaveFileHandle.name}"`)
+      : (canPick
+        ? _ot('Speicherort für statistics.zip wählen und speichern', 'Choose location for statistics.zip and save')
+        : _ot('statistics.zip herunterladen', 'Download statistics.zip'));
   }
 }
 
@@ -5361,7 +6127,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
   let fileMap = getStoredFileMap(snapshot);
   let dataset = getDatasetFromSnapshot(snapshot, fileMap);
   if (!dataset.tracks) {
-    throw new Error('Es sind noch keine Statistikdaten zum Speichern vorhanden.');
+    throw new Error(_ot('Es sind noch keine Statistikdaten zum Speichern vorhanden.', 'No statistics data available to save yet.'));
   }
 
   if (supportsFileSystemSave()) {
@@ -5372,7 +6138,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
           suggestedName: linkedSaveFileHandle ? linkedSaveFileHandle.name : 'statistics.zip',
           startIn: linkedSaveFileHandle || 'documents',
           types: [{
-            description: 'RC Lap Timer Statistik-ZIP',
+            description: _ot('RC Lap Timer Statistik-ZIP', 'RC Lap Timer Statistics ZIP'),
             accept: { 'application/zip': ['.zip'] }
           }]
         });
@@ -5384,7 +6150,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
       let allowed = await ensureWritePermission(linkedSaveFileHandle, !autoSaveOnly);
       if (!allowed) {
         if (autoSaveOnly) return { saved: false, reason: 'permission' };
-        throw new Error('Schreibberechtigung für die Speicherdatei wurde nicht erteilt.');
+        throw new Error(_ot('Schreibberechtigung für die Speicherdatei wurde nicht erteilt.', 'Write permission for the save file was not granted.'));
       }
 
       let archive = createStatisticsZip(fileMap, dataset);
@@ -5395,7 +6161,7 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
           linkedSaveFileHandle = null;
           await writeOfflineSetting('saveFileHandle', null);
           updateSaveButtonsUI(true);
-          throw new Error('Die verknüpfte Speicherdatei wurde verschoben oder gelöscht. Bitte erneut auf „💾 Speichern“ klicken.');
+          throw new Error(_ot('Die verknüpfte Speicherdatei wurde verschoben oder gelöscht. Bitte erneut auf „💾 Speichern“ klicken.', 'The linked save file was moved or deleted. Please click "💾 Save" again.'));
         }
         throw writeError;
       }
@@ -5421,17 +6187,26 @@ async function saveDatabaseToFile({ forcePicker = false, autoSaveOnly = false } 
 
 async function tryAutoSaveStatusNote() {
   if (!supportsFileSystemSave()) {
-    return ' Tipp: Über „💾 Speichern“ kannst du statistics.zip als Backup herunterladen (direktes Überschreiben unterstützt dieser Browser nicht).';
+    return _ot(
+      ' Tipp: Über „💾 Speichern“ kannst du statistics.zip als Backup herunterladen (direktes Überschreiben unterstützt dieser Browser nicht).',
+      ' Tip: Click "💾 Save" to download statistics.zip as a backup (this browser does not support direct file overwriting).'
+    );
   }
   if (!linkedSaveFileHandle) {
-    return ' Tipp: Über „💾 Speichern“ kannst du eine lokale statistics.zip verknüpfen.';
+    return _ot(
+      ' Tipp: Über „💾 Speichern“ kannst du eine lokale statistics.zip verknüpfen.',
+      ' Tip: Click "💾 Save" to link a local statistics.zip file.'
+    );
   }
   let result = await saveDatabaseToFile({ autoSaveOnly: true });
   if (result.saved) {
-    return ` Direkt in „${result.fileName}“ gespeichert.`;
+    return _ot(` Direkt in „${result.fileName}“ gespeichert.`, ` Saved directly to "${result.fileName}".`);
   }
   if (result.reason === 'permission') {
-    return ` Klicke auf „💾 Speichern“, um „${linkedSaveFileHandle.name}“ zu aktualisieren.`;
+    return _ot(
+      ` Klicke auf „💾 Speichern“, um „${linkedSaveFileHandle.name}“ zu aktualisieren.`,
+      ` Click "💾 Save" to update "${linkedSaveFileHandle.name}".`
+    );
   }
   return '';
 }
@@ -5439,32 +6214,38 @@ async function tryAutoSaveStatusNote() {
 async function downloadStatisticsDatabase({ forcePicker = false } = {}) {
   let button = document.getElementById('exportDatabaseButton');
   if (!offlineDb || !await offlineInitialization) {
-    setOfflineStatus('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'error');
+    setOfflineStatus(_ot('Die lokale Statistikdatenbank ist noch nicht verfügbar.', 'The local statistics database is not available yet.'), 'error');
     return;
   }
   if (button) button.disabled = true;
   try {
     let result = await saveDatabaseToFile({ forcePicker });
     if (!result.saved && result.reason === 'cancelled') {
-      setOfflineStatus('Speichern abgebrochen.', 'info');
+      setOfflineStatus(_ot('Speichern abgebrochen.', 'Save cancelled.'), 'info');
       return;
     }
     if (result.method === 'handle') {
       setOfflineStatus(
-        `In „${result.fileName}“ gespeichert (${(result.size / 1024).toFixed(1)} KB).`,
+        _ot(
+          `In „${result.fileName}“ gespeichert (${(result.size / 1024).toFixed(1)} KB).`,
+          `Saved to "${result.fileName}" (${(result.size / 1024).toFixed(1)} KB).`
+        ),
         'success'
       );
     } else {
       let extra = !supportsFileSystemSave()
-        ? ' (Dieser Browser unterstützt kein direktes Überschreiben lokaler Dateien.)'
+        ? _ot(' (Dieser Browser unterstützt kein direktes Überschreiben lokaler Dateien.)', ' (This browser does not support direct overwriting of local files.)')
         : '';
       setOfflineStatus(
-        `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`,
+        _ot(
+          `Statistik-ZIP heruntergeladen: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`,
+          `Statistics ZIP downloaded: ${result.fileName} (${(result.size / 1024).toFixed(1)} KB).${extra}`
+        ),
         'success'
       );
     }
   } catch (error) {
-    setOfflineStatus(error.message || 'Statistikdatenbank konnte nicht gespeichert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Statistikdatenbank konnte nicht gespeichert werden.', 'Could not save statistics database.'), 'error');
   } finally {
     updateSaveButtonsUI(Boolean(offlineBackup && offlineBackup.tracks));
   }
@@ -5480,11 +6261,19 @@ async function restoreLocalDatabase() {
   }
 
   await refreshOfflineViews(dataset, fileMap);
-  document.getElementById('offlineBackupSummary').textContent =
-    `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
-  let status = `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`;
+  document.getElementById('offlineBackupSummary').textContent = _ot(
+    `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+    `${dataset.sessions.length} sessions · ${fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+  );
+  let status = _ot(
+    `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`,
+    `Local database loaded: ${dataset.sessions.length} sessions, ${fileMap.size} statistics files.`
+  );
   if (linkedSaveFileHandle) {
-    status += ` Verknüpfte Speicherdatei: „${linkedSaveFileHandle.name}“.`;
+    status += _ot(
+      ` Verknüpfte Speicherdatei: „${linkedSaveFileHandle.name}“.`,
+      ` Linked save file: "${linkedSaveFileHandle.name}".`
+    );
   }
   setOfflineStatus(status, 'success');
   updateSaveButtonsUI(true);
@@ -5497,16 +6286,20 @@ async function toggleOfflineFullscreen() {
     } else if (document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen();
     } else {
-      throw new Error('Der Browser unterstützt keinen Vollbildmodus.');
+      throw new Error(_ot('Der Browser unterstützt keinen Vollbildmodus.', 'This browser does not support fullscreen mode.'));
     }
   } catch (error) {
-    setOfflineStatus(error.message || 'Vollbild konnte nicht aktiviert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Vollbild konnte nicht aktiviert werden.', 'Could not activate fullscreen mode.'), 'error');
   }
 }
 
 function updateFullscreenButton() {
   let button = document.getElementById('fullscreenButton');
-  if (button) button.textContent = document.fullscreenElement ? '⛶ Vollbild verlassen' : '⛶ Vollbild';
+  if (button) {
+    button.textContent = document.fullscreenElement
+      ? _ot('⛶ Vollbild verlassen', '⛶ Exit Fullscreen')
+      : _ot('⛶ Vollbild', '⛶ Fullscreen');
+  }
 }
 
 function sleepMs(ms) {
@@ -5516,20 +6309,20 @@ function sleepMs(ms) {
 function normalizeLaptimerBaseUrl(rawInput) {
   let trimmed = String(rawInput || '').trim();
   if (!trimmed) {
-    throw new Error('Bitte eine IP-Adresse oder einen Hostnamen (z. B. laptimer.local) eingeben.');
+    throw new Error(_ot('Bitte eine IP-Adresse oder einen Hostnamen (z. B. laptimer.local) eingeben.', 'Please enter an IP address or hostname (e.g. laptimer.local).'));
   }
   let withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   let parsed;
   try {
     parsed = new URL(withScheme);
   } catch (error) {
-    throw new Error(`Ungültige Lap-Timer-Adresse: "${trimmed}"`);
+    throw new Error(_ot(`Ungültige Lap-Timer-Adresse: "${trimmed}"`, `Invalid Lap Timer address: "${trimmed}"`));
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Es werden nur HTTP- oder HTTPS-Adressen unterstützt.');
+    throw new Error(_ot('Es werden nur HTTP- oder HTTPS-Adressen unterstützt.', 'Only HTTP or HTTPS addresses are supported.'));
   }
   if (window.location.protocol === 'https:' && parsed.protocol === 'http:') {
-    throw new Error('Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Zugriffe auf lokale IPs. Bitte offline_stats/index.html lokal öffnen.');
+    throw new Error(_ot('Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Zugriffe auf lokale IPs. Bitte offline_stats/index.html lokal öffnen.', 'Browsers block HTTP requests to local IPs from an HTTPS page. Please open offline_stats/index.html locally.'));
   }
   return `${parsed.protocol}//${parsed.host}`;
 }
@@ -5550,17 +6343,20 @@ async function fetchLaptimerJson(url, attempt = 0) {
       return fetchLaptimerJson(url, attempt + 1);
     }
     if (!response.ok) {
-      let error = new Error(`HTTP ${response.status} bei ${url}`);
+      let error = new Error(_ot(`HTTP ${response.status} bei ${url}`, `HTTP ${response.status} at ${url}`));
       error.httpStatus = response.status;
       throw error;
     }
     return await response.json();
   } catch (error) {
     if (error && error.name === 'AbortError') {
-      throw new Error(`Zeitüberschreitung beim Verbinden mit ${url}.`);
+      throw new Error(_ot(`Zeitüberschreitung beim Verbinden mit ${url}.`, `Timeout connecting to ${url}.`));
     }
     if (error && error.httpStatus) throw error;
-    throw new Error(`Verbindung zum Lap Timer fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist der Lap Timer im selben WLAN und hat aktuelle Firmware?`);
+    throw new Error(_ot(
+      `Verbindung zum Lap Timer fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist der Lap Timer im selben WLAN und hat aktuelle Firmware?`,
+      `Connection to Lap Timer failed (${error.message || 'Network/CORS'}). Is the Lap Timer on the same Wi-Fi and running current firmware?`
+    ));
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -5596,24 +6392,24 @@ async function syncFromLaptimer() {
   try {
     if (!await offlineInitialization) return;
 
-    setOfflineStatus(`Verbinde mit ${baseUrl} …`);
+    setOfflineStatus(_ot(`Verbinde mit ${baseUrl} …`, `Connecting to ${baseUrl} …`));
     let versionInfo = await fetchLaptimerJson(`${baseUrl}/api/version`);
     let firmwareLabel = versionInfo && versionInfo.firmware ? ` (${versionInfo.firmware})` : '';
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Strecken von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Strecken von ${baseUrl}${firmwareLabel} …`, `Loading tracks from ${baseUrl}${firmwareLabel} …`));
     let rawTracks = await fetchLaptimerJson(`${baseUrl}/api/tracks`);
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Fahrernamen von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Fahrernamen von ${baseUrl}${firmwareLabel} …`, `Loading driver names from ${baseUrl}${firmwareLabel} …`));
     let names = await fetchLaptimerJson(`${baseUrl}/api/names`);
 
     await sleepMs(LAPTIMER_STEP_DELAY_MS);
-    setOfflineStatus(`Lade Sessions-Index von ${baseUrl}${firmwareLabel} …`);
+    setOfflineStatus(_ot(`Lade Sessions-Index von ${baseUrl}${firmwareLabel} …`, `Loading sessions index from ${baseUrl}${firmwareLabel} …`));
     let sessionsDoc = await fetchLaptimerJson(`${baseUrl}/api/sessions`);
     let sessions = Array.isArray(sessionsDoc) ? sessionsDoc : (sessionsDoc && sessionsDoc.sessions) || [];
     if (!Array.isArray(sessions)) {
-      throw new Error('Der Lap Timer hat keine gültige Sessions-Liste geliefert.');
+      throw new Error(_ot('Der Lap Timer hat keine gültige Sessions-Liste geliefert.', 'The Lap Timer did not return a valid sessions list.'));
     }
 
     let snapshot = await readDatabaseSnapshot();
@@ -5640,7 +6436,10 @@ async function syncFromLaptimer() {
     for (let i = 0; i < sessionsToFetch.length; i++) {
       let session = sessionsToFetch[i];
       let relPath = normalizeStoredPath(session.file);
-      setOfflineStatus(`Lade Session-Datei ${i + 1}/${sessionsToFetch.length}: ${relPath} …`);
+      setOfflineStatus(_ot(
+        `Lade Session-Datei ${i + 1}/${sessionsToFetch.length}: ${relPath} …`,
+        `Loading session file ${i + 1}/${sessionsToFetch.length}: ${relPath} …`
+      ));
       await sleepMs(LAPTIMER_STEP_DELAY_MS);
       try {
         let fileData = await fetchLaptimerJson(`${baseUrl}/api/sessionfile?file=${encodeURIComponent('/' + relPath)}`);
@@ -5675,20 +6474,32 @@ async function syncFromLaptimer() {
     lastSyncedLaptimerUrl = baseUrl;
     if (clearButton) clearButton.disabled = false;
 
-    let summary = `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`;
+    let summary = _ot(
+      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
+      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
+    );
     document.getElementById('offlineBackupSummary').textContent = summary;
 
-    let status = `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`;
+    let status = _ot(
+      `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
+      `Lap Timer${firmwareLabel}: ${imported.added} new, ${imported.updated} updated; database now has ${imported.dataset.sessions.length} sessions.`
+    );
     let autoSaveNote = await tryAutoSaveStatusNote();
     if (autoSaveNote) status += autoSaveNote;
     if (skippedMissing > 0) {
-      status += ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`;
+      status += _ot(
+        ` ${skippedMissing} Session-Datei(en) auf dem Lap Timer nicht gefunden.`,
+        ` ${skippedMissing} session file(s) not found on the Lap Timer.`
+      );
     } else if (imported.missingSessionFiles > 0) {
-      status += ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`;
+      status += _ot(
+        ` ${imported.missingSessionFiles} Session-Datei(en) für Rundendetails fehlen.`,
+        ` ${imported.missingSessionFiles} session file(s) for lap details are missing.`
+      );
     }
     setOfflineStatus(status, (skippedMissing > 0 || imported.missingSessionFiles > 0) ? 'error' : 'success');
   } catch (error) {
-    setOfflineStatus(error.message || 'Daten konnten nicht vom Lap Timer geladen werden.', 'error');
+    setOfflineStatus(error.message || _ot('Daten konnten nicht vom Lap Timer geladen werden.', 'Could not load data from the Lap Timer.'), 'error');
   } finally {
     if (syncButton) syncButton.disabled = false;
     if (hostInput) hostInput.disabled = false;
@@ -5732,14 +6543,14 @@ function showUniversalDialog(opts) {
     const activeColor = themeColors[cleanTheme] || 'var(--neon-cyan)';
     if (title) {
       title.style.color = activeColor;
-      title.innerHTML = opts.title || 'HINWEIS';
+      title.innerHTML = opts.title || _ot('HINWEIS', 'NOTICE');
     }
 
     if (box) {
       if (opts.boxContent) {
         box.style.display = 'block';
         box.style.borderColor = activeColor;
-        if (boxLabel) boxLabel.innerText = opts.boxLabel || 'Details:';
+        if (boxLabel) boxLabel.innerText = opts.boxLabel || _ot('Details:', 'Details:');
         if (boxContent) boxContent.innerText = opts.boxContent;
         if (boxSub) {
           if (opts.boxSub) {
@@ -5767,17 +6578,17 @@ function showUniversalDialog(opts) {
     if (opts.isAlert) {
       if (cancelBtn) cancelBtn.style.display = 'none';
       if (confirmBtn) {
-        confirmBtn.innerText = opts.confirmText || 'VERSTANDEN';
+        confirmBtn.innerText = opts.confirmText || _ot('VERSTANDEN', 'GOT IT');
         confirmBtn.className = btnClass;
         confirmBtn.style.flex = '1';
       }
     } else {
       if (cancelBtn) {
         cancelBtn.style.display = 'block';
-        cancelBtn.innerText = opts.cancelText || 'ABBRECHEN';
+        cancelBtn.innerText = opts.cancelText || _ot('ABBRECHEN', 'CANCEL');
       }
       if (confirmBtn) {
-        confirmBtn.innerText = opts.confirmText || 'BESTÄTIGEN';
+        confirmBtn.innerText = opts.confirmText || _ot('BESTÄTIGEN', 'CONFIRM');
         confirmBtn.className = btnClass;
       }
     }
@@ -5806,19 +6617,22 @@ window.showAlert = function(opts) {
 
 async function clearLaptimerStorage() {
   if (!lastSyncedLaptimerUrl) {
-    setOfflineStatus('Bitte zuerst die Daten erfolgreich vom Lap Timer laden.', 'error');
+    setOfflineStatus(_ot('Bitte zuerst die Daten erfolgreich vom Lap Timer laden.', 'Please load data from the Lap Timer successfully first.'), 'error');
     return;
   }
 
   let confirmed = await window.showConfirm({
-    title: '🗑️ LAP-TIMER LEEREN?',
+    title: _ot('🗑️ LAP-TIMER LEEREN?', '🗑️ CLEAR LAP TIMER?'),
     theme: 'danger',
-    boxLabel: 'Zielgerät im WLAN:',
+    boxLabel: _ot('Zielgerät im WLAN:', 'Target device on Wi-Fi:'),
     boxContent: lastSyncedLaptimerUrl,
-    boxSub: 'Alle Sessions, Tagesbestzeiten & Streckenrekorde auf dem Gerät werden entfernt',
-    message: 'Möchtest du die Statistikdaten auf dem Lap Timer wirklich löschen, um Speicherplatz freizugeben?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Deine lokale Offline-Statistikdatenbank in diesem Browser bleibt vollständig erhalten.</span>',
-    confirmText: 'JETZT LÖSCHEN 🗑️',
-    cancelText: 'ABBRECHEN'
+    boxSub: _ot('Alle Sessions, Tagesbestzeiten & Streckenrekorde auf dem Gerät werden entfernt', 'All sessions, daily bests & track records on the device will be removed'),
+    message: _ot(
+      'Möchtest du die Statistikdaten auf dem Lap Timer wirklich löschen, um Speicherplatz freizugeben?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Deine lokale Offline-Statistikdatenbank in diesem Browser bleibt vollständig erhalten.</span>',
+      'Do you really want to delete the statistics data on the Lap Timer to free up storage?<br><span style="color:var(--neon-green); font-size:12px; display:block; margin-top:8px;">✓ Your local offline statistics database in this browser will remain completely intact.</span>'
+    ),
+    confirmText: _ot('JETZT LÖSCHEN 🗑️', 'DELETE NOW 🗑️'),
+    cancelText: _ot('ABBRECHEN', 'CANCEL')
   });
   if (!confirmed) return;
 
@@ -5830,7 +6644,7 @@ async function clearLaptimerStorage() {
   if (clearButton) clearButton.disabled = true;
   if (syncButton) syncButton.disabled = true;
   if (hostInput) hostInput.disabled = true;
-  setOfflineStatus(`Lösche Statistikdaten auf ${lastSyncedLaptimerUrl} …`);
+  setOfflineStatus(_ot(`Lösche Statistikdaten auf ${lastSyncedLaptimerUrl} …`, `Deleting statistics data on ${lastSyncedLaptimerUrl} …`));
 
   let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer = controller ? setTimeout(() => controller.abort(), LAPTIMER_FETCH_TIMEOUT_MS) : null;
@@ -5843,22 +6657,25 @@ async function clearLaptimerStorage() {
       signal: controller ? controller.signal : undefined
     });
     if (response.status === 423) {
-      throw new Error('Löschen während eines laufenden Rennens auf dem Lap Timer gesperrt.');
+      throw new Error(_ot('Löschen während eines laufenden Rennens auf dem Lap Timer gesperrt.', 'Deletion blocked while a race is running on the Lap Timer.'));
     }
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} beim Löschen auf dem Lap Timer.`);
+      throw new Error(_ot(`HTTP ${response.status} beim Löschen auf dem Lap Timer.`, `HTTP ${response.status} while deleting on the Lap Timer.`));
     }
     lastSyncedLaptimerUrl = null;
     setOfflineStatus(
-      'Speicherplatz auf dem Lap Timer wurde freigegeben. Deine lokale Offline-Datenbank bleibt erhalten.',
+      _ot(
+        'Speicherplatz auf dem Lap Timer wurde freigegeben. Deine lokale Offline-Datenbank bleibt erhalten.',
+        'Storage space on the Lap Timer has been freed. Your local offline database remains intact.'
+      ),
       'success'
     );
   } catch (error) {
     if (clearButton && lastSyncedLaptimerUrl) clearButton.disabled = false;
     if (error && error.name === 'AbortError') {
-      setOfflineStatus('Zeitüberschreitung beim Löschen auf dem Lap Timer.', 'error');
+      setOfflineStatus(_ot('Zeitüberschreitung beim Löschen auf dem Lap Timer.', 'Timeout while deleting on the Lap Timer.'), 'error');
     } else {
-      setOfflineStatus(error.message || 'Statistikdaten auf dem Lap Timer konnten nicht gelöscht werden.', 'error');
+      setOfflineStatus(error.message || _ot('Statistikdaten auf dem Lap Timer konnten nicht gelöscht werden.', 'Could not delete statistics data on the Lap Timer.'), 'error');
     }
   } finally {
     if (timer) clearTimeout(timer);
@@ -5905,7 +6722,7 @@ offlineInitialization = (async function initializeOfflineStatistics() {
     await restoreLocalDatabase();
     return true;
   } catch (error) {
-    setOfflineStatus(error.message || 'Lokale Statistikdatenbank konnte nicht initialisiert werden.', 'error');
+    setOfflineStatus(error.message || _ot('Lokale Statistikdatenbank konnte nicht initialisiert werden.', 'Could not initialize local statistics database.'), 'error');
     return false;
   }
 })();

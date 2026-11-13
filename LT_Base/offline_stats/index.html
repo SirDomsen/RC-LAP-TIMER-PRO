@@ -6,8 +6,19 @@
   <meta name="theme-color" content="#0a0c10">
   <title>RC Lap Timer Pro – Offline-Statistik 0.9.5</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
-  <link rel="stylesheet" href="../data/style.css?v=4.5.11">
+  <link rel="stylesheet" href="../data/style.css?v=4.7.19">
   <link rel="stylesheet" href="offline_stats.css?v=0.9.3">
+  <script>
+    window.LT_LANG = localStorage.getItem('lt_lang') || 'de';
+    window.LT_I18N = window.LT_I18N || {};
+    window.t = function(s) {
+      return (window.LT_LANG === 'en' && window.LT_I18N[s]) ? window.LT_I18N[s] : s;
+    };
+    window.toggleLanguage = function() {
+      localStorage.setItem('lt_lang', window.LT_LANG === 'en' ? 'de' : 'en');
+      location.reload();
+    };
+  </script>
 </head>
 <body class="offline-app">
   <header class="offline-toolbar">
@@ -26,6 +37,7 @@
       <input id="backupFileInput" type="file" accept=".zip,.json,application/zip,application/json">
       <button class="btn btn-green" id="exportDatabaseButton" type="button" disabled>💾 Speichern</button>
       <button class="btn" id="fullscreenButton" type="button">⛶ Vollbild</button>
+      <button class="btn" id="langToggleBtn" type="button" onclick="toggleLanguage()" title="Sprache wechseln / Switch language">🇬🇧 EN</button>
     </div>
     <div class="offline-status" id="offlineStatus" role="status" aria-live="polite">
       Lade eine Statistik-/Backup-Datei oder verbinde dich mit dem Lap Timer im WLAN.
@@ -112,7 +124,8 @@
     </div>
   </div>
 
-  <script src="../data/stats.js?v=4.7.2"></script>
+  <script src="../data/lang_en.js?v=4.7.19"></script>
+  <script src="../data/stats.js?v=4.7.19"></script>
   <script src="offline_stats.js?v=0.9.5"></script>
 </body>
 </html>
