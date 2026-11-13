@@ -555,33 +555,48 @@
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">Heim-WLAN SSID:</label>
-              <input type="text" id="cfg_home_ssid" placeholder="WLAN Name" style="width: 100%; margin-top: 3px;">
+              <input type="text" id="cfg_home_ssid" class="wifi-input" placeholder="WLAN Name">
             </div>
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
-              <input type="password" id="cfg_home_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+              <div class="wifi-pass-wrap">
+                <input type="password" id="cfg_home_pass" class="wifi-input" placeholder="Passwort" autocomplete="off">
+                <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_home_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">Hotspot SSID:</label>
-              <input type="text" id="cfg_hotspot_ssid" placeholder="z.B. Poco F7" style="width: 100%; margin-top: 3px;">
+              <input type="text" id="cfg_hotspot_ssid" class="wifi-input" placeholder="z.B. Poco F7">
             </div>
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
-              <input type="password" id="cfg_hotspot_pass" placeholder="Passwort" style="width: 100%; margin-top: 3px;">
+              <div class="wifi-pass-wrap">
+                <input type="password" id="cfg_hotspot_pass" class="wifi-input" placeholder="Passwort" autocomplete="off">
+                <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_hotspot_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">AP SSID (Name):</label>
-              <input type="text" id="cfg_ap_ssid" placeholder="z.B. RC-LapTimer" style="width: 100%; margin-top: 3px;">
+              <input type="text" id="cfg_ap_ssid" class="wifi-input" placeholder="z.B. RC-LapTimer">
             </div>
             <div>
               <label style="font-size: 11px; color: var(--text-muted);">Passwort (AP):</label>
-              <input type="password" id="cfg_ap_pass" placeholder="Rennstrecke123" style="width: 100%; margin-top: 3px;">
+              <div class="wifi-pass-wrap">
+                <input type="password" id="cfg_ap_pass" class="wifi-input" placeholder="Rennstrecke123" autocomplete="off">
+                <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_ap_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
             </div>
           </div>
           
