@@ -1173,16 +1173,21 @@ static void writeActiveTrackStream(File& out) {
 void saveTracksToFS() {
   markLapDeleteSubStep(10);
   syncTopRecordVars();
+  markLapDeleteSubStep(101);
   String today = getCurrentLocalDateStr();
 
+  markLapDeleteSubStep(102);
   char* buf = (char*)malloc(TRACK_OBJ_MAX);
   if (!buf) return;
 
+  markLapDeleteSubStep(103);
   const char* tmpPath = "/tracks.json.tmp";
   if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
+  markLapDeleteSubStep(104);
   File out = LittleFS.open(tmpPath, "w");
   if (!out) { free(buf); return; }
 
+  markLapDeleteSubStep(105);
   out.print("{\"active\":\"");
   out.print(activeTrackId);
   out.print("\",\"tracks\":[");
