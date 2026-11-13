@@ -170,6 +170,23 @@ Für alle, die nicht selbst kompilieren möchten, stehen unter [**GitHub Release
 4. **Flashen (USB vs. OTA):**
    Die Environments in `platformio.ini` sind für OTA-Uploads vorkonfiguriert. Für das erstmalige Flashen per USB-Kabel das normale Serial-Upload-Target verwenden (`-t upload --upload-port COMx`). Web-Assets lassen sich danach ebenfalls bequem per Browser über `update.html` (inkl. automatischer `.gz`-Komprimierung) hochladen.
 
+### IR-Transponder bauen & flashen (ATtiny13A)
+
+Da jeder Transponder eine eigene Fahrzeug-ID benötigt, wird [`attiny13_tx/Attiny_tx.ino`](attiny13_tx/Attiny_tx.ino) direkt selbst angepasst und per ISP-Programmer (z. B. USBasp oder Arduino-as-ISP) geflasht:
+
+1. **ID festlegen:** In [`attiny13_tx/Attiny_tx.ino`](attiny13_tx/Attiny_tx.ino#L8) `#define CAR_ID` auf die gewünschte Fahrzeug-ID (`1`–`15`) setzen.
+2. **Takt & Fuses beachten (`9,6 MHz`):** Der Sketch setzt `F_CPU 9600000UL` voraus. Werksneue ATtiny13A laufen meist mit `1,2 MHz` (`CKDIV8`) – damit wäre die 38-kHz-Trägerfrequenz falsch.
+3. **Flashen über Arduino IDE (mit *MicroCore*):**
+   * Board: **ATtiny13** · Clock: **9.6 MHz internal osc.**
+   * Einmalig **Werkzeuge → Bootloader brennen** ausführen (setzt die Fuses auf 9,6 MHz).
+   * Danach **Sketch → Hochladen mit Programmer**.
+4. **Alternativ per CLI (`avr-gcc` + `avrdude`, z. B. mit USBasp):**
+   ```sh
+   avr-gcc -mmcu=attiny13a -Os -x c attiny13_tx/Attiny_tx.ino -o attiny_tx.elf
+   avr-objcopy -O ihex -R .eeprom attiny_tx.elf attiny_tx.hex
+   avrdude -c usbasp -p t13 -U lfuse:w:0x7a:m -U hfuse:w:0xff:m -U flash:w:attiny_tx.hex:i
+   ```
+
 ---
 
 ## 🚀 Erste Schritte & Bedienung
