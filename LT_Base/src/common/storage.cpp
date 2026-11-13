@@ -1308,123 +1308,162 @@ void scheduleTrackSyncFromSessions() {
   pendingTrackSyncFromSessions = true;
 }
 
-void importMissingTracksFromSessions() {
-  if (!LittleFS.exists("/sessions.json")) return;
+// Verarbeitet pro Aufruf hoechstens EINE fehlende Strecke (Haeppchenverarbeitung):
+// 1. Leichtgewichtig pruefen, welche trackIds aus /sessions.json in /tracks.json fehlen.
+// 2. Falls eine fehlt: nur fuer diese EINE Strecke Top-5 All-Time & Tagesbestzeit sammeln und an /tracks.json anhaengen.
+// Rueckgabe: true wenn noch weitere fehlende Strecken uebrig sind.
+static bool stepImportMissingTrackFromSessions() {
+  if (!LittleFS.exists("/sessions.json")) return false;
 
-  struct DiscoveredTrack {
-    String id;
-    String name;
-    uint32_t bestLap;
-    uint8_t bestCarId;
-    String bestDriver;
-    String bestCar;
-    bool existsInTracks;
-  };
-  const uint8_t MAX_DISCOVER = 16;
-  std::vector<DiscoveredTrack> discovered;
+  String missingId = "";
+  String missingName = "";
 
-  File fIn = LittleFS.open("/sessions.json", "r");
-  if (!fIn) return;
+  // Phase A: Erste fehlende trackId finden (ohne RecordEntry-Arrays im Heap)
+  {
+    struct TrackRef { String id; String name; bool exists; };
+    std::vector<TrackRef> refs;
 
-  int braceDepth = 0;
-  bool inQuotes = false;
-  bool escaped = false;
-  String currentObj = "";
-  currentObj.reserve(640);
+    File fIn = LittleFS.open("/sessions.json", "r");
+    if (!fIn) return false;
 
-  while (fIn.available()) {
-    char c = (char)fIn.read();
-    if (braceDepth == 0) {
-      if (c == '[') braceDepth = 1;
-      continue;
-    }
-    if (escaped) {
-      escaped = false;
-      if (braceDepth >= 2) currentObj += c;
-      continue;
-    }
-    if (c == '\\' && inQuotes) {
-      escaped = true;
-      if (braceDepth >= 2) currentObj += c;
-      continue;
-    }
-    if (c == '\"') inQuotes = !inQuotes;
+    String currentObj;
+    currentObj.reserve(512);
+    int braceDepth = 0;
+    bool inQuotes = false, escaped = false;
 
-    if (!inQuotes) {
-      if (c == '{') {
-        if (braceDepth == 1) currentObj = "{";
-        else currentObj += '{';
-        braceDepth++;
-        continue;
-      } else if (c == '}') {
-        braceDepth--;
-        if (braceDepth == 1) {
-          currentObj += '}';
-          JsonDocument doc;
-          if (!deserializeJson(doc, currentObj)) {
-            String tid = doc["trackId"] | "";
-            String tname = doc["trackName"] | "";
-            if (tid.length() > 0) {
-              int foundIdx = -1;
-              for (size_t k = 0; k < discovered.size(); k++) {
-                if (discovered[k].id == tid) { foundIdx = (int)k; break; }
+    while (fIn.available()) {
+      char c = (char)fIn.read();
+      if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
+      if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
+      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
+      if (c == '\"') inQuotes = !inQuotes;
+
+      if (!inQuotes) {
+        if (c == '{') {
+          if (braceDepth == 1) currentObj = "{"; else if (currentObj.length() < 1536) currentObj += '{';
+          braceDepth++;
+          continue;
+        } else if (c == '}') {
+          braceDepth--;
+          if (braceDepth == 1) {
+            if (currentObj.length() < 1536) currentObj += '}';
+            JsonDocument doc;
+            if (!deserializeJson(doc, currentObj)) {
+              String tid = doc["trackId"] | "";
+              if (tid.length() > 0) {
+                bool seen = false;
+                for (size_t k = 0; k < refs.size(); k++) {
+                  if (refs[k].id == tid) { seen = true; break; }
+                }
+                if (!seen && refs.size() < 16) {
+                  String tname = doc["trackName"] | "";
+                  refs.push_back({ tid, tname.length() > 0 ? tname : tid, false });
+                }
               }
-              if (foundIdx < 0 && discovered.size() < MAX_DISCOVER) {
-                DiscoveredTrack dt;
-                dt.id = tid;
-                dt.name = tname.length() > 0 ? tname : tid;
-                dt.bestLap = 0;
-                dt.bestCarId = 0;
-                dt.existsInTracks = false;
-                discovered.push_back(dt);
-                foundIdx = (int)discovered.size() - 1;
-              }
-              if (foundIdx >= 0 && doc["results"].is<JsonArray>()) {
-                JsonArray res = doc["results"].as<JsonArray>();
-                for (JsonObject r : res) {
+            }
+            currentObj = "";
+            continue;
+          }
+        } else if (c == ']' && braceDepth == 1) {
+          break;
+        }
+      }
+      if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c;
+    }
+    fIn.close();
+
+    if (refs.empty()) return false;
+
+    streamTracks(nullptr, [&](JsonDocument& t) -> int {
+      String tid = t["id"] | "";
+      for (size_t k = 0; k < refs.size(); k++) {
+        if (refs[k].id == tid) refs[k].exists = true;
+      }
+      return 0;
+    });
+
+    uint8_t missingCount = 0;
+    for (size_t k = 0; k < refs.size(); k++) {
+      if (!refs[k].exists) {
+        if (missingId.length() == 0) {
+          missingId = refs[k].id;
+          missingName = refs[k].name;
+        }
+        missingCount++;
+      }
+    }
+    if (missingCount == 0) return false;
+  }
+
+  // Phase B: Nur fuer diese EINE fehlende Strecke Top-5 aus /sessions.json einsammeln
+  String today = getCurrentLocalDateStr();
+  RecordEntry allTime[MAX_TRACK_RECORDS];
+  RecordEntry daily[MAX_TRACK_RECORDS];
+  uint8_t allTimeCount = 0;
+  uint8_t dailyCount = 0;
+
+  {
+    File fIn = LittleFS.open("/sessions.json", "r");
+    if (!fIn) return false;
+
+    String currentObj;
+    currentObj.reserve(512);
+    int braceDepth = 0;
+    bool inQuotes = false, escaped = false;
+
+    while (fIn.available()) {
+      char c = (char)fIn.read();
+      if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
+      if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
+      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
+      if (c == '\"') inQuotes = !inQuotes;
+
+      if (!inQuotes) {
+        if (c == '{') {
+          if (braceDepth == 1) currentObj = "{"; else if (currentObj.length() < 1536) currentObj += '{';
+          braceDepth++;
+          continue;
+        } else if (c == '}') {
+          braceDepth--;
+          if (braceDepth == 1) {
+            if (currentObj.length() < 1536) currentObj += '}';
+            JsonDocument doc;
+            if (!deserializeJson(doc, currentObj)) {
+              String tid = doc["trackId"] | "";
+              if (tid == missingId && doc["results"].is<JsonArray>()) {
+                String sid = doc["id"] | "";
+                String sDate = (sid.length() >= 8) ? sid.substring(0, 8) : "";
+                bool isTodaySession = (today.length() > 0 && sDate == today);
+                for (JsonObject r : doc["results"].as<JsonArray>()) {
                   uint32_t bl = r["bestLap"] | 0;
-                  if (bl > 0 && (discovered[foundIdx].bestLap == 0 || bl < discovered[foundIdx].bestLap)) {
-                    discovered[foundIdx].bestLap = bl;
-                    discovered[foundIdx].bestCarId = r["id"] | 0;
-                    discovered[foundIdx].bestDriver = r["driver"] | "";
-                    discovered[foundIdx].bestCar = r["car"] | "";
+                  if (bl > 0) {
+                    uint8_t cid = r["id"] | 0;
+                    String drv = r["driver"] | "";
+                    String car = r["car"] | "";
+                    updateRecordList(allTime, allTimeCount, bl, cid, drv, car, sDate);
+                    if (isTodaySession) {
+                      updateRecordList(daily, dailyCount, bl, cid, drv, car, sDate);
+                    }
                   }
                 }
               }
             }
+            currentObj = "";
+            continue;
           }
-          currentObj = "";
-          continue;
+        } else if (c == ']' && braceDepth == 1) {
+          break;
         }
-      } else if (c == ']' && braceDepth == 1) {
-        break;
       }
+      if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c;
     }
-    if (braceDepth >= 2 && currentObj.length() < 1536) {
-      currentObj += c;
-    }
+    fIn.close();
   }
-  fIn.close();
 
-  if (discovered.empty()) return;
-
-  streamTracks(nullptr, [&](JsonDocument& t) -> int {
-    String tid = t["id"] | "";
-    for (size_t k = 0; k < discovered.size(); k++) {
-      if (discovered[k].id == tid) discovered[k].existsInTracks = true;
-    }
-    return 0;
-  });
-
-  bool anyMissing = false;
-  for (size_t k = 0; k < discovered.size(); k++) {
-    if (!discovered[k].existsInTracks) { anyMissing = true; break; }
-  }
-  if (!anyMissing) return;
-
+  // Phase C: Diese eine Strecke atomar an /tracks.json anhaengen
   const char* tmpPath = "/tracks.json.tmp";
   File out = LittleFS.open(tmpPath, "w");
-  if (!out) return;
+  if (!out) return false;
 
   out.print("{\"active\":\"");
   out.print(activeTrackId);
@@ -1465,45 +1504,57 @@ void importMissingTracksFromSessions() {
     }
   }
 
-  for (size_t k = 0; k < discovered.size(); k++) {
-    if (discovered[k].existsInTracks) continue;
-    JsonDocument t;
-    t["id"] = discovered[k].id;
-    t["name"] = discovered[k].name;
-    t["recordLap"] = discovered[k].bestLap;
-    t["recordCarId"] = discovered[k].bestCarId;
-    t["recordDriver"] = discovered[k].bestDriver;
-    t["recordCar"] = discovered[k].bestCar;
+  if (!firstOut) out.print(",");
+  JsonDocument t;
+  t["id"] = missingId;
+  t["name"] = missingName;
+  if (allTimeCount > 0) {
+    t["recordLap"] = allTime[0].lapMs;
+    t["recordCarId"] = allTime[0].carId;
+    t["recordDriver"] = allTime[0].driver;
+    t["recordCar"] = allTime[0].car;
+    t["recordDate"] = allTime[0].date;
+  } else {
+    t["recordLap"] = 0;
+    t["recordCarId"] = 0;
+    t["recordDriver"] = "";
+    t["recordCar"] = "";
     t["recordDate"] = "";
+  }
+  if (dailyCount > 0) {
+    t["bestLap"] = daily[0].lapMs;
+    t["bestCarId"] = daily[0].carId;
+    t["bestDriver"] = daily[0].driver;
+    t["bestCar"] = daily[0].car;
+    t["bestDate"] = today;
+  } else {
     t["bestLap"] = 0;
     t["bestCarId"] = 0;
     t["bestDriver"] = "";
     t["bestCar"] = "";
-    t["bestDate"] = "";
-    JsonArray allRecs = t["allTimeRecords"].to<JsonArray>();
-    if (discovered[k].bestLap > 0) {
-      JsonObject rec = allRecs.add<JsonObject>();
-      rec["lap"] = discovered[k].bestLap;
-      rec["carId"] = discovered[k].bestCarId;
-      rec["driver"] = discovered[k].bestDriver;
-      rec["car"] = discovered[k].bestCar;
-      rec["date"] = "";
-    }
-    t["dailyRecords"].to<JsonArray>();
-    if (!firstOut) out.print(",");
-    serializeJson(t, out);
-    firstOut = false;
+    t["bestDate"] = today;
   }
+  String head;
+  serializeJson(t, head);
+  head.remove(head.length() - 1);
+  out.print(head);
+  writeRecordArrayStream(out, "allTimeRecords", allTime, allTimeCount);
+  writeRecordArrayStream(out, "dailyRecords", daily, dailyCount);
+  out.print("}]}");
 
-  out.print("]}");
   size_t outSize = out.size();
   out.close();
   if (outSize < 20 || !atomicReplaceFile(tmpPath, "/tracks.json")) {
     LittleFS.remove(tmpPath);
-    return;
+    return false;
   }
   loadTracksFromFS();
   updateFsUsageCache();
+  return true; // Naechster loop()-Tick prueft, ob noch eine Strecke fehlt
+}
+
+void importMissingTracksFromSessions() {
+  scheduleTrackSyncFromSessions();
 }
 
 bool selectTrackById(const String& trackId) {
@@ -2298,9 +2349,8 @@ void processStorageQueue() {
 
   updateResetLogClock();
 
-  if (pendingTrackSyncFromSessions) {
-    pendingTrackSyncFromSessions = false;
-    importMissingTracksFromSessions();
+  if (pendingTrackSyncFromSessions && lapDeleteState != LAP_DELETE_PENDING && !PlatformRuntime::isHeapCritical(9000, 100, 0)) {
+    pendingTrackSyncFromSessions = stepImportMissingTrackFromSessions();
   }
 
   // Nach einem Absturz mitten im Loeschen: Phase 2 (Session/Index) genau einmal wiederholen
