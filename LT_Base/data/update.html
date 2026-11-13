@@ -494,9 +494,9 @@
       let badge = document.getElementById('uploadTargetBadge');
       if (!badge) return;
       if (!currentFolder || viewMode === 'flat') {
-        badge.innerHTML = `Ziel: 📁 / <small style="color:var(--text-muted);">(Hauptverzeichnis)</small>`;
+        badge.innerHTML = `${t('Ziel:')} 📁 / <small style="color:var(--text-muted);">(${t('Hauptverzeichnis')})</small>`;
       } else {
-        badge.innerHTML = `<span style="color:var(--neon-orange); font-weight:bold;">⚠️ Ziel: 📁 /${currentFolder}</span> <button class="btn-icon" style="color:var(--neon-orange); font-size:12px; margin-left:4px; vertical-align:middle;" title="Auf Hauptverzeichnis zurücksetzen" onclick="navigateToFolder('')">✕</button>`;
+        badge.innerHTML = `<span style="color:var(--neon-orange); font-weight:bold;">⚠️ ${t('Ziel:')} 📁 /${currentFolder}</span> <button class="btn-icon" style="color:var(--neon-orange); font-size:12px; margin-left:4px; vertical-align:middle;" title="${t('Auf Hauptverzeichnis zurücksetzen')}" onclick="navigateToFolder('')">✕</button>`;
       }
     }
 

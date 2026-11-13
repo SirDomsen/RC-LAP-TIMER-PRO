@@ -1213,12 +1213,12 @@ function applyUserRoleUI(role) {
   let badge = document.getElementById('currentRoleBadge');
   if (badge) {
     if (role === 'driver') {
-      badge.innerText = "🏎️ Aktueller Modus: Fahrer. Zu Rennleiter wechseln 👑";
+      badge.innerText = t("🏎️ Aktueller Modus: Fahrer. Zu Rennleiter wechseln 👑");
       badge.onclick = (typeof openAdminConfirmModal === 'function') ? openAdminConfirmModal : () => { location.href = '/admin'; };
       badge.style.borderColor = "var(--neon-green)";
       badge.style.color = "var(--neon-green)";
     } else {
-      badge.innerText = "👑 Aktueller Modus: Rennleiter. Zu Fahrer wechseln 🏎️";
+      badge.innerText = t("👑 Aktueller Modus: Rennleiter. Zu Fahrer wechseln 🏎️");
       badge.onclick = () => { location.href = '/'; };
       badge.style.borderColor = "var(--neon-cyan)";
       badge.style.color = "var(--neon-cyan)";
@@ -2756,7 +2756,7 @@ async function updateData(fullSync = false) {
     let displayData = [];
 
     if (data.length === 0) {
-      html = `<tr><td colspan="${totalCols}">Keine Autos erfasst</td></tr>`;
+      html = `<tr><td colspan="${totalCols}">${t('Keine Autos erfasst')}</td></tr>`;
       currentLeaderId = null;
     } else {
       let leaderSearch = [...data];
