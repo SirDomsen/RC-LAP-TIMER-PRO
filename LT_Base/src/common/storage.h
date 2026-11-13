@@ -86,6 +86,7 @@ void scheduleReloadTracksFromFS();
 void saveTracksToFS();
 void importMissingTracksFromSessions();
 void scheduleTrackSyncFromSessions();
+void deferPendingTrackSync();
 String sanitizeTrackSlug(const String& rawName);
 bool selectTrackById(const String& trackId);
 bool addOrSelectTrack(const String& rawName);

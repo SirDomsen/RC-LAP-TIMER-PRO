@@ -728,6 +728,7 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
   static uint32_t targetMtime = 0;
 
   if (!index) {
+    deferPendingTrackSync();
     targetMtime = 0;
     if (request->hasParam("mtime")) {
       targetMtime = strtoul(request->getParam("mtime")->value().c_str(), NULL, 10);
@@ -785,11 +786,14 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
 
       if (filename.indexOf("names.json") >= 0) {
         scheduleReloadNamesFromFS();
+        deferPendingTrackSync();
       } else if (filename.indexOf("tracks.json") >= 0) {
         scheduleReloadTracksFromFS();
         scheduleTrackSyncFromSessions();
       } else if (filename.indexOf("sessions.json") >= 0) {
         scheduleTrackSyncFromSessions();
+      } else {
+        deferPendingTrackSync();
       }
       updateFsUsageCache();
     }

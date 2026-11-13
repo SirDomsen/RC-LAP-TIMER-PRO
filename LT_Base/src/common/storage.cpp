@@ -1320,6 +1320,12 @@ void scheduleTrackSyncFromSessions() {
   pendingTrackSyncAtMs = millis() + 1500;
 }
 
+void deferPendingTrackSync() {
+  if (pendingTrackSyncFromSessions) {
+    pendingTrackSyncAtMs = millis() + 1500;
+  }
+}
+
 // Verarbeitet pro Aufruf hoechstens EINE fehlende Strecke (Haeppchenverarbeitung):
 // 1. Leichtgewichtig pruefen, welche trackIds aus /sessions.json in /tracks.json fehlen.
 // 2. Falls eine fehlt: nur fuer diese EINE Strecke Top-5 All-Time & Tagesbestzeit sammeln und an /tracks.json anhaengen.
@@ -1488,38 +1494,41 @@ static bool stepImportMissingTrackFromSessions() {
 
   if (LittleFS.exists("/tracks.json")) {
     File in = LittleFS.open("/tracks.json", "r");
-    if (in) {
-      char* buf = (char*)malloc(TRACK_OBJ_MAX);
-      if (buf) {
-        int d = 0; bool inQ = false, esc = false, inArr = false, ov = false; size_t len = 0;
-        uint16_t readBytes = 0;
-        while (in.available()) {
-          if ((++readBytes & 0xFF) == 0) yield();
-          char c = (char)in.read();
-          if (!inArr) { if (c == '[') inArr = true; continue; }
-          if (d == 0) {
-            if (c == '{') { d = 1; len = 0; ov = false; inQ = false; esc = false; buf[len++] = c; }
-            else if (c == ']') break;
-            continue;
-          }
-          if (len + 1 < TRACK_OBJ_MAX) buf[len++] = c; else ov = true;
-          if (esc) { esc = false; continue; }
-          if (inQ) { if (c == '\\') esc = true; else if (c == '"') inQ = false; continue; }
-          if (c == '"') inQ = true;
-          else if (c == '{') d++;
-          else if (c == '}' && --d == 0) {
-            if (!ov) {
-              buf[len] = '\0';
-              if (!firstOut) out.print(",");
-              out.write((const uint8_t*)buf, len);
-              firstOut = false;
-            }
-          }
-        }
-        free(buf);
-      }
-      in.close();
+    char* buf = in ? (char*)malloc(TRACK_OBJ_MAX) : nullptr;
+    if (!in || !buf) {
+      if (buf) free(buf);
+      if (in) in.close();
+      out.close();
+      LittleFS.remove(tmpPath);
+      return false;
     }
+    int d = 0; bool inQ = false, esc = false, inArr = false, ov = false; size_t len = 0;
+    uint16_t readBytes = 0;
+    while (in.available()) {
+      if ((++readBytes & 0xFF) == 0) yield();
+      char c = (char)in.read();
+      if (!inArr) { if (c == '[') inArr = true; continue; }
+      if (d == 0) {
+        if (c == '{') { d = 1; len = 0; ov = false; inQ = false; esc = false; buf[len++] = c; }
+        else if (c == ']') break;
+        continue;
+      }
+      if (len + 1 < TRACK_OBJ_MAX) buf[len++] = c; else ov = true;
+      if (esc) { esc = false; continue; }
+      if (inQ) { if (c == '\\') esc = true; else if (c == '"') inQ = false; continue; }
+      if (c == '"') inQ = true;
+      else if (c == '{') d++;
+      else if (c == '}' && --d == 0) {
+        if (!ov) {
+          buf[len] = '\0';
+          if (!firstOut) out.print(",");
+          out.write((const uint8_t*)buf, len);
+          firstOut = false;
+        }
+      }
+    }
+    free(buf);
+    in.close();
   }
 
   if (!firstOut) out.print(",");
@@ -2376,7 +2385,7 @@ void processStorageQueue() {
     loadTracksFromFS();
   }
 
-  if (pendingTrackSyncFromSessions && (int32_t)(millis() - pendingTrackSyncAtMs) >= 0 && lapDeleteState != LAP_DELETE_PENDING && !PlatformRuntime::isHeapCritical(9000, 100, 0)) {
+  if (pendingTrackSyncFromSessions && (int32_t)(millis() - pendingTrackSyncAtMs) >= 0 && lapDeleteState != LAP_DELETE_PENDING && !PlatformRuntime::isHeapCritical(9500, 75, 3200)) {
     pendingTrackSyncFromSessions = stepImportMissingTrackFromSessions();
   }
 
