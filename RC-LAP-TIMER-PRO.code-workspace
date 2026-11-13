@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "LT_Base (Basisstation)",
+			"path": "LT_Base"
+		},
+		{
+			"name": "LT_SectorStation (Sektorstationen)",
+			"path": "LT_SectorStation"
+		},
+		{
+			"name": "RC-LAP-TIMER-PRO (Root & Doku)",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
