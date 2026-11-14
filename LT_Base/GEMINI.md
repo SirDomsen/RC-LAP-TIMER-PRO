@@ -110,3 +110,6 @@ Diese Regeln resultieren aus einem fatalen OTA-Brick und sind **absolut unverhan
 5. **Häppchenverarbeitung (Chunked Processing) beim ESP8266 bevorzugen:**
    - Größere LittleFS-/JSON-Operationen (z. B. Backup-Restore, Index-Abgleich `stepImportMissingTrackFromSessions()`, Datei-/Rundenlöschung) dürfen auf dem ESP8266 **niemals** als großer Block im `AsyncWebServer`-Callback oder in einem einzigen langen `loop()`-Durchlauf laufen (Software-Watchdog ~3,2 s & Heap-Spitzen).
    - **Pflicht-Muster:** Im HTTP-/Upload-Callback nur ein Flag bzw. eine Queue setzen (z. B. `scheduleReloadNamesFromFS()`, `scheduleReloadTracksFromFS()`, `scheduleTrackSyncFromSessions()` mit Debounce) und die eigentliche Arbeit häppchenweise in `processStorageQueue()` (`loop()`) abarbeiten – maximal ein Objekt, eine Strecke bzw. eine Datei pro Durchlauf, mit periodischem `yield()` ausschließlich im `loop()`-Kontext (niemals im `ctx: sys` der Async-Callbacks).
+
+6. **4-KB-Stack-Disziplin & Post-Mortem-Katalog (`8266DoNots.md`):**
+   - Details zum 4096-B-`cont`-Stack-Limit, warum `RecordEntry`-Arrays vom Stack auf den Heap gehören und Dispatcher-/Phasen-Funktionen via `STORAGE_NOINLINE` getrennt werden müssen (inkl. Diagnose-Anleitung): siehe [`8266DoNots.md`](8266DoNots.md).

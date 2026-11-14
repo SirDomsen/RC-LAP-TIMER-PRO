@@ -9,6 +9,12 @@
 #include <time.h>
 #include <memory>
 
+#if defined(__GNUC__)
+#define STORAGE_NOINLINE __attribute__((noinline))
+#else
+#define STORAGE_NOINLINE
+#endif
+
 class LargeJsonAllocator : public ArduinoJson::Allocator {
  public:
   static LargeJsonAllocator* instance() {
@@ -704,139 +710,145 @@ static bool streamTracks(const String* activeId, Fn visit) {
   return atomicReplaceFile(tmpPath, "/tracks.json");
 }
 
-bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
-  PlatformRuntime::StorageLock lock;
-  String targetId = trackId.length() > 0 ? trackId : activeTrackId;
-  uint32_t deletedLap = 0;
-  uint8_t deletedCarId = 0;
-  uint32_t restoredLap = 0;
+static bool removeTrackRecordPair(RecordEntry* allTimeList, uint8_t& allTimeCount,
+                                  RecordEntry* dailyList, uint8_t& dailyCount,
+                                  bool isDaily, int8_t index, const String& today,
+                                  uint32_t& deletedLap, uint8_t& deletedCarId, uint32_t& restoredLap) {
   String deletedDriver = "";
   String deletedCar = "";
   String deletedDate = "";
+
+  if (isDaily) {
+    if (!removeEntryFromList(dailyList, dailyCount, index, deletedLap, deletedCarId, restoredLap,
+                             &deletedDriver, &deletedCar, &deletedDate)) {
+      return false;
+    }
+    // Kaskadierung zum All-Time Streckenrekord:
+    // Eine Tagesbestzeit stammt von heute. Falls derselbe Eintrag (gleiche Rundenzeit + Fahrer von heute)
+    // auch in der All-Time Liste steht, war diese Tagesbestzeit gleichzeitig der Streckenrekord!
+    if (index >= 0 && deletedLap > 0) {
+      String matchDate = deletedDate.length() > 0 ? deletedDate : today;
+      int8_t allTimeIdx = findMatchingRecordIndex(allTimeList, allTimeCount, deletedLap, deletedCarId, deletedDriver, matchDate);
+      if (allTimeIdx >= 0) {
+        uint32_t dLap = 0, rLap = 0;
+        uint8_t dCar = 0;
+        removeEntryFromList(allTimeList, allTimeCount, allTimeIdx, dLap, dCar, rLap);
+      }
+    }
+    return true;
+  }
+
+  if (!removeEntryFromList(allTimeList, allTimeCount, index, deletedLap, deletedCarId, restoredLap,
+                           &deletedDriver, &deletedCar, &deletedDate)) {
+    return false;
+  }
+  // Kaskadierung zur Tagesbestzeit:
+  // Ein Streckenrekord kann älter sein als heute (Streckenrekord != Tagesbestzeit falls älter!).
+  // Nur wenn der gelöschte Streckenrekord von HEUTE stammt, existiert er auch in der Tagesbestzeit.
+  bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
+  if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
+    int8_t dailyIdx = findMatchingRecordIndex(dailyList, dailyCount, deletedLap, deletedCarId, deletedDriver, "");
+    if (dailyIdx >= 0) {
+      uint32_t dLap = 0, rLap = 0;
+      uint8_t dCar = 0;
+      removeEntryFromList(dailyList, dailyCount, dailyIdx, dLap, dCar, rLap);
+    }
+  }
+  return true;
+}
+
+STORAGE_NOINLINE static bool deleteActiveTrackRecordEntry(bool isDaily, int8_t index, const String& today) {
+  uint32_t deletedLap = 0;
+  uint8_t deletedCarId = 0;
+  uint32_t restoredLap = 0;
+  if (!removeTrackRecordPair(activeAllTimeRecords, activeAllTimeCount,
+                             activeDailyRecords, activeDailyCount,
+                             isDaily, index, today, deletedLap, deletedCarId, restoredLap)) {
+    return false;
+  }
+  if (deletedCarId >= 1 && deletedCarId <= MAX_CARS && deletedLap > 0 && bestLapDuration[deletedCarId] == deletedLap) {
+    bestLapDuration[deletedCarId] = restoredLap;
+  }
+  syncTopRecordVars();
+  saveTracksToFS();
+  return true;
+}
+
+STORAGE_NOINLINE static bool deleteInactiveTrackRecordEntry(const String& targetId, bool isDaily, int8_t index, const String& today) {
+  bool found = false;
+  bool failed = false;
+  String activeCopy = activeTrackId;
+  bool written = streamTracks(&activeCopy, [&](JsonDocument& d) -> int {
+    JsonObject t = d.as<JsonObject>();
+    if (t["id"].as<String>() != targetId) return 0;
+
+    std::unique_ptr<RecordEntry[]> recBuf(new (std::nothrow) RecordEntry[MAX_TRACK_RECORDS * 2]);
+    if (!recBuf) {
+      failed = true;
+      return 2;
+    }
+    RecordEntry* allTimeList = &recBuf[0];
+    uint8_t allTimeCount = 0;
+    loadRecordArrayFromJson(t, "allTimeRecords", allTimeList, allTimeCount);
+
+    RecordEntry* dailyList = &recBuf[MAX_TRACK_RECORDS];
+    uint8_t dailyCount = 0;
+    loadRecordArrayFromJson(t, "dailyRecords", dailyList, dailyCount);
+
+    uint32_t deletedLap = 0;
+    uint8_t deletedCarId = 0;
+    uint32_t restoredLap = 0;
+    if (!removeTrackRecordPair(allTimeList, allTimeCount, dailyList, dailyCount,
+                               isDaily, index, today, deletedLap, deletedCarId, restoredLap)) {
+      failed = true;
+      return 2;
+    }
+
+    saveRecordArrayToJson(t, "allTimeRecords", allTimeList, allTimeCount);
+    saveRecordArrayToJson(t, "dailyRecords", dailyList, dailyCount);
+
+    // Header-Felder synchronisieren
+    if (dailyCount > 0 && dailyList[0].lapMs > 0) {
+      t["bestLap"] = dailyList[0].lapMs;
+      t["bestCarId"] = dailyList[0].carId;
+      t["bestDriver"] = dailyList[0].driver;
+      t["bestCar"] = dailyList[0].car;
+      t["bestDate"] = dailyList[0].date;
+    } else {
+      t["bestLap"] = 0;
+      t["bestCarId"] = 0;
+      t["bestDriver"] = "";
+      t["bestCar"] = "";
+    }
+
+    if (allTimeCount > 0 && allTimeList[0].lapMs > 0) {
+      t["recordLap"] = allTimeList[0].lapMs;
+      t["recordCarId"] = allTimeList[0].carId;
+      t["recordDriver"] = allTimeList[0].driver;
+      t["recordCar"] = allTimeList[0].car;
+      t["recordDate"] = allTimeList[0].date;
+    } else {
+      t["recordLap"] = 0;
+      t["recordCarId"] = 0;
+      t["recordDriver"] = "";
+      t["recordCar"] = "";
+      t["recordDate"] = "";
+    }
+    found = true;
+    return 0;
+  });
+  return !failed && found && written;
+}
+
+STORAGE_NOINLINE bool deleteTrackRecordEntry(const String& trackId, bool isDaily, int8_t index) {
+  PlatformRuntime::StorageLock lock;
+  String targetId = trackId.length() > 0 ? trackId : activeTrackId;
   String today = getCurrentLocalDateStr();
 
   if (targetId == activeTrackId) {
-    bool ok = false;
-    if (isDaily) {
-      ok = removeEntryFromList(activeDailyRecords, activeDailyCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-      if (!ok) return false;
-
-      // Kaskadierung zum All-Time Streckenrekord:
-      // Eine Tagesbestzeit stammt von heute. Falls derselbe Eintrag (gleiche Rundenzeit + Fahrer von heute)
-      // auch in der All-Time Liste steht, war diese Tagesbestzeit gleichzeitig der Streckenrekord!
-      if (index >= 0 && deletedLap > 0) {
-        String matchDate = deletedDate.length() > 0 ? deletedDate : today;
-        int8_t allTimeIdx = findMatchingRecordIndex(activeAllTimeRecords, activeAllTimeCount, deletedLap, deletedCarId, deletedDriver, matchDate);
-        if (allTimeIdx >= 0) {
-          uint32_t dLap = 0, rLap = 0;
-          uint8_t dCar = 0;
-          removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, allTimeIdx, dLap, dCar, rLap);
-        }
-      }
-    } else {
-      ok = removeEntryFromList(activeAllTimeRecords, activeAllTimeCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-      if (!ok) return false;
-
-      // Kaskadierung zur Tagesbestzeit:
-      // Ein Streckenrekord kann älter sein als heute (Streckenrekord != Tagesbestzeit falls älter!).
-      // Nur wenn der gelöschte Streckenrekord von HEUTE stammt, existiert er auch in der Tagesbestzeit.
-      bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
-      if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
-        int8_t dailyIdx = findMatchingRecordIndex(activeDailyRecords, activeDailyCount, deletedLap, deletedCarId, deletedDriver, "");
-        if (dailyIdx >= 0) {
-          uint32_t dLap = 0, rLap = 0;
-          uint8_t dCar = 0;
-          removeEntryFromList(activeDailyRecords, activeDailyCount, dailyIdx, dLap, dCar, rLap);
-        }
-      }
-    }
-
-    if (deletedCarId >= 1 && deletedCarId <= MAX_CARS && deletedLap > 0 && bestLapDuration[deletedCarId] == deletedLap) {
-      bestLapDuration[deletedCarId] = restoredLap;
-    }
-
-    syncTopRecordVars();
-    saveTracksToFS();
+    if (!deleteActiveTrackRecordEntry(isDaily, index, today)) return false;
   } else {
-    bool found = false;
-    bool failed = false;
-    String activeCopy = activeTrackId;
-    bool written = streamTracks(&activeCopy, [&](JsonDocument& d) -> int {
-      JsonObject t = d.as<JsonObject>();
-      if (t["id"].as<String>() != targetId) return 0;
-      {
-        RecordEntry allTimeList[MAX_TRACK_RECORDS];
-        uint8_t allTimeCount = 0;
-        loadRecordArrayFromJson(t, "allTimeRecords", allTimeList, allTimeCount);
-
-        RecordEntry dailyList[MAX_TRACK_RECORDS];
-        uint8_t dailyCount = 0;
-        loadRecordArrayFromJson(t, "dailyRecords", dailyList, dailyCount);
-
-        bool ok = false;
-        if (isDaily) {
-          ok = removeEntryFromList(dailyList, dailyCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-          if (!ok) { failed = true; return 2; }
-
-          if (index >= 0 && deletedLap > 0) {
-            String matchDate = deletedDate.length() > 0 ? deletedDate : today;
-            int8_t allTimeIdx = findMatchingRecordIndex(allTimeList, allTimeCount, deletedLap, deletedCarId, deletedDriver, matchDate);
-            if (allTimeIdx >= 0) {
-              uint32_t dLap = 0, rLap = 0;
-              uint8_t dCar = 0;
-              removeEntryFromList(allTimeList, allTimeCount, allTimeIdx, dLap, dCar, rLap);
-            }
-          }
-        } else {
-          ok = removeEntryFromList(allTimeList, allTimeCount, index, deletedLap, deletedCarId, restoredLap, &deletedDriver, &deletedCar, &deletedDate);
-          if (!ok) { failed = true; return 2; }
-
-          bool isFromToday = (today.length() > 0 && deletedDate.length() > 0 && deletedDate == today);
-          if (index >= 0 && deletedLap > 0 && (isFromToday || deletedDate.length() == 0)) {
-            int8_t dailyIdx = findMatchingRecordIndex(dailyList, dailyCount, deletedLap, deletedCarId, deletedDriver, "");
-            if (dailyIdx >= 0) {
-              uint32_t dLap = 0, rLap = 0;
-              uint8_t dCar = 0;
-              removeEntryFromList(dailyList, dailyCount, dailyIdx, dLap, dCar, rLap);
-            }
-          }
-        }
-
-        saveRecordArrayToJson(t, "allTimeRecords", allTimeList, allTimeCount);
-        saveRecordArrayToJson(t, "dailyRecords", dailyList, dailyCount);
-
-        // Header-Felder synchronisieren
-        if (dailyCount > 0 && dailyList[0].lapMs > 0) {
-          t["bestLap"] = dailyList[0].lapMs;
-          t["bestCarId"] = dailyList[0].carId;
-          t["bestDriver"] = dailyList[0].driver;
-          t["bestCar"] = dailyList[0].car;
-          t["bestDate"] = dailyList[0].date;
-        } else {
-          t["bestLap"] = 0;
-          t["bestCarId"] = 0;
-          t["bestDriver"] = "";
-          t["bestCar"] = "";
-        }
-
-        if (allTimeCount > 0 && allTimeList[0].lapMs > 0) {
-          t["recordLap"] = allTimeList[0].lapMs;
-          t["recordCarId"] = allTimeList[0].carId;
-          t["recordDriver"] = allTimeList[0].driver;
-          t["recordCar"] = allTimeList[0].car;
-          t["recordDate"] = allTimeList[0].date;
-        } else {
-          t["recordLap"] = 0;
-          t["recordCarId"] = 0;
-          t["recordDriver"] = "";
-          t["recordCar"] = "";
-          t["recordDate"] = "";
-        }
-      }
-      found = true;
-      return 0;
-    });
-    if (failed || !found || !written) return false;
+    if (!deleteInactiveTrackRecordEntry(targetId, isDaily, index, today)) return false;
   }
 
   char buf[160];
@@ -1210,7 +1222,7 @@ static void writeActiveTrackStream(File& out) {
 
 // Streaming: tracks.json wird Strecke fuer Strecke nach /tracks.json.tmp kopiert (hoechstens ein Streckenobjekt im RAM),
 // die aktive Strecke kommt direkt aus den RAM-Listen. Erst danach ersetzt rename das Original.
-void saveTracksToFS() {
+STORAGE_NOINLINE void saveTracksToFS() {
   PlatformRuntime::StorageLock lock;
   markLapDeleteSubStep(10);
   syncTopRecordVars();
@@ -1339,6 +1351,18 @@ static bool pendingTrackSyncFromSessions = false;
 static uint32_t pendingTrackSyncAtMs = 0;
 static bool pendingReloadNames = false;
 static bool pendingReloadTracks = false;
+static bool httpUploadFileOpen = false;
+static uint32_t httpUploadQuietUntilMs = 0;
+
+void notifyHttpUploadActivity(bool uploadOpen) {
+  httpUploadFileOpen = uploadOpen;
+  httpUploadQuietUntilMs = millis() + 1800;
+  deferPendingTrackSync();
+}
+
+bool isHttpUploadActive() {
+  return httpUploadFileOpen || (int32_t)(millis() - httpUploadQuietUntilMs) < 0;
+}
 
 void scheduleReloadNamesFromFS() {
   pendingReloadNames = true;
@@ -1363,160 +1387,132 @@ void deferPendingTrackSync() {
 // 1. Leichtgewichtig pruefen, welche trackIds aus /sessions.json in /tracks.json fehlen.
 // 2. Falls eine fehlt: nur fuer diese EINE Strecke Top-5 All-Time & Tagesbestzeit sammeln und an /tracks.json anhaengen.
 // Rueckgabe: true wenn noch weitere fehlende Strecken uebrig sind.
-static bool stepImportMissingTrackFromSessions() {
-  PlatformRuntime::StorageLock lock;
-  if (!LittleFS.exists("/sessions.json")) return false;
+STORAGE_NOINLINE static bool readNextJsonObjectFromArray(File& fIn, String& currentObj, int& braceDepth, size_t maxObjLen) {
+  bool inQuotes = false;
+  bool escaped = false;
+  uint16_t readBytes = 0;
 
-  String missingId = "";
-  String missingName = "";
+  while (fIn.available()) {
+    if ((++readBytes & 0xFF) == 0) PlatformRuntime::feedWatchdog();
+    char c = (char)fIn.read();
+    if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
+    if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < maxObjLen) currentObj += c; continue; }
+    if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2 && currentObj.length() < maxObjLen) currentObj += c; continue; }
+    if (c == '\"') inQuotes = !inQuotes;
 
-  // Phase A: Erste fehlende trackId finden (ohne RecordEntry-Arrays im Heap)
-  {
-    struct TrackRef { String id; String name; bool exists; };
-    std::vector<TrackRef> refs;
+    if (!inQuotes) {
+      if (c == '{') {
+        if (braceDepth == 1) currentObj = "{"; else if (currentObj.length() < maxObjLen) currentObj += '{';
+        braceDepth++;
+        continue;
+      } else if (c == '}') {
+        braceDepth--;
+        if (braceDepth == 1) {
+          if (currentObj.length() < maxObjLen) currentObj += '}';
+          return true;
+        }
+      } else if (c == ']' && braceDepth == 1) {
+        return false;
+      }
+    }
+    if (braceDepth >= 2 && currentObj.length() < maxObjLen) currentObj += c;
+  }
+  return false;
+}
 
-    File fIn = LittleFS.open("/sessions.json", "r");
-    if (!fIn) return false;
+STORAGE_NOINLINE static bool findFirstMissingSessionTrack(String& missingId, String& missingName) {
+  struct TrackRef { String id; String name; bool exists; };
+  std::vector<TrackRef> refs;
 
-    String currentObj;
-    currentObj.reserve(512);
-    int braceDepth = 0;
-    bool inQuotes = false, escaped = false;
+  File fIn = LittleFS.open("/sessions.json", "r");
+  if (!fIn) return false;
 
-    uint16_t readBytes = 0;
-    while (fIn.available()) {
-      if ((++readBytes & 0xFF) == 0) yield();
-      char c = (char)fIn.read();
-      if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
-      if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
-      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
-      if (c == '\"') inQuotes = !inQuotes;
-
-      if (!inQuotes) {
-        if (c == '{') {
-          if (braceDepth == 1) currentObj = "{"; else if (currentObj.length() < 1536) currentObj += '{';
-          braceDepth++;
-          continue;
-        } else if (c == '}') {
-          braceDepth--;
-          if (braceDepth == 1) {
-            if (currentObj.length() < 1536) currentObj += '}';
-            JsonDocument doc(LargeJsonAllocator::instance());
-            if (!deserializeJson(doc, currentObj)) {
-              String tid = doc["trackId"] | "";
-              if (tid.length() > 0) {
-                bool seen = false;
-                for (size_t k = 0; k < refs.size(); k++) {
-                  if (refs[k].id == tid) { seen = true; break; }
-                }
-                if (!seen && refs.size() < 16) {
-                  String tname = doc["trackName"] | "";
-                  refs.push_back({ tid, tname.length() > 0 ? tname : tid, false });
-                }
-              }
-            }
-            currentObj = "";
-            continue;
-          }
-        } else if (c == ']' && braceDepth == 1) {
-          break;
+  String currentObj;
+  currentObj.reserve(512);
+  int braceDepth = 0;
+  while (readNextJsonObjectFromArray(fIn, currentObj, braceDepth, 1536)) {
+    JsonDocument doc(LargeJsonAllocator::instance());
+    if (!deserializeJson(doc, currentObj)) {
+      String tid = doc["trackId"] | "";
+      if (tid.length() > 0) {
+        bool seen = false;
+        for (size_t k = 0; k < refs.size(); k++) {
+          if (refs[k].id == tid) { seen = true; break; }
+        }
+        if (!seen && refs.size() < 16) {
+          String tname = doc["trackName"] | "";
+          refs.push_back({ tid, tname.length() > 0 ? tname : tid, false });
         }
       }
-      if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c;
     }
-    fIn.close();
+    currentObj = "";
+  }
+  fIn.close();
 
-    if (refs.empty()) return false;
+  if (refs.empty()) return false;
 
-    streamTracks(nullptr, [&](JsonDocument& t) -> int {
-      String tid = t["id"] | "";
-      for (size_t k = 0; k < refs.size(); k++) {
-        if (refs[k].id == tid) refs[k].exists = true;
-      }
-      return 0;
-    });
-
-    uint8_t missingCount = 0;
+  streamTracks(nullptr, [&](JsonDocument& t) -> int {
+    String tid = t["id"] | "";
     for (size_t k = 0; k < refs.size(); k++) {
-      if (!refs[k].exists) {
-        if (missingId.length() == 0) {
-          missingId = refs[k].id;
-          missingName = refs[k].name;
-        }
-        missingCount++;
-      }
+      if (refs[k].id == tid) refs[k].exists = true;
     }
-    if (missingCount == 0) return false;
+    return 0;
+  });
+
+  uint8_t missingCount = 0;
+  for (size_t k = 0; k < refs.size(); k++) {
+    if (!refs[k].exists) {
+      if (missingId.length() == 0) {
+        missingId = refs[k].id;
+        missingName = refs[k].name;
+      }
+      missingCount++;
+    }
   }
+  return missingCount > 0;
+}
 
-  // Phase B: Nur fuer diese EINE fehlende Strecke Top-5 aus /sessions.json einsammeln
-  String today = getCurrentLocalDateStr();
-  RecordEntry allTime[MAX_TRACK_RECORDS];
-  RecordEntry daily[MAX_TRACK_RECORDS];
-  uint8_t allTimeCount = 0;
-  uint8_t dailyCount = 0;
+STORAGE_NOINLINE static bool collectTrackRecordsFromSessions(const String& missingId, const String& today,
+                                                             RecordEntry* allTime, uint8_t& allTimeCount,
+                                                             RecordEntry* daily, uint8_t& dailyCount) {
+  File fIn = LittleFS.open("/sessions.json", "r");
+  if (!fIn) return false;
 
-  {
-    File fIn = LittleFS.open("/sessions.json", "r");
-    if (!fIn) return false;
-
-    String currentObj;
-    currentObj.reserve(512);
-    int braceDepth = 0;
-    bool inQuotes = false, escaped = false;
-
-    uint16_t readBytes = 0;
-    while (fIn.available()) {
-      if ((++readBytes & 0xFF) == 0) yield();
-      char c = (char)fIn.read();
-      if (braceDepth == 0) { if (c == '[') braceDepth = 1; continue; }
-      if (escaped) { escaped = false; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
-      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c; continue; }
-      if (c == '\"') inQuotes = !inQuotes;
-
-      if (!inQuotes) {
-        if (c == '{') {
-          if (braceDepth == 1) currentObj = "{"; else if (currentObj.length() < 1536) currentObj += '{';
-          braceDepth++;
-          continue;
-        } else if (c == '}') {
-          braceDepth--;
-          if (braceDepth == 1) {
-            if (currentObj.length() < 1536) currentObj += '}';
-            JsonDocument doc(LargeJsonAllocator::instance());
-            if (!deserializeJson(doc, currentObj)) {
-              String tid = doc["trackId"] | "";
-              if (tid == missingId && doc["results"].is<JsonArray>()) {
-                String sid = doc["id"] | "";
-                String sDate = (sid.length() >= 8) ? sid.substring(0, 8) : "";
-                bool isTodaySession = (today.length() > 0 && sDate == today);
-                for (JsonObject r : doc["results"].as<JsonArray>()) {
-                  uint32_t bl = r["bestLap"] | 0;
-                  if (bl > 0) {
-                    uint8_t cid = r["id"] | 0;
-                    String drv = r["driver"] | "";
-                    String car = r["car"] | "";
-                    updateRecordList(allTime, allTimeCount, bl, cid, drv, car, sDate);
-                    if (isTodaySession) {
-                      updateRecordList(daily, dailyCount, bl, cid, drv, car, sDate);
-                    }
-                  }
-                }
-              }
+  String currentObj;
+  currentObj.reserve(512);
+  int braceDepth = 0;
+  while (readNextJsonObjectFromArray(fIn, currentObj, braceDepth, 1536)) {
+    JsonDocument doc(LargeJsonAllocator::instance());
+    if (!deserializeJson(doc, currentObj)) {
+      String tid = doc["trackId"] | "";
+      if (tid == missingId && doc["results"].is<JsonArray>()) {
+        String sid = doc["id"] | "";
+        String sDate = (sid.length() >= 8) ? sid.substring(0, 8) : "";
+        bool isTodaySession = (today.length() > 0 && sDate == today);
+        for (JsonObject r : doc["results"].as<JsonArray>()) {
+          uint32_t bl = r["bestLap"] | 0;
+          if (bl > 0) {
+            uint8_t cid = r["id"] | 0;
+            String drv = r["driver"] | "";
+            String car = r["car"] | "";
+            updateRecordList(allTime, allTimeCount, bl, cid, drv, car, sDate);
+            if (isTodaySession) {
+              updateRecordList(daily, dailyCount, bl, cid, drv, car, sDate);
             }
-            currentObj = "";
-            continue;
           }
-        } else if (c == ']' && braceDepth == 1) {
-          break;
         }
       }
-      if (braceDepth >= 2 && currentObj.length() < 1536) currentObj += c;
     }
-    fIn.close();
+    currentObj = "";
   }
+  fIn.close();
+  return true;
+}
 
-  // Phase C: Diese eine Strecke atomar an /tracks.json anhaengen
+STORAGE_NOINLINE static bool appendMissingTrackToTracksJson(const String& missingId, const String& missingName,
+                                                             const String& today, const RecordEntry* allTime,
+                                                             uint8_t allTimeCount, const RecordEntry* daily,
+                                                             uint8_t dailyCount) {
   const char* tmpPath = "/tracks.json.tmp";
   File out = LittleFS.open(tmpPath, "w");
   if (!out) return false;
@@ -1539,7 +1535,7 @@ static bool stepImportMissingTrackFromSessions() {
     int d = 0; bool inQ = false, esc = false, inArr = false, ov = false; size_t len = 0;
     uint16_t readBytes = 0;
     while (in.available()) {
-      if ((++readBytes & 0xFF) == 0) yield();
+      if ((++readBytes & 0xFF) == 0) PlatformRuntime::feedWatchdog();
       char c = (char)in.read();
       if (!inArr) { if (c == '[') inArr = true; continue; }
       if (d == 0) {
@@ -1609,6 +1605,37 @@ static bool stepImportMissingTrackFromSessions() {
     LittleFS.remove(tmpPath);
     return false;
   }
+  return true;
+}
+
+STORAGE_NOINLINE static bool stepImportMissingTrackFromSessions() {
+  PlatformRuntime::StorageLock lock;
+  if (!LittleFS.exists("/sessions.json")) return false;
+
+  String missingId = "";
+  String missingName = "";
+
+  // Phase A: Erste fehlende trackId finden (ohne RecordEntry-Arrays im Heap)
+  if (!findFirstMissingSessionTrack(missingId, missingName)) return false;
+
+  // Phase B: Nur fuer diese EINE fehlende Strecke Top-5 aus /sessions.json einsammeln
+  std::unique_ptr<RecordEntry[]> recBuf(new (std::nothrow) RecordEntry[MAX_TRACK_RECORDS * 2]);
+  if (!recBuf) return false;
+  RecordEntry* allTime = &recBuf[0];
+  RecordEntry* daily = &recBuf[MAX_TRACK_RECORDS];
+  uint8_t allTimeCount = 0;
+  uint8_t dailyCount = 0;
+  String today = getCurrentLocalDateStr();
+
+  if (!collectTrackRecordsFromSessions(missingId, today, allTime, allTimeCount, daily, dailyCount)) {
+    return false;
+  }
+
+  // Phase C: Diese eine Strecke atomar an /tracks.json anhaengen
+  bool okWrite = appendMissingTrackToTracksJson(missingId, missingName, today, allTime, allTimeCount, daily, dailyCount);
+  recBuf.reset();
+  if (!okWrite) return false;
+
   loadTracksFromFS();
   updateFsUsageCache();
   return true; // Naechster loop()-Tick prueft, ob noch eine Strecke fehlt
@@ -2421,10 +2448,65 @@ static bool stepLapDeletion();
 static bool stepTrackDeletion();
 static bool stepDriverHistoryDeletion();
 
+STORAGE_NOINLINE static bool processPendingDeleteResume() {
+  PlatformRuntime::StorageLock lock;
+  if (!LittleFS.exists("/pending_del.json")) return false;
+
+  File pf = LittleFS.open("/pending_del.json", "r");
+  JsonDocument pd(LargeJsonAllocator::instance());
+  bool okParse = pf && !deserializeJson(pd, pf);
+  if (pf) pf.close();
+  uint8_t attempts = okParse ? (pd["a"] | 0) : 9;
+  if (!okParse || attempts >= 1) {
+    LittleFS.remove("/pending_del.json");
+  } else {
+    String pSid = pd["s"].as<String>();
+    String pFile = pd["f"].as<String>();
+    uint8_t pCar = pd["c"] | 0;
+    uint16_t pLap = pd["l"] | 0;
+    uint32_t pMs = pd["t"] | 0;
+    writeLapDeletePending(pSid, pFile, pCar, pLap, pMs, 1);
+    lapDeleteResume = true;
+    // Rundennummer bevorzugen, damit keine andere Runde mit gleicher Zeit getroffen wird
+    if (!queueLapDeletion(pSid, pFile, pCar, pLap, pLap > 0 ? 0 : pMs)) {
+      lapDeleteResume = false;
+    }
+  }
+  return true;
+}
+
+STORAGE_NOINLINE static void processActiveDeleteJob() {
+  // Pro loop()-Durchlauf genau ein kleines Haeppchen, damit der 4-KB-Stack zwischen den Phasen abgebaut wird
+  PlatformRuntime::StorageLock lock;
+  bool done = false;
+  if (lapDeleteJob.type == JOB_TRACK_DELETE) done = stepTrackDeletion();
+  else if (lapDeleteJob.type == JOB_DRIVER_DELETE) done = stepDriverHistoryDeletion();
+  else done = stepLapDeletion();
+  if (done) {
+    updateFsUsageCache();
+  }
+}
+
+STORAGE_NOINLINE static void processDeleteQueueHead() {
+  String path = String(deleteQueue[deleteQueueTail]);
+  deleteQueueTail = (deleteQueueTail + 1) % DELETE_QUEUE_MAX;
+  processFileDeletion(path);
+}
+
+STORAGE_NOINLINE static void processNextPendingLap() {
+  PendingLap lap = lapQueue[queueTail];
+  queueTail = (queueTail + 1) % QUEUE_MAX;
+  saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.sz1, lap.sz2, lap.sz3, lap.sz4, lap.position, lap.mode, lap.timestampMs, lap.isOutLap);
+}
+
 void processStorageQueue() {
   static uint32_t lastStorageWrite = 0;
 
   updateResetLogClock();
+
+  // Während aktiver HTTP-Uploads (inkl. offener Upload-Datei / kurzer Ruhepause)
+  // darf loop()/ctx:cont kein nicht-reentrantes LittleFS anfassen.
+  if (isHttpUploadActive()) return;
 
   if (pendingReloadNames) {
     pendingReloadNames = false;
@@ -2443,61 +2525,32 @@ void processStorageQueue() {
   static bool resumeChecked = false;
   if (!resumeChecked && millis() > 8000 && lapDeleteState != LAP_DELETE_PENDING) {
     resumeChecked = true;
-    PlatformRuntime::StorageLock lock;
-    if (LittleFS.exists("/pending_del.json")) {
-      File pf = LittleFS.open("/pending_del.json", "r");
-      JsonDocument pd(LargeJsonAllocator::instance());
-      bool okParse = pf && !deserializeJson(pd, pf);
-      if (pf) pf.close();
-      uint8_t attempts = okParse ? (pd["a"] | 0) : 9;
-      if (!okParse || attempts >= 1) {
-        LittleFS.remove("/pending_del.json");
-      } else {
-        String pSid = pd["s"].as<String>();
-        String pFile = pd["f"].as<String>();
-        uint8_t pCar = pd["c"] | 0;
-        uint16_t pLap = pd["l"] | 0;
-        uint32_t pMs = pd["t"] | 0;
-        writeLapDeletePending(pSid, pFile, pCar, pLap, pMs, 1);
-        lapDeleteResume = true;
-        // Rundennummer bevorzugen, damit keine andere Runde mit gleicher Zeit getroffen wird
-        if (!queueLapDeletion(pSid, pFile, pCar, pLap, pLap > 0 ? 0 : pMs)) {
-          lapDeleteResume = false;
-        }
-      }
+    if (processPendingDeleteResume()) {
       lastStorageWrite = millis();
       return;
     }
   }
 
   if (lapDeleteState == LAP_DELETE_PENDING) {
-    // Pro loop()-Durchlauf genau ein kleines Haeppchen, damit der 4-KB-Stack zwischen den Phasen abgebaut wird
-    PlatformRuntime::StorageLock lock;
-    bool done = false;
-    if (lapDeleteJob.type == JOB_TRACK_DELETE) done = stepTrackDeletion();
-    else if (lapDeleteJob.type == JOB_DRIVER_DELETE) done = stepDriverHistoryDeletion();
-    else done = stepLapDeletion();
-    if (done) {
-      updateFsUsageCache();
+    bool wasDone = false;
+    processActiveDeleteJob();
+    wasDone = (lapDeleteState != LAP_DELETE_PENDING);
+    if (wasDone) {
       lastStorageWrite = millis();
     }
     return;
   }
 
   if (deleteQueueHead != deleteQueueTail) {
-    String path = String(deleteQueue[deleteQueueTail]);
-    deleteQueueTail = (deleteQueueTail + 1) % DELETE_QUEUE_MAX;
-    processFileDeletion(path);
+    processDeleteQueueHead();
     lastStorageWrite = millis();
     return;
   }
 
   if ((uint32_t)(millis() - lastStorageWrite) < PlatformRuntime::getStorageWriteCooldownMs()) return;
 
-  if (queueHead != queueTail) { 
-    PendingLap lap = lapQueue[queueTail];
-    queueTail = (queueTail + 1) % QUEUE_MAX;
-    saveLapToHistory(lap.carId, lap.lapNum, lap.lapTimeMs, lap.sz1, lap.sz2, lap.sz3, lap.sz4, lap.position, lap.mode, lap.timestampMs, lap.isOutLap);
+  if (queueHead != queueTail) {
+    processNextPendingLap();
     lastStorageWrite = millis();
   } else if (sessionIndexDirty && (millis() - lastIndexFlushMs > 2000)) {
     flushCurrentSessionToIndex();
@@ -2505,7 +2558,7 @@ void processStorageQueue() {
   }
 }
 
-void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap) {
+STORAGE_NOINLINE void saveLapToHistory(uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs, uint32_t sz1, uint32_t sz2, uint32_t sz3, uint32_t sz4, uint8_t position, uint8_t mode, uint64_t timestampMs, bool isOutLap) {
   // 1. Nicht speichern bevor Time-Sync erfolgt ist
   if (baseUnixTimestampSec == 0) return;
   PlatformRuntime::StorageLock lock;
@@ -2808,7 +2861,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
       }
     }
     idx++;
-    yield(); // nur aus loop() aufgerufen
+    PlatformRuntime::feedWatchdog(); // nur WDT fuettern, kein ctx:cont->sys Wechsel bei offenem LittleFS-Handle
   }
   if (overflow || parseError) { in.close(); free(buf); return LAP_DELETE_NOT_FOUND; }
 
@@ -2849,7 +2902,7 @@ static LapDeleteState rewriteSessionWithoutLap(const String& file, uint8_t carId
     if (!firstOut && out.write((const uint8_t*)",", 1) != 1) { ok = false; break; }
     if (out.write((const uint8_t*)outBuf, n) != n) { ok = false; break; }
     firstOut = false;
-    yield(); // nur aus loop() aufgerufen
+    PlatformRuntime::feedWatchdog(); // nur WDT fuettern, kein ctx:cont->sys Wechsel bei offenem LittleFS-Handle
   }
   if (ok && out.print("]}") != 2) ok = false;
   if (overflow) ok = false;
@@ -2894,7 +2947,7 @@ static String readSessionHeaderTrackId(const String& file) {
 
 // Phase 1: Rekordeintrag (Daily zuerst, sonst All-Time) der geloeschten Runde entfernen.
 // deleteTrackRecordEntry uebernimmt die Kaskadierung Daily <-> All-Time.
-static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t lapMs) {
+STORAGE_NOINLINE static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t lapMs) {
   if (lapMs == 0) return;
   if (trackId == activeTrackId) {
     for (uint8_t i = 0; i < activeDailyCount; i++) {
@@ -2946,95 +2999,95 @@ static void removeRecordsForLap(const String& trackId, uint8_t carId, uint32_t l
   if (aIdx >= 0) deleteTrackRecordEntry(trackId, false, aIdx);
 }
 
-static bool stepLapDeletion() {
-  if (lapDeleteJob.phase == 0) {
-    String sessionId = String(lapDeleteJob.sessionId);
-    String targetFile = String(lapDeleteJob.file);
-    if (sessionId.length() == 0 && targetFile.length() == 0) {
-      lapDeleteResume = false;
-      lapDeleteState = LAP_DELETE_NOT_FOUND;
-      return true;
-    }
-    if (sessionIndexDirty) flushCurrentSessionToIndex();
+STORAGE_NOINLINE static bool stepLapDeletionPhase0() {
+  String sessionId = String(lapDeleteJob.sessionId);
+  String targetFile = String(lapDeleteJob.file);
+  if (sessionId.length() == 0 && targetFile.length() == 0) {
+    lapDeleteResume = false;
+    lapDeleteState = LAP_DELETE_NOT_FOUND;
+    return true;
+  }
+  if (sessionIndexDirty) flushCurrentSessionToIndex();
 
-    if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
-      targetFile = "/" + targetFile;
-    }
+  if (targetFile.length() > 0 && !targetFile.startsWith("/")) {
+    targetFile = "/" + targetFile;
+  }
 
-    if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
-      if (currentSessionActive && currentSessionId == sessionId) {
-        targetFile = currentSessionFilePath;
-      } else if (LittleFS.exists("/sessions.json")) {
-        File fIn = LittleFS.open("/sessions.json", "r");
-        if (fIn) {
-          String needle = "\"id\":\"" + sessionId + "\"";
-          while (fIn.available()) {
-            String line = fIn.readStringUntil('}');
-            int idx = line.indexOf(needle);
-            if (idx >= 0) {
-              int fIdx = line.indexOf("\"file\":\"");
-              if (fIdx >= 0) {
-                int startQ = fIdx + 8;
-                int endQ = line.indexOf("\"", startQ);
-                if (endQ > startQ) targetFile = line.substring(startQ, endQ);
-              }
-              break;
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile)) {
+    if (currentSessionActive && currentSessionId == sessionId) {
+      targetFile = currentSessionFilePath;
+    } else if (LittleFS.exists("/sessions.json")) {
+      File fIn = LittleFS.open("/sessions.json", "r");
+      if (fIn) {
+        String needle = "\"id\":\"" + sessionId + "\"";
+        while (fIn.available()) {
+          String line = fIn.readStringUntil('}');
+          int idx = line.indexOf(needle);
+          if (idx >= 0) {
+            int fIdx = line.indexOf("\"file\":\"");
+            if (fIdx >= 0) {
+              int startQ = fIdx + 8;
+              int endQ = line.indexOf("\"", startQ);
+              if (endQ > startQ) targetFile = line.substring(startQ, endQ);
             }
+            break;
           }
-          fIn.close();
         }
+        fIn.close();
       }
     }
-
-    if (targetFile.length() == 0 || !LittleFS.exists(targetFile) || targetFile.length() >= DELETE_PATH_MAX) {
-      lapDeleteResume = false;
-      lapDeleteState = LAP_DELETE_NOT_FOUND;
-      return true;
-    }
-    if (PlatformRuntime::isHeapCritical(4000, 100, 0)) {
-      lapDeleteResume = false;
-      lapDeleteState = LAP_DELETE_NO_HEAP;
-      return true;
-    }
-
-    strlcpy(lapDeleteJob.file, targetFile.c_str(), DELETE_PATH_MAX);
-    markLapDeleteStep(1);
-    lapDeleteJob.phase = lapDeleteResume ? 2 : 1;
-    return false;
   }
 
-  if (lapDeleteJob.phase == 1) {
-    writeLapDeletePending(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
-                          lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, 0);
-    String recTrackId = readSessionHeaderTrackId(String(lapDeleteJob.file));
-    removeRecordsForLap(recTrackId.length() > 0 ? recTrackId : activeTrackId, lapDeleteJob.carId, lapDeleteJob.lapTimeMs);
-    markLapDeleteStep(3);
-    lapDeleteJob.phase = 2;
-    return false;
+  if (targetFile.length() == 0 || !LittleFS.exists(targetFile) || targetFile.length() >= DELETE_PATH_MAX) {
+    lapDeleteResume = false;
+    lapDeleteState = LAP_DELETE_NOT_FOUND;
+    return true;
+  }
+  if (PlatformRuntime::isHeapCritical(4000, 100, 0)) {
+    lapDeleteResume = false;
+    lapDeleteState = LAP_DELETE_NO_HEAP;
+    return true;
   }
 
-  if (lapDeleteJob.phase == 2) {
-    lapDeleteRewriteRes.reset(new (std::nothrow) LapRewriteResult());
-    if (!lapDeleteRewriteRes) {
-      markLapDeleteStep(0);
-      lapDeleteResume = false;
-      lapDeleteState = LAP_DELETE_NO_HEAP;
-      return true;
-    }
-    LapDeleteState rewriteState = rewriteSessionWithoutLap(String(lapDeleteJob.file), lapDeleteJob.carId,
-                                                           lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, *lapDeleteRewriteRes);
-    if (rewriteState != LAP_DELETE_OK) {
-      lapDeleteRewriteRes.reset();
-      markLapDeleteStep(0);
-      lapDeleteResume = false;
-      lapDeleteState = rewriteState;
-      return true;
-    }
-    markLapDeleteStep(2);
-    lapDeleteJob.phase = 3;
-    return false;
-  }
+  strlcpy(lapDeleteJob.file, targetFile.c_str(), DELETE_PATH_MAX);
+  markLapDeleteStep(1);
+  lapDeleteJob.phase = lapDeleteResume ? 2 : 1;
+  return false;
+}
 
+STORAGE_NOINLINE static bool stepLapDeletionPhase1() {
+  writeLapDeletePending(String(lapDeleteJob.sessionId), String(lapDeleteJob.file),
+                        lapDeleteJob.carId, lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, 0);
+  String recTrackId = readSessionHeaderTrackId(String(lapDeleteJob.file));
+  removeRecordsForLap(recTrackId.length() > 0 ? recTrackId : activeTrackId, lapDeleteJob.carId, lapDeleteJob.lapTimeMs);
+  markLapDeleteStep(3);
+  lapDeleteJob.phase = 2;
+  return false;
+}
+
+STORAGE_NOINLINE static bool stepLapDeletionPhase2() {
+  lapDeleteRewriteRes.reset(new (std::nothrow) LapRewriteResult());
+  if (!lapDeleteRewriteRes) {
+    markLapDeleteStep(0);
+    lapDeleteResume = false;
+    lapDeleteState = LAP_DELETE_NO_HEAP;
+    return true;
+  }
+  LapDeleteState rewriteState = rewriteSessionWithoutLap(String(lapDeleteJob.file), lapDeleteJob.carId,
+                                                         lapDeleteJob.lapNum, lapDeleteJob.lapTimeMs, *lapDeleteRewriteRes);
+  if (rewriteState != LAP_DELETE_OK) {
+    lapDeleteRewriteRes.reset();
+    markLapDeleteStep(0);
+    lapDeleteResume = false;
+    lapDeleteState = rewriteState;
+    return true;
+  }
+  markLapDeleteStep(2);
+  lapDeleteJob.phase = 3;
+  return false;
+}
+
+STORAGE_NOINLINE static bool stepLapDeletionPhase3() {
   // Phase 3: Session-Index aktualisieren (oder leere Session loeschen) und aufraeumen
   markLapDeleteStep(3);
   String sessionId = String(lapDeleteJob.sessionId);
@@ -3084,6 +3137,13 @@ static bool stepLapDeletion() {
   lapDeleteResume = false;
   lapDeleteState = LAP_DELETE_OK;
   return true;
+}
+
+STORAGE_NOINLINE static bool stepLapDeletion() {
+  if (lapDeleteJob.phase == 0) return stepLapDeletionPhase0();
+  if (lapDeleteJob.phase == 1) return stepLapDeletionPhase1();
+  if (lapDeleteJob.phase == 2) return stepLapDeletionPhase2();
+  return stepLapDeletionPhase3();
 }
 
 LapDeleteState deleteLapFromSession(const String& sessionId, const String& filePath, uint8_t carId, uint16_t lapNum, uint32_t lapTimeMs) {
@@ -3168,61 +3228,130 @@ static bool stepTrackDeletion() {
   return true;
 }
 
-static bool stepDriverHistoryDeletion() {
+STORAGE_NOINLINE static bool stepDriverHistoryDeletionPhase0(const String& driverName) {
+  if (driverName.length() == 0 || !LittleFS.exists("/sessions.json")) {
+    lapDeleteState = LAP_DELETE_OK;
+    return true;
+  }
+  if (sessionIndexDirty) flushCurrentSessionToIndex();
+  File f = LittleFS.open("/sessions.json", "r");
+  if (!f) {
+    lapDeleteState = LAP_DELETE_OK;
+    return true;
+  }
+  int braceDepth = 0;
+  bool inQuotes = false;
+  bool escaped = false;
+  String currentObj = "";
+  while (f.available()) {
+    char c = (char)f.read();
+    if (braceDepth == 0) {
+      if (c == '[') braceDepth = 1;
+      continue;
+    }
+    if (escaped) { escaped = false; if (braceDepth >= 2) currentObj += c; continue; }
+    if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2) currentObj += c; continue; }
+    if (c == '\"') inQuotes = !inQuotes;
+    if (!inQuotes) {
+      if (c == '{') {
+        if (braceDepth == 1) currentObj = "{";
+        else currentObj += '{';
+        braceDepth++;
+        continue;
+      } else if (c == '}') {
+        braceDepth--;
+        if (braceDepth == 1) {
+          currentObj += '}';
+          int sIdx = currentObj.indexOf("\"id\":\"");
+          int fIdx = currentObj.indexOf("\"file\":\"");
+          if (sIdx >= 0 && fIdx >= 0) {
+            String sId = currentObj.substring(sIdx + 6, currentObj.indexOf("\"", sIdx + 6));
+            String sFile = currentObj.substring(fIdx + 8, currentObj.indexOf("\"", fIdx + 8));
+            driverDelIds.push_back(sId);
+            driverDelFiles.push_back(sFile);
+          }
+          currentObj = "";
+          continue;
+        }
+      } else if (c == ']' && braceDepth == 1) break;
+    }
+    if (braceDepth >= 2) currentObj += c;
+  }
+  f.close();
+  driverDelIdx = 0;
+  lapDeleteJob.phase = 1;
+  return false;
+}
+
+STORAGE_NOINLINE static bool stepDriverHistoryDeletionOneSession(const String& driverName, const String& sId, const String& sFile) {
+  JsonDocument doc(LargeJsonAllocator::instance());
+  File fRead = LittleFS.open(sFile, "r");
+  if (!fRead) return false;
+  if (deserializeJson(doc, fRead)) { fRead.close(); return false; }
+  fRead.close();
+
+  JsonArray laps = doc["l"].as<JsonArray>();
+  if (!laps) return false;
+
+  std::unique_ptr<String[]> nameBuf(new (std::nothrow) String[(MAX_CARS + 1) * 2]);
+  if (!nameBuf) return false;
+  String* sessionDrivers = &nameBuf[0];
+  String* sessionCars = &nameBuf[MAX_CARS + 1];
+  readSessionNames(laps, sessionDrivers, sessionCars);
+  for (int i = (int)laps.size() - 1; i >= 0; i--) {
+    uint8_t c = laps[i]["c"] | (laps[i]["carId"] | 0);
+    if (c >= 1 && c <= MAX_CARS && sessionDrivers[c].equalsIgnoreCase(driverName)) {
+      laps.remove(i);
+    }
+  }
+
+  if (laps.size() == 0) {
+    deleteSessionById(sId);
+  } else {
+    preserveSessionNamesOnFirstLaps(laps, sessionDrivers, sessionCars);
+    uint16_t calcLaps[MAX_CARS + 1] = {0};
+    uint32_t calcBest[MAX_CARS + 1] = {0};
+    uint64_t maxTsSec = doc["s"] | (doc["startTs"] | 0);
+    for (JsonObject l : laps) {
+      uint8_t c = l["c"] | (l["carId"] | 0);
+      uint32_t tMs = l["t"] | (l["time"] | 0);
+      uint64_t tsMs = l["s"] | (l["ts"] | 0);
+      if (c >= 1 && c <= MAX_CARS) {
+        calcLaps[c]++;
+        if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) calcBest[c] = tMs;
+        if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
+      }
+    }
+    File fWrite = LittleFS.open(sFile, "w");
+    if (fWrite) { serializeJson(doc, fWrite); fWrite.close(); }
+
+    if (currentSessionActive && currentSessionId == sId) {
+      for (uint8_t c = 1; c <= MAX_CARS; c++) {
+        sessionCarLaps[c] = calcLaps[c];
+        sessionCarBest[c] = calcBest[c];
+        copySessionName(sessionDriverNames[c], sizeof(sessionDriverNames[c]), sessionDrivers[c]);
+        copySessionName(sessionCarNames[c], sizeof(sessionCarNames[c]), sessionCars[c]);
+        if (sessionDrivers[c].length() > 0) sessionNamesWrittenMask |= ((uint16_t)1 << c);
+      }
+    }
+
+    String updatedEntry = buildSessionEntryJson(
+      sId, sFile,
+      doc["t"] | (doc["trackId"] | activeTrackId),
+      doc["n"] | (doc["trackName"] | activeTrackName),
+      doc["m"] | (doc["mode"] | 0),
+      doc["s"] | (doc["startTs"] | 0),
+      maxTsSec, calcLaps, calcBest, nullptr, sessionDrivers, sessionCars
+    );
+    filterSessionsIndexFile("", "", sId, updatedEntry);
+  }
+  return true;
+}
+
+STORAGE_NOINLINE static bool stepDriverHistoryDeletion() {
   String driverName = String(lapDeleteJob.sessionId);
   if (lapDeleteJob.phase == 0) {
-    if (driverName.length() == 0 || !LittleFS.exists("/sessions.json")) {
-      lapDeleteState = LAP_DELETE_OK;
-      return true;
-    }
-    if (sessionIndexDirty) flushCurrentSessionToIndex();
-    File f = LittleFS.open("/sessions.json", "r");
-    if (!f) {
-      lapDeleteState = LAP_DELETE_OK;
-      return true;
-    }
-    int braceDepth = 0;
-    bool inQuotes = false;
-    bool escaped = false;
-    String currentObj = "";
-    while (f.available()) {
-      char c = (char)f.read();
-      if (braceDepth == 0) {
-        if (c == '[') braceDepth = 1;
-        continue;
-      }
-      if (escaped) { escaped = false; if (braceDepth >= 2) currentObj += c; continue; }
-      if (c == '\\' && inQuotes) { escaped = true; if (braceDepth >= 2) currentObj += c; continue; }
-      if (c == '\"') inQuotes = !inQuotes;
-      if (!inQuotes) {
-        if (c == '{') {
-          if (braceDepth == 1) currentObj = "{";
-          else currentObj += '{';
-          braceDepth++;
-          continue;
-        } else if (c == '}') {
-          braceDepth--;
-          if (braceDepth == 1) {
-            currentObj += '}';
-            int sIdx = currentObj.indexOf("\"id\":\"");
-            int fIdx = currentObj.indexOf("\"file\":\"");
-            if (sIdx >= 0 && fIdx >= 0) {
-              String sId = currentObj.substring(sIdx + 6, currentObj.indexOf("\"", sIdx + 6));
-              String sFile = currentObj.substring(fIdx + 8, currentObj.indexOf("\"", fIdx + 8));
-              driverDelIds.push_back(sId);
-              driverDelFiles.push_back(sFile);
-            }
-            currentObj = "";
-            continue;
-          }
-        } else if (c == ']' && braceDepth == 1) break;
-      }
-      if (braceDepth >= 2) currentObj += c;
-    }
-    f.close();
-    driverDelIdx = 0;
-    lapDeleteJob.phase = 1;
-    return false;
+    return stepDriverHistoryDeletionPhase0(driverName);
   }
 
   // Pro loop()-Takt genau eine Session-Datei bearbeiten
@@ -3231,66 +3360,7 @@ static bool stepDriverHistoryDeletion() {
     String sFile = driverDelFiles[driverDelIdx];
     driverDelIdx++;
     if (!LittleFS.exists(sFile)) continue;
-
-    JsonDocument doc(LargeJsonAllocator::instance());
-    File fRead = LittleFS.open(sFile, "r");
-    if (!fRead) continue;
-    if (deserializeJson(doc, fRead)) { fRead.close(); continue; }
-    fRead.close();
-
-    JsonArray laps = doc["l"].as<JsonArray>();
-    if (!laps) continue;
-
-    String sessionDrivers[MAX_CARS + 1];
-    String sessionCars[MAX_CARS + 1];
-    readSessionNames(laps, sessionDrivers, sessionCars);
-    for (int i = (int)laps.size() - 1; i >= 0; i--) {
-      uint8_t c = laps[i]["c"] | (laps[i]["carId"] | 0);
-      if (c >= 1 && c <= MAX_CARS && sessionDrivers[c].equalsIgnoreCase(driverName)) {
-        laps.remove(i);
-      }
-    }
-
-    if (laps.size() == 0) {
-      deleteSessionById(sId);
-    } else {
-      preserveSessionNamesOnFirstLaps(laps, sessionDrivers, sessionCars);
-      uint16_t calcLaps[MAX_CARS + 1] = {0};
-      uint32_t calcBest[MAX_CARS + 1] = {0};
-      uint64_t maxTsSec = doc["s"] | (doc["startTs"] | 0);
-      for (JsonObject l : laps) {
-        uint8_t c = l["c"] | (l["carId"] | 0);
-        uint32_t tMs = l["t"] | (l["time"] | 0);
-        uint64_t tsMs = l["s"] | (l["ts"] | 0);
-        if (c >= 1 && c <= MAX_CARS) {
-          calcLaps[c]++;
-          if (tMs > 0 && (calcBest[c] == 0 || tMs < calcBest[c])) calcBest[c] = tMs;
-          if (tsMs / 1000ULL > maxTsSec) maxTsSec = tsMs / 1000ULL;
-        }
-      }
-      File fWrite = LittleFS.open(sFile, "w");
-      if (fWrite) { serializeJson(doc, fWrite); fWrite.close(); }
-
-      if (currentSessionActive && currentSessionId == sId) {
-        for (uint8_t c = 1; c <= MAX_CARS; c++) {
-          sessionCarLaps[c] = calcLaps[c];
-          sessionCarBest[c] = calcBest[c];
-          copySessionName(sessionDriverNames[c], sizeof(sessionDriverNames[c]), sessionDrivers[c]);
-          copySessionName(sessionCarNames[c], sizeof(sessionCarNames[c]), sessionCars[c]);
-          if (sessionDrivers[c].length() > 0) sessionNamesWrittenMask |= ((uint16_t)1 << c);
-        }
-      }
-
-      String updatedEntry = buildSessionEntryJson(
-        sId, sFile,
-        doc["t"] | (doc["trackId"] | activeTrackId),
-        doc["n"] | (doc["trackName"] | activeTrackName),
-        doc["m"] | (doc["mode"] | 0),
-        doc["s"] | (doc["startTs"] | 0),
-        maxTsSec, calcLaps, calcBest, nullptr, sessionDrivers, sessionCars
-      );
-      filterSessionsIndexFile("", "", sId, updatedEntry);
-    }
+    if (!stepDriverHistoryDeletionOneSession(driverName, sId, sFile)) continue;
     return false;
   }
 

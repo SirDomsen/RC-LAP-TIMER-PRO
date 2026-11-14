@@ -776,10 +776,25 @@ void handlePostSetDebugMode(AsyncWebServerRequest *request) {
 void handleFileUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
   static char cleanPath[64];
   static uint32_t targetMtime = 0;
+  static AsyncWebServerRequest *activeUploadReq = nullptr;
   PlatformRuntime::StorageLock lock;
 
   if (!index) {
-    deferPendingTrackSync();
+    if (uploadFile) {
+      uploadFile.close();
+    }
+    activeUploadReq = request;
+    notifyHttpUploadActivity(true);
+    request->onDisconnect([request]() {
+      if (activeUploadReq == request) {
+        if (uploadFile) {
+          uploadFile.close();
+        }
+        activeUploadReq = nullptr;
+        notifyHttpUploadActivity(false);
+      }
+    });
+
     targetMtime = 0;
     if (request->hasParam("mtime")) {
       targetMtime = strtoul(request->getParam("mtime")->value().c_str(), NULL, 10);
@@ -814,6 +829,8 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
     }
 
     uploadFile = LittleFS.open(cleanPath, "w");
+  } else {
+    notifyHttpUploadActivity((bool)uploadFile);
   }
   
   if (uploadFile) {
@@ -851,6 +868,10 @@ void handleFileUpload(AsyncWebServerRequest *request, const String& filename, si
       }
       updateFsUsageCache();
     }
+    if (activeUploadReq == request) {
+      activeUploadReq = nullptr;
+    }
+    notifyHttpUploadActivity(false);
   }
 }
 

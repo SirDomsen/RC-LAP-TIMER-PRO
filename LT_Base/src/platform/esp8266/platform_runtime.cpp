@@ -115,9 +115,26 @@ void freeLargeBuffer(void* ptr) {
   free(ptr);
 }
 
-StorageLock::StorageLock() {}
+static volatile uint8_t s_storageLockDepth = 0;
 
-StorageLock::~StorageLock() {}
+StorageLock::StorageLock() {
+  s_storageLockDepth++;
+}
+
+StorageLock::~StorageLock() {
+  if (s_storageLockDepth > 0) {
+    s_storageLockDepth--;
+  }
+}
+
+extern "C" void __real_optimistic_yield(uint32_t interval_us);
+extern "C" void __wrap_optimistic_yield(uint32_t interval_us) {
+  if (s_storageLockDepth > 0) {
+    ESP.wdtFeed();
+    return;
+  }
+  __real_optimistic_yield(interval_us);
+}
 
 ResetDiagnosis readBootResetDiagnosis() {
   ResetDiagnosis diag;
