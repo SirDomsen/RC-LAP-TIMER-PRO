@@ -209,6 +209,14 @@ Die Basisstation nutzt eine **WLAN-Kaskade**: *Heim-WLAN → Mobiler Hotspot →
 
 ---
 
+## 🎥 Erklärvideos (YouTube)
+
+Aufbau, Einrichtung und Bedienung gibt es auch als deutschsprachige Video-Reihe auf YouTube:
+
+👉 [**YouTube-Playlist: RC Lap Timer Pro – Erklärvideos (Deutsch)**](https://www.youtube.com/playlist?list=PLb4HYK9joTps)
+
+---
+
 ## 📚 Weiterführende Dokumentation
 
 * [**BEDIENUNGSANLEITUNG.md**](BEDIENUNGSANLEITUNG.md) – Ausführliche Schritt-für-Schritt-Anleitung für Fahrer und Rennleiter
