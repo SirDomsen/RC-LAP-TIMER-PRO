@@ -746,6 +746,9 @@ void initNetworkAndServer() {
   server.on("/api/buzzer", HTTP_GET, handleGetBuzzer);
   server.on("/api/countdown", HTTP_POST, handlePostCountdown);
 
+  server.on("/api/statusled", HTTP_GET, handleGetStatusLed);
+  server.on("/api/statusled", HTTP_POST, handlePostStatusLed);
+
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(204);
   });

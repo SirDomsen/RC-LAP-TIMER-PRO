@@ -1,38 +1,65 @@
 let pendingWifiMode = 0;
 let lastLearnedApIp = '192.168.0.8';
 let defaultApSSID = 'RC-LapTimer';
+let rgbPreviewTimer = null;
+let lastRgbPreviewColor = '#00ff00';
 
-function renderDriverAndTtsInputs() {
-  let container = document.getElementById('configRows');
-  let ttsContainer = document.getElementById('ttsFilterContainer');
-  if (!container || !ttsContainer) return;
-
-  container.innerHTML = '';
-  ttsContainer.innerHTML = '';
-
-  for (let i = 1; i <= MAX_CARS; i++) {
-    let driver = carNamesMap[i]?.driver || (t('Fahrer') + ' ' + i);
-    let car = carNamesMap[i]?.car || (t('Auto') + ' ' + i);
-    
-    container.innerHTML += `<div class="modal-row">
-      <span>ID <strong>${i}</strong>:</span>
-      <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="${t('Fahrer')}" style="width:30%;">
-      <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="${t('Auto')}" style="width:30%;">
-    </div>`;
-
-    let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
-    ttsContainer.innerHTML += `<div class="tts-filter-item">
-      <input type="checkbox" class="tts-car-cb" id="cb_tts_${i}" value="${i}" ${isChecked}>
-      <label for="cb_tts_${i}"><strong>${driver}</strong></label>
-    </div>`;
+function updateRgbLiveDot(colorHex) {
+  const dot = document.getElementById('rgbLedLiveDot');
+  if (!dot) return;
+  const col = colorHex || lastRgbPreviewColor || '#00ff00';
+  lastRgbPreviewColor = col;
+  const bri = parseInt(document.getElementById('cfg_led_brightness')?.value || '20', 10);
+  if (bri <= 0 || col.toLowerCase() === '#000000') {
+    dot.style.background = '#111';
+    dot.style.boxShadow = 'none';
+  } else {
+    dot.style.background = col;
+    dot.style.boxShadow = `0 0 10px ${col}`;
   }
-  updateTTSFilterDisplay();
 }
 
-function openConfigModal() {
-  let modal = document.getElementById('configModal');
-  if (modal) modal.style.display = 'block';
+function sendRgbPreview(colorHex) {
+  updateRgbLiveDot(colorHex);
+  clearTimeout(rgbPreviewTimer);
+  rgbPreviewTimer = setTimeout(() => {
+    const bri = document.getElementById('cfg_led_brightness')?.value ?? '20';
+    const col = colorHex || lastRgbPreviewColor || '#00ff00';
+    fetch(`/api/statusled?preview=1&color=${encodeURIComponent(col)}&brightness=${encodeURIComponent(bri)}`, { method: 'POST' }).catch(() => {});
+  }, 90);
+}
 
+function onRgbColorInput(colorHex) {
+  sendRgbPreview(colorHex);
+}
+
+function onRgbBrightnessInput(val) {
+  const lbl = document.getElementById('cfg_led_brightness_val');
+  if (lbl) lbl.textContent = `${val}%`;
+  sendRgbPreview(lastRgbPreviewColor);
+}
+
+function resetRgbLedDefaults() {
+  const r = document.getElementById('cfg_led_ready');
+  const b = document.getElementById('cfg_led_boot');
+  const s = document.getElementById('cfg_led_signal');
+  const l = document.getElementById('cfg_led_lap');
+  const bri = document.getElementById('cfg_led_brightness');
+  const briVal = document.getElementById('cfg_led_brightness_val');
+  if (r) r.value = '#00ff00';
+  if (b) b.value = '#000000';
+  if (s) s.value = '#ffcc00';
+  if (l) l.value = '#000000';
+  if (bri) bri.value = 20;
+  if (briVal) briVal.textContent = '20%';
+  sendRgbPreview('#00ff00');
+}
+
+function testStatusLed(kind) {
+  fetch(`/api/statusled?test=${encodeURIComponent(kind)}`, { method: 'POST' }).catch(() => {});
+}
+
+function loadAllConfigIntoModals() {
   let lapTimeCb = document.getElementById('cfg_announce_lap_times');
   if (lapTimeCb) lapTimeCb.checked = announceLapTimesInRace;
 
@@ -41,6 +68,11 @@ function openConfigModal() {
 
   // Sofortige Darstellung aus dem Speicher (0ms Latenz)
   renderDriverAndTtsInputs();
+
+  const rgbCard = document.getElementById('rgbLedSettingsCard');
+  if (rgbCard) {
+    rgbCard.style.display = window.LT_HAS_RGB_LED ? 'block' : 'none';
+  }
 
   // Konsolidierter Einzel-Abruf aller Einstellungen über genau 1 TCP-Verbindung
   fetch('/api/allconfig').then(r => r.json()).then(all => {
@@ -118,6 +150,26 @@ function openConfigModal() {
       if (cb) cb.checked = all.filter.enabled;
     }
 
+    // 4. Onboard RGB-LED (ESP32-S3)
+    if (all.rgbLed) {
+      if (rgbCard) rgbCard.style.display = 'block';
+      const r = document.getElementById('cfg_led_ready');
+      const b = document.getElementById('cfg_led_boot');
+      const s = document.getElementById('cfg_led_signal');
+      const l = document.getElementById('cfg_led_lap');
+      const bri = document.getElementById('cfg_led_brightness');
+      const briVal = document.getElementById('cfg_led_brightness_val');
+      if (r && all.rgbLed.ready) r.value = all.rgbLed.ready;
+      if (b && all.rgbLed.boot) b.value = all.rgbLed.boot;
+      if (s && all.rgbLed.signal) s.value = all.rgbLed.signal;
+      if (l && all.rgbLed.lap) l.value = all.rgbLed.lap;
+      if (bri && typeof all.rgbLed.brightness === 'number') {
+        bri.value = all.rgbLed.brightness;
+        if (briVal) briVal.textContent = `${all.rgbLed.brightness}%`;
+      }
+      updateRgbLiveDot(all.rgbLed.ready || '#00ff00');
+    }
+
     // 5. Sector
     if (all.sector) {
       let sz1 = document.getElementById('cfg_use_sz1');
@@ -168,12 +220,38 @@ function openConfigModal() {
   });
 }
 
-function closeConfigModal() {
-  let modal = document.getElementById('configModal');
+function openRaceConfigModal() {
+  let modal = document.getElementById('raceConfigModal');
+  if (modal) modal.style.display = 'block';
+  loadAllConfigIntoModals();
+}
+
+function closeRaceConfigModal() {
+  let modal = document.getElementById('raceConfigModal');
   if (modal) modal.style.display = 'none';
 }
 
-async function saveConfig() {
+function openSystemConfigModal() {
+  let modal = document.getElementById('systemConfigModal');
+  if (modal) modal.style.display = 'block';
+  loadAllConfigIntoModals();
+}
+
+function closeSystemConfigModal() {
+  let modal = document.getElementById('systemConfigModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function openConfigModal() {
+  openSystemConfigModal();
+}
+
+function closeConfigModal() {
+  closeRaceConfigModal();
+  closeSystemConfigModal();
+}
+
+async function saveSystemConfig() {
   try {
     let cbs = document.querySelectorAll('.tts-car-cb');
     let selected = [];
@@ -189,7 +267,37 @@ async function saveConfig() {
       selectedTTSCars = selected;
     }
     localStorage.setItem('myTTSCars', JSON.stringify(selectedTTSCars));
+    updateTTSFilterDisplay();
 
+    let hS = document.getElementById('cfg_home_ssid')?.value || '';
+    let hP = document.getElementById('cfg_home_pass')?.value || '';
+    let hsS = document.getElementById('cfg_hotspot_ssid')?.value || '';
+    let hsP = document.getElementById('cfg_hotspot_pass')?.value || '';
+    let aS = document.getElementById('cfg_ap_ssid')?.value || '';
+    let aP = document.getElementById('cfg_ap_pass')?.value || '';
+
+    let wUrl = `/api/setwificonfig?homeSSID=${encodeURIComponent(hS)}&homePass=${encodeURIComponent(hP)}&hotspotSSID=${encodeURIComponent(hsS)}&hotspotPass=${encodeURIComponent(hsP)}&apSSID=${encodeURIComponent(aS)}&apPass=${encodeURIComponent(aP)}`;
+    await fetch(wUrl, { method: 'POST' });
+
+    const rgbCard = document.getElementById('rgbLedSettingsCard');
+    if (rgbCard && rgbCard.style.display !== 'none') {
+      const r = document.getElementById('cfg_led_ready')?.value || '#00ff00';
+      const b = document.getElementById('cfg_led_boot')?.value || '#000000';
+      const s = document.getElementById('cfg_led_signal')?.value || '#ffcc00';
+      const l = document.getElementById('cfg_led_lap')?.value || '#000000';
+      const bri = document.getElementById('cfg_led_brightness')?.value ?? '20';
+      await fetch(`/api/statusled?ready=${encodeURIComponent(r)}&boot=${encodeURIComponent(b)}&signal=${encodeURIComponent(s)}&lap=${encodeURIComponent(l)}&brightness=${encodeURIComponent(bri)}`, { method: 'POST' });
+    }
+  } catch (err) {
+    console.error("Fehler beim Speichern der Systemeinstellungen:", err);
+  } finally {
+    closeSystemConfigModal();
+    if (typeof loadWifiStatus === 'function') loadWifiStatus();
+  }
+}
+
+async function saveRaceConfig() {
+  try {
     let lapTimeCb = document.getElementById('cfg_announce_lap_times');
     if (lapTimeCb) {
       announceLapTimesInRace = lapTimeCb.checked;
@@ -201,16 +309,6 @@ async function saveConfig() {
       muteCountdownTts = muteCdownCb.checked;
       localStorage.setItem('muteCountdownTts', JSON.stringify(muteCountdownTts));
     }
-
-    let hS = document.getElementById('cfg_home_ssid')?.value || '';
-    let hP = document.getElementById('cfg_home_pass')?.value || '';
-    let hsS = document.getElementById('cfg_hotspot_ssid')?.value || '';
-    let hsP = document.getElementById('cfg_hotspot_pass')?.value || '';
-    let aS = document.getElementById('cfg_ap_ssid')?.value || '';
-    let aP = document.getElementById('cfg_ap_pass')?.value || '';
-    
-    let wUrl = `/api/setwificonfig?homeSSID=${encodeURIComponent(hS)}&homePass=${encodeURIComponent(hP)}&hotspotSSID=${encodeURIComponent(hsS)}&hotspotPass=${encodeURIComponent(hsP)}&apSSID=${encodeURIComponent(aS)}&apPass=${encodeURIComponent(aP)}`;
-    await fetch(wUrl, { method: 'POST' });
 
     let deadtimeElem = document.getElementById('cfg_deadtime');
     if (deadtimeElem) {
@@ -323,11 +421,37 @@ async function saveConfig() {
       });
     }
   } finally {
-    closeConfigModal();
+    closeRaceConfigModal();
     if (typeof applySectorColumnVisibility === 'function') applySectorColumnVisibility();
     updateData();
-    if (typeof loadWifiStatus === 'function') loadWifiStatus();
   }
+}
+
+function renderDriverAndTtsInputs() {
+  let container = document.getElementById('configRows');
+  let ttsContainer = document.getElementById('ttsFilterContainer');
+  if (!container || !ttsContainer) return;
+
+  container.innerHTML = '';
+  ttsContainer.innerHTML = '';
+
+  for (let i = 1; i <= MAX_CARS; i++) {
+    let driver = carNamesMap[i]?.driver || (t('Fahrer') + ' ' + i);
+    let car = carNamesMap[i]?.car || (t('Auto') + ' ' + i);
+    
+    container.innerHTML += `<div class="modal-row">
+      <span>ID <strong>${i}</strong>:</span>
+      <input type="text" id="cfg_driver_${i}" value="${driver}" maxlength="20" placeholder="${t('Fahrer')}" style="width:30%;">
+      <input type="text" id="cfg_car_${i}" value="${car}" maxlength="20" placeholder="${t('Auto')}" style="width:30%;">
+    </div>`;
+
+    let isChecked = (selectedTTSCars.length === 0 || selectedTTSCars.includes(i)) ? 'checked' : '';
+    ttsContainer.innerHTML += `<div class="tts-filter-item">
+      <input type="checkbox" class="tts-car-cb" id="cb_tts_${i}" value="${i}" ${isChecked}>
+      <label for="cb_tts_${i}"><strong>${driver}</strong></label>
+    </div>`;
+  }
+  updateTTSFilterDisplay();
 }
 
 async function forceWifiMode(mode) {

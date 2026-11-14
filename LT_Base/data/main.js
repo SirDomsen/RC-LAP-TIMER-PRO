@@ -1,10 +1,11 @@
 const MAX_CARS = 15;
 let ttsEnabled = true;
 window.countdownTimeouts = window.countdownTimeouts || [];
-window.UI_VERSION = '4.8.2';
+window.UI_VERSION = '4.8.4';
 window.LT_PLATFORM = 'esp8266';
 window.LT_PLATFORM_NAME = 'ESP8266';
 window.LT_FAST_MODE = false;
+window.LT_HAS_RGB_LED = false;
 
 function formatLapTime(ms, fallback = '---') {
   if (!ms || isNaN(ms) || ms <= 0) return fallback;
@@ -2341,6 +2342,9 @@ async function loadVersion(retries = 3) {
         if (typeof data.fastMode === 'boolean') {
           window.LT_FAST_MODE = data.fastMode;
           MIN_UPDATE_INTERVAL_MS = data.fastMode ? 150 : 1000;
+        }
+        if (typeof data.hasRgbLed === 'boolean') {
+          window.LT_HAS_RGB_LED = data.hasRgbLed;
         }
         const footerPlat = document.getElementById('footer-platform');
         if (footerPlat) footerPlat.textContent = window.LT_PLATFORM_NAME;

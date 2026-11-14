@@ -47,3 +47,19 @@ void LapStatusLeds::update() {
     readyLedBlinking = false;
   }
 }
+
+bool LapStatusLeds::hasRgbLed() {
+  return false;
+}
+
+LapStatusLeds::RgbLedConfig LapStatusLeds::getRgbConfig() {
+  return RgbLedConfig{};
+}
+
+bool LapStatusLeds::setRgbConfig(const RgbLedConfig&, bool) {
+  return false;
+}
+
+void LapStatusLeds::previewRgbColor(uint32_t, uint8_t, uint16_t) {}
+
+void LapStatusLeds::triggerSignalFlash() {}

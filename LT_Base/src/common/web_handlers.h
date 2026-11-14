@@ -56,4 +56,8 @@ void handlePostBuzzer(AsyncWebServerRequest *request);
 void handleGetBuzzer(AsyncWebServerRequest *request);
 void handlePostCountdown(AsyncWebServerRequest *request);
 
+// Status-RGB-LED Handler
+void handleGetStatusLed(AsyncWebServerRequest *request);
+void handlePostStatusLed(AsyncWebServerRequest *request);
+
 #endif

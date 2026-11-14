@@ -5,6 +5,7 @@
 #include "web_server.h"
 #include "buzzer.h"
 #include "platform_runtime.h"
+#include <status_leds.h>
 #include <ir_decoder.h>
 #include <network_platform.h>
 
@@ -412,13 +413,15 @@ void handleGetNames(AsyncWebServerRequest *request) {
 void handleGetVersion(AsyncWebServerRequest *request) {
   checkDailyBestDateRollover();
   String json;
-  json.reserve(128);
+  json.reserve(160);
   json = "{\"firmware\":\"" FIRMWARE_VERSION "\",\"platform\":\"";
   json += PlatformRuntime::getPlatformId();
   json += "\",\"platformName\":\"";
   json += PlatformRuntime::getPlatformName();
   json += "\",\"fastMode\":";
   json += (PlatformRuntime::isHighPerfPlatform() ? "true" : "false");
+  json += ",\"hasRgbLed\":";
+  json += (LapStatusLeds::hasRgbLed() ? "true" : "false");
   json += "}";
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeader(response);
@@ -909,24 +912,35 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
           phase = 4;
         } else if (phase == 4) {
           n = snprintf(pending, sizeof(pending),
-            "\"sector\":{\"useSz1\":%s,\"useSz2\":%s,\"useSz3\":%s,\"checkpointMode\":%s,\"dragraceMode\":%s,\"sectorAudio\":%s},\"names\":{",
+            "\"sector\":{\"useSz1\":%s,\"useSz2\":%s,\"useSz3\":%s,\"checkpointMode\":%s,\"dragraceMode\":%s,\"sectorAudio\":%s},",
             useSz1 ? "true" : "false", useSz2 ? "true" : "false", useSz3 ? "true" : "false",
             checkpointMode ? "true" : "false", dragraceMode ? "true" : "false", sectorAudioFeedback ? "true" : "false");
-          phase = 5;
+          phase = LapStatusLeds::hasRgbLed() ? 5 : 6;
         } else if (phase == 5) {
+          LapStatusLeds::RgbLedConfig led = LapStatusLeds::getRgbConfig();
+          n = snprintf(pending, sizeof(pending),
+            "\"rgbLed\":{\"ready\":\"#%06lx\",\"boot\":\"#%06lx\",\"signal\":\"#%06lx\",\"lap\":\"#%06lx\",\"brightness\":%u},",
+            (unsigned long)led.readyColor, (unsigned long)led.bootColor,
+            (unsigned long)led.signalColor, (unsigned long)led.lapColor,
+            (unsigned)led.brightness);
+          phase = 6;
+        } else if (phase == 6) {
+          n = snprintf(pending, sizeof(pending), "\"names\":{");
+          phase = 7;
+        } else if (phase == 7) {
           if (nextCar > MAX_CARS) {
-            phase = 6;
+            phase = 8;
             continue;
           }
           uint8_t i = nextCar++;
           n = snprintf(pending, sizeof(pending),
             "%s\"%d\":{\"driver\":\"%s\",\"car\":\"%s\"}",
             (i > 1) ? "," : "", i, driverNames[i].c_str(), carNames[i].c_str());
-        } else if (phase == 6) {
+        } else if (phase == 8) {
           pending[0] = '}';
           pending[1] = '}';
           n = 2;
-          phase = 7;
+          phase = 9;
         } else {
           break;
         }
@@ -1095,4 +1109,87 @@ void handlePostCountdown(AsyncWebServerRequest *request) {
   broadcastWebSocket(buf);
 
   request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+static uint32_t parseHexRgbColor(const String& raw, uint32_t fallback) {
+  String s = raw;
+  s.trim();
+  if (s.startsWith("#")) s = s.substring(1);
+  if (s.length() != 6) return fallback;
+  char* endPtr = nullptr;
+  unsigned long val = strtoul(s.c_str(), &endPtr, 16);
+  if (endPtr == s.c_str() || *endPtr != '\0') return fallback;
+  return (uint32_t)(val & 0xFFFFFFUL);
+}
+
+static String buildStatusLedJson() {
+  LapStatusLeds::RgbLedConfig cfg = LapStatusLeds::getRgbConfig();
+  char buf[192];
+  snprintf(buf, sizeof(buf),
+    "{\"supported\":%s,\"ready\":\"#%06lx\",\"boot\":\"#%06lx\",\"signal\":\"#%06lx\",\"lap\":\"#%06lx\",\"brightness\":%u}",
+    LapStatusLeds::hasRgbLed() ? "true" : "false",
+    (unsigned long)cfg.readyColor,
+    (unsigned long)cfg.bootColor,
+    (unsigned long)cfg.signalColor,
+    (unsigned long)cfg.lapColor,
+    (unsigned)cfg.brightness);
+  return String(buf);
+}
+
+void handleGetStatusLed(AsyncWebServerRequest *request) {
+  AsyncWebServerResponse *response = request->beginResponse(200, "application/json", buildStatusLedJson());
+  addCorsHeader(response);
+  request->send(response);
+}
+
+void handlePostStatusLed(AsyncWebServerRequest *request) {
+  if (!LapStatusLeds::hasRgbLed()) {
+    request->send(404, "application/json", "{\"error\":\"unsupported\"}");
+    return;
+  }
+
+  if (request->hasParam("test")) {
+    String t = request->getParam("test")->value();
+    if (t == "signal") {
+      LapStatusLeds::triggerSignalFlash();
+    } else if (t == "lap") {
+      LapStatusLeds::pulseReady();
+    }
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    return;
+  }
+
+  LapStatusLeds::RgbLedConfig cfg = LapStatusLeds::getRgbConfig();
+
+  if (request->hasParam("preview") && request->getParam("preview")->value() == "1") {
+    uint32_t col = request->hasParam("color")
+      ? parseHexRgbColor(request->getParam("color")->value(), cfg.readyColor)
+      : cfg.readyColor;
+    uint8_t bri = cfg.brightness;
+    if (request->hasParam("brightness")) {
+      long b = request->getParam("brightness")->value().toInt();
+      if (b < 0) b = 0;
+      if (b > 100) b = 100;
+      bri = (uint8_t)b;
+    }
+    LapStatusLeds::previewRgbColor(col, bri, 1800);
+    request->send(200, "application/json", "{\"status\":\"preview\"}");
+    return;
+  }
+
+  if (request->hasParam("ready")) cfg.readyColor = parseHexRgbColor(request->getParam("ready")->value(), cfg.readyColor);
+  if (request->hasParam("boot")) cfg.bootColor = parseHexRgbColor(request->getParam("boot")->value(), cfg.bootColor);
+  if (request->hasParam("signal")) cfg.signalColor = parseHexRgbColor(request->getParam("signal")->value(), cfg.signalColor);
+  if (request->hasParam("lap")) cfg.lapColor = parseHexRgbColor(request->getParam("lap")->value(), cfg.lapColor);
+  if (request->hasParam("brightness")) {
+    long b = request->getParam("brightness")->value().toInt();
+    if (b < 0) b = 0;
+    if (b > 100) b = 100;
+    cfg.brightness = (uint8_t)b;
+  }
+
+  bool ok = LapStatusLeds::setRgbConfig(cfg, true);
+  AsyncWebServerResponse *response = request->beginResponse(ok ? 200 : 500, "application/json", buildStatusLedJson());
+  addCorsHeader(response);
+  request->send(response);
 }

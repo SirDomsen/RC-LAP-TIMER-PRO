@@ -615,7 +615,25 @@
     "Statistikbereiche": "Statistics sections",
     "← Zur Statistik": "← Back to Statistics",
     "Fahrer-Profil": "Driver Profile",
-    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln"
+    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln",
+    "🏁 Renneinstellungen": "🏁 Race Settings",
+    "⚙️ Einstellungen": "⚙️ Settings",
+    "🏁 RENNEINSTELLUNGEN": "🏁 RACE SETTINGS",
+    "⚙️ EINSTELLUNGEN": "⚙️ SETTINGS",
+    "📡 Sektorstationen & Rennlogik": "📡 Sector Stations & Race Logic",
+    "⏱️ IR-Erfassung & Entprellung": "⏱️ IR Detection & Debouncing",
+    "Verhindert Geister-Runden und Fehlauslösungen, indem jedes Transponder-Signal doppelt verifiziert wird.": "Prevents ghost laps and false triggers by double-verifying every transponder signal.",
+    "📢 Renn-Durchsagen & Töne": "📢 Race Announcements & Audio",
+    "🏎️ Transponder-IDs zuweisen (Fahrer & Auto)": "🏎️ Assign Transponder IDs (Driver & Car)",
+    "💡 Onboard RGB-LED": "💡 Onboard RGB LED",
+    "↺ Klassik (Grün/Gelb)": "↺ Classic (Green/Yellow)",
+    "🌐 Netzwerk bereit": "🌐 Network ready",
+    "⏳ Boot / WLAN-Suche": "⏳ Boot / Wi-Fi search",
+    "⚡ IR-Signal erkannt": "⚡ IR signal detected",
+    "🏁 Runde gezählt": "🏁 Lap counted",
+    "Helligkeit:": "Brightness:",
+    "⚡ IR-Blitz testen": "⚡ Test IR flash",
+    "🏁 Runde testen": "🏁 Test lap"
   };
 
   window.LT_I18N = Object.assign(window.LT_I18N || {}, dict);
