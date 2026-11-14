@@ -109,3 +109,31 @@ ctx: sys
    - Temporär mit `-Wl,--wrap=flash_hal_read/write/erase` den minimalen Abstand `sp - (uintptr_t)&g_pcont->stack[0]` atomar in eine `volatile int32_t` schreiben und erst vor/nach der Operation zusammen mit `ESP.getFreeContStack()` loggen (Diagnose-Flags nach Abschluss wieder restlos entfernen!).
 4. **Hardware-Gegenprobe:**
    - Auf einem zweiten Test-ESP via serieller Schnittstelle (`dtr = False, rts = False`, um versehentliche Resets beim Öffnen zu vermeiden) automatisiert in Schleife gegen `/api/...` testen, bevor Produktivgeräte angefasst werden.
+
+---
+
+## 5. Bekannte verbleibende Ansatzpunkte (Audit-Stand `v4.8.5`)
+
+Falls im Rennbetrieb oder bei zukünftigen Erweiterungen erneut ein Watchdog (`Hardware Watchdog` / Software-WDT) oder ein `LittleFS`-Panic auftreten sollte, zuerst diese bereits identifizierten Stellen prüfen:
+
+### A) Reentrancy / offene `LittleFS`-Handles zwischen `ctx: sys` und `ctx: cont`
+1. **`isHttpUploadActive()` gilt bisher nur für `processStorageQueue()`, nicht für andere `ctx: sys`-Handler:**
+   - Mutierende Web-Handler in [`web_handlers.cpp`](src/common/web_handlers.cpp) und [`web_server.cpp`](src/common/web_server.cpp) greifen direkt im HTTP-Callback synchron auf `LittleFS` zu (`handlePostDeleteAllStats` ➔ `deleteAllHistory()`, `handlePostDeleteSession` ➔ `deleteSessionById()`, `handlePostSelectTrack`, `handlePostAddTrack`, `handlePostDeleteTrackRecord`, `handleGetTracks`-Fallback `saveTracksToFS()`, `handlePostReset` ➔ `saveDailyBest()`, `handlePostNames` ➔ `saveNamesToEEPROM()`, `saveWifiConfigToFS()`, `/api/debug/crashlog/clear`, `flushCurrentSessionToIndex()` aus `GET /api/sessions` / `/api/sessionfile` / `/api/files`).
+   - Läuft parallel zu einem offenen `/api/upload` (`uploadFile` offen) einer dieser Endpunkte, treffen beide in `ctx: sys` auf dasselbe `LittleFS`.
+   - *Ansatz bei Bedarf:* Mutierende HTTP-Endpunkte während `isHttpUploadActive()` mit `503` abweisen (oder über `processStorageQueue()` serialisieren).
+2. **`/api/files` und `AsyncFileResponse` halten Handles über TCP-Chunks hinweg offen:**
+   - `/api/files` ([`web_server.cpp`](src/common/web_server.cpp#L476-L587)) hält `st->dirs[]` (`LittleFS.openDir`) über mehrere Chunks offen, während dazwischen `ctx: cont` (`processStorageQueue()`) laufen und auf `LittleFS` schreiben/löschen kann.
+   - Ebenso halten `request->beginResponse(LittleFS, ...)` / `request->send(LittleFS, ...)` (`/api/sessions`, `/api/sessionfile`, `/api/tracks`, `/api/download`, Static Files) ihr Lese-`File` über mehrere TCP-Pakete offen, während im Rennbetrieb gleichzeitig `saveLapToHistory()` oder `flushCurrentSessionToIndex()` (`"r+"`) in `loop()` schreibt.
+   - *Ansatz bei Bedarf:* Aktives Chunked-/File-Streaming an `processStorageQueue()` melden und Schreibjobs solange kurz zurückstellen.
+3. **Explizites `yield()` unter `StorageLock` in `deleteLapFromSession()`:**
+   - In [`storage.cpp`](src/common/storage.cpp#L3149-L3157) steht noch `yield()` innerhalb von `StorageLock`. `-Wl,--wrap=optimistic_yield` fängt nur `optimistic_yield()` ab, **nicht** direktes `yield()`.
+   - Die Funktion ist aktuell ungenutzt (HTTP nutzt `queueLapDeletion()`), wäre bei späterer Nutzung aber sofort eine Reentrancy-Falle ➔ bei Bedarf auf `PlatformRuntime::feedWatchdog()` umstellen oder entfernen.
+
+### B) Synchron-blockierende FS-Läufe im Web-Callback & größere Stack-Frames
+1. **`deleteAllHistory()` synchron in `ctx: sys`** ([`storage.cpp`](src/common/storage.cpp#L3493-L3583)):
+   - Löscht alle Streckenordner rekursiv (`removeDirectoryRecursive` ohne `yield()`), `/sessions.json`, `/daily_best.json` und schreibt `/tracks.json` via `streamTracks()` in einem einzigen `AsyncWebServer`-Callback. Bei sehr vielen Sessions kann das an den Software-WDT (~3,2 s) laufen ➔ bei Bedarf in `processStorageQueue()` verlagern.
+2. **`filterSessionsIndexFile()` byteweise in `ctx: sys`** ([`storage.cpp`](src/common/storage.cpp#L1740-L1859)):
+   - Wird von `deleteSessionById()` (`/api/deletesession`) synchron im HTTP-Callback genutzt, liest `/sessions.json` zeichenweise (`fIn.read()`) mit `String currentObj` ohne `PlatformRuntime::feedWatchdog()` ➔ bei großen `/sessions.json`-Dateien in einen gepufferten Block-Read bzw. in die Queue verlagern.
+3. **Alte ungenutzte Synchron-APIs & größte verbleibende Stack-Frames:**
+   - `deleteDriverHistory()` ([`storage.cpp`](src/common/storage.cpp#L3374-L3491)) mit `String[MAX_CARS + 1]` auf dem Stack und `deleteTrackById()` ([`storage.cpp`](src/common/storage.cpp#L1861)) sind derzeit ungenutzt (Queue-Varianten aktiv), sollten aber nicht reaktiviert werden.
+   - Im produktiven `loop()`-Pfad sind die größten eigenen Stack-Frames (`firmware.elf`, `v4.8.5`): `saveLapToHistory()` (**704 B**) und `stepDriverHistoryDeletionOneSession()` (**624 B**) — aktuell ausreichend Reserve (~2 KB frei), bei neuen lokalen Variablen oder tiefen Subcalls aber zuerst per `objdump` prüfen.
