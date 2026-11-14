@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <esp_wifi.h>
 #include <network_platform.h>
 
 namespace NetworkPlatform {
@@ -12,11 +13,17 @@ void disconnect(bool eraseConfig) {
 void prepareAccessPoint(bool keepStation) {
   WiFi.mode(keepStation ? WIFI_AP_STA : WIFI_AP);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.setTxPower(WIFI_POWER_17dBm);
 }
 
 void prepareStation(const char* hostname) {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.setTxPower(WIFI_POWER_17dBm);
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+  esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(hostname);
 }
@@ -24,6 +31,10 @@ void prepareStation(const char* hostname) {
 void setStationMode() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.setTxPower(WIFI_POWER_17dBm);
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+  esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
 }
 
 void beginStation(const char* ssid, const char* password) {

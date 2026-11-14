@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <esp_idf_version.h>
 #include <esp_now_transport.h>
 
@@ -9,7 +10,7 @@ uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 EspNowTransport::ReceiveCallback receiveCallback = nullptr;
 
 void forwardReceivedData(const uint8_t* mac, const uint8_t* data, int length) {
-  if (mac) {
+  if (mac && length != 10) {
     Serial.printf("[ESP-NOW RX] Paket: %d Bytes von %02X:%02X:%02X:%02X:%02X:%02X\n",
                   length, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   }
@@ -34,6 +35,14 @@ namespace EspNowTransport {
 
 int init(ReceiveCallback callback) {
   receiveCallback = callback;
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  esp_wifi_set_country_code("DE", true);
+  if ((WiFi.getMode() & WIFI_MODE_STA) != 0) {
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
+  }
+
   const esp_err_t result = esp_now_init();
   if (result != ESP_OK) return static_cast<int>(result);
 
@@ -50,10 +59,11 @@ void addOrUpdateBroadcastPeer(uint8_t) {
     esp_now_del_peer(broadcastAddress);
   }
 
+  const wifi_mode_t mode = WiFi.getMode();
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
   peerInfo.channel = 0; // 0 uses the current WiFi channel dynamically
-  peerInfo.ifidx = WIFI_IF_STA;
+  peerInfo.ifidx = (mode == WIFI_AP) ? WIFI_IF_AP : WIFI_IF_STA;
   peerInfo.encrypt = false;
   const esp_err_t result = esp_now_add_peer(&peerInfo);
   if (result != ESP_OK) {
