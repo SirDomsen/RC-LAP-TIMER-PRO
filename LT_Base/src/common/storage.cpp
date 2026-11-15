@@ -635,6 +635,15 @@ static bool atomicReplaceFile(const char* tmpPath, const char* targetPath) {
   PlatformRuntime::StorageLock lock;
   PlatformRuntime::feedWatchdog();
   if (!LittleFS.rename(tmpPath, targetPath)) {
+#if defined(ESP32)
+    if (LittleFS.exists(targetPath)) {
+      LittleFS.remove(targetPath);
+      if (LittleFS.rename(tmpPath, targetPath)) {
+        invalidateCachedJsonFile(targetPath);
+        return true;
+      }
+    }
+#endif
     LittleFS.remove(tmpPath);
     return false;
   }

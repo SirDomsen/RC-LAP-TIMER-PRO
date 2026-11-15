@@ -1361,7 +1361,14 @@ async function loadTracks() {
       let data = await res.json();
       if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
         allTracksList = data.tracks;
-        activeTrackId = data.active || data.tracks[0].id;
+        let serverActiveId = (typeof lastKnownInfoCache !== 'undefined' && lastKnownInfoCache && lastKnownInfoCache.activeTrackId)
+          ? lastKnownInfoCache.activeTrackId
+          : null;
+        if (serverActiveId && allTracksList.some(t => t.id === serverActiveId)) {
+          activeTrackId = serverActiveId;
+        } else {
+          activeTrackId = data.active || data.tracks[0].id;
+        }
         let found = allTracksList.find(t => t.id === activeTrackId) || allTracksList[0];
         activeTrackName = found.name;
         if (found.allTimeRecords && found.allTimeRecords.length > 0) {
@@ -2463,8 +2470,12 @@ function updateTrackRecordBar(info) {
       if (dimTrack) dimTrack.innerText = activeTrackName;
       let sel = document.getElementById('activeTrackSelect');
       if (sel && sel.value !== activeTrackId) {
-        if (trackChanged) loadTracks();
-        else sel.value = activeTrackId;
+        if (trackChanged && !allTracksList.some(t => t.id === activeTrackId)) {
+          loadTracks();
+        } else {
+          populateTrackSelectDropdowns();
+          sel.value = activeTrackId;
+        }
       }
     }
     if (info.fsPct !== undefined) {

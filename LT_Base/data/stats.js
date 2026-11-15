@@ -2486,6 +2486,9 @@ async function rebuildSessionsIndexUI() {
           }
         });
 
+        if (typeof activeTrackId !== 'undefined' && activeTrackId && tracksDoc.tracks.some(tr => tr.id === activeTrackId)) {
+          tracksDoc.active = activeTrackId;
+        }
         let tBlob = new Blob([JSON.stringify(tracksDoc)], { type: 'application/json' });
         let tFd = new FormData();
         tFd.append('data', tBlob, '/tracks.json');

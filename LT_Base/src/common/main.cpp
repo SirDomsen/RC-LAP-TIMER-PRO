@@ -12,6 +12,7 @@
 
 // Globale Performance-Metriken
 uint32_t perfLoopCount = 0;
+uint32_t perfLoopsPerSec = 0;
 uint32_t perfMaxLoopUs = 0;
 uint32_t perfAvgLoopUs = 0;
 
@@ -52,6 +53,7 @@ void loop() {
   // Jede Sekunde Performance-Durchschnitt berechnen & zurücksetzen
   static uint32_t lastPerfCalc = 0;
   if (millis() - lastPerfCalc >= 1000) {
+    perfLoopsPerSec = perfLoopCount;
     perfAvgLoopUs = (perfLoopCount > 0) ? (1000000UL / perfLoopCount) : 0;
     lastPerfCalc = millis();
     perfLoopCount = 0;
