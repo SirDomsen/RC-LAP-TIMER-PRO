@@ -1960,7 +1960,7 @@ async function downloadStatsBackup() {
   };
 
   try {
-    let tRes = await fetch('/api/tracks');
+    let tRes = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
     if (!tRes.ok) throw new Error("Streckendaten konnten nicht geladen werden (HTTP " + tRes.status + ").");
     backupData.tracks = await tRes.json();
 
@@ -2326,7 +2326,7 @@ async function rebuildSessionsIndexUI() {
       let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
 
       // Aktuelle Streckenliste laden
-      let tRes = await fetch('/api/tracks');
+      let tRes = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
       if (tRes.ok) {
         tracksDoc = await tRes.json();
       } else if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {

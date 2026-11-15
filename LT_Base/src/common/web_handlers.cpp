@@ -633,32 +633,43 @@ void handlePostDeleteSession(AsyncWebServerRequest *request) {
 }
 
 
+static void addNoCacheHeaders(AsyncWebServerResponse *response) {
+  if (response) {
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+  }
+}
+
 // --- STRECKEN-HANDLERS & TOP-5 REKORDVERWALTUNG ---
 void handleGetTracks(AsyncWebServerRequest *request) {
   PlatformRuntime::StorageLock lock;
   checkDailyBestDateRollover();
   std::shared_ptr<CachedJsonSnapshot> snap = getCachedJsonFileSnapshot("/tracks.json");
   if (snap) {
-    sendCachedJsonSnapshot(request, snap, false);
+    sendCachedJsonSnapshot(request, snap, true);
     return;
   }
   if (LittleFS.exists("/tracks.json")) {
     AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
+    addNoCacheHeaders(response);
     addCorsHeader(response);
     request->send(response);
   } else {
     saveTracksToFS();
     snap = getCachedJsonFileSnapshot("/tracks.json");
     if (snap) {
-      sendCachedJsonSnapshot(request, snap, false);
+      sendCachedJsonSnapshot(request, snap, true);
       return;
     }
     if (LittleFS.exists("/tracks.json")) {
       AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/tracks.json", "application/json");
+      addNoCacheHeaders(response);
       addCorsHeader(response);
       request->send(response);
     } else {
       AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"active\":\"standard\",\"tracks\":[{\"id\":\"standard\",\"name\":\"Test-Strecke\",\"recordLap\":0,\"bestLap\":0,\"allTimeRecords\":[],\"dailyRecords\":[]}]}");
+      addNoCacheHeaders(response);
       addCorsHeader(response);
       request->send(response);
     }

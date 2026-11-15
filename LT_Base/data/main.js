@@ -1356,7 +1356,7 @@ function formatRecordDate(dStr) {
 
 async function loadTracks() {
   try {
-    let res = await fetch('/api/tracks');
+    let res = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
     if (res.ok) {
       let data = await res.json();
       if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {

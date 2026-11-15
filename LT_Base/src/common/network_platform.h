@@ -17,6 +17,7 @@ uint8_t channel();
 void configureAccessPoint(IPAddress localIP, IPAddress gateway, IPAddress subnet);
 void startAccessPoint(const char* ssid, const char* password, uint8_t channel, uint8_t hidden, uint8_t maxConnections);
 void stopAccessPoint(bool turnOff);
+void finishGhostAccessPoint();
 void beginMdns(const char* hostname);
 void updateMdns();
 }

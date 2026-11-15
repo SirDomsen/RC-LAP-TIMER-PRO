@@ -833,7 +833,7 @@
           };
 
           try {
-            let curRes = await fetch('/api/tracks');
+            let curRes = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
             if (curRes.ok) {
               let curDoc = await curRes.json();
               if (curDoc && curDoc.active) activeId = curDoc.active;

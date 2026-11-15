@@ -39,6 +39,8 @@ void addOrUpdateBroadcastPeer(uint8_t peerChannel) {
   esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, peerChannel, NULL, 0);
 }
 
+void maintain() {}
+
 int sendBroadcast(uint8_t* data, size_t length) {
   return esp_now_send(broadcastAddress, data, static_cast<uint8_t>(length));
 }

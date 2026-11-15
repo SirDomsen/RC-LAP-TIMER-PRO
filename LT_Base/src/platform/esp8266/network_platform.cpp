@@ -66,6 +66,11 @@ void stopAccessPoint(bool turnOff) {
   WiFi.softAPdisconnect(turnOff);
 }
 
+void finishGhostAccessPoint() {
+  stopAccessPoint(true);
+  setStationMode();
+}
+
 void beginMdns(const char* hostname) {
   if (MDNS.begin(hostname)) {
     MDNS.addService("http", "tcp", 80);

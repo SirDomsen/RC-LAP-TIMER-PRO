@@ -178,6 +178,8 @@ void initESPNowBase() {
 }
 
 void handleTimeSyncBroadcast() {
+  EspNowTransport::maintain();
+
   static uint32_t lastSyncTime = 0;
   // Beacon-Frequenz auf 500 ms verdoppelt für blitzschnellen Kanal-Lock & Ausfallsicherheit
   if (millis() - lastSyncTime >= 500UL) {
@@ -243,9 +245,9 @@ bool isStationOnline(uint8_t stationId) {
   unsigned long now = millis();
   unsigned long timeout = 7000; 
 
-  if (stationId == 1) return (now - sz1LastSeen < timeout);
-  if (stationId == 2) return (now - sz2LastSeen < timeout);
-  if (stationId == 3) return (now - sz3LastSeen < timeout);
+  if (stationId == 1) return (sz1LastSeen > 0 && (now - sz1LastSeen < timeout));
+  if (stationId == 2) return (sz2LastSeen > 0 && (now - sz2LastSeen < timeout));
+  if (stationId == 3) return (sz3LastSeen > 0 && (now - sz3LastSeen < timeout));
   return false;
 }
 

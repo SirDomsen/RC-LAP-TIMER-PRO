@@ -73,6 +73,32 @@ void stopAccessPoint(bool turnOff) {
   WiFi.softAPdisconnect(turnOff);
 }
 
+void finishGhostAccessPoint() {
+  // ESP32-S3 ESP-NOW Unicast from ESP8266 sector stations drops on WIFI_IF_STA
+  // when connected to a home/hotspot router; keep a hidden SoftAP active so
+  // WIFI_AP_STA / WIFI_IF_AP stays usable without advertising Ghost-WLAN.
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.setTxPower(WIFI_POWER_17dBm);
+
+  uint8_t apChannel = WiFi.channel();
+  if (apChannel < 1 || apChannel > 13) {
+    apChannel = 1;
+  }
+
+  const uint64_t chipMac = ESP.getEfuseMac();
+  char hiddenSsid[24];
+  char hiddenPass[24];
+  snprintf(hiddenSsid, sizeof(hiddenSsid), "LT_INT_%04X", static_cast<unsigned>((chipMac >> 32) & 0xFFFF));
+  snprintf(hiddenPass, sizeof(hiddenPass), "LT#%08lX%08lX",
+           static_cast<unsigned long>(chipMac >> 32),
+           static_cast<unsigned long>(chipMac & 0xFFFFFFFFUL));
+
+  WiFi.softAPConfig(IPAddress(172, 31, 254, 1), IPAddress(172, 31, 254, 1), IPAddress(255, 255, 255, 240));
+  WiFi.softAP(hiddenSsid, hiddenPass, apChannel, 1, 1);
+}
+
 void beginMdns(const char* hostname) {
   if (MDNS.begin(hostname)) {
     MDNS.addService("http", "tcp", 80);

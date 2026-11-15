@@ -1347,11 +1347,11 @@ void saveActiveTrackBestToFS() {
   saveTracksToFS();
 }
 
-static bool pendingTrackSyncFromSessions = false;
+static volatile bool pendingTrackSyncFromSessions = false;
 static uint32_t pendingTrackSyncAtMs = 0;
-static bool pendingReloadNames = false;
-static bool pendingReloadTracks = false;
-static bool httpUploadFileOpen = false;
+static volatile bool pendingReloadNames = false;
+static volatile bool pendingReloadTracks = false;
+static volatile bool httpUploadFileOpen = false;
 static uint32_t httpUploadQuietUntilMs = 0;
 
 void notifyHttpUploadActivity(bool uploadOpen) {
@@ -2504,9 +2504,22 @@ void processStorageQueue() {
 
   updateResetLogClock();
 
-  // Während aktiver HTTP-Uploads (inkl. offener Upload-Datei / kurzer Ruhepause)
-  // darf loop()/ctx:cont kein nicht-reentrantes LittleFS anfassen.
-  if (isHttpUploadActive()) return;
+  // Auf High-Perf-Plattformen (ESP32-S3 mit FreeRTOS StorageLock) können hochgeladene
+  // Namen/Strecken direkt nach dem Schließen der Upload-Datei neu geladen werden.
+  // Auf ESP8266 bleibt das komplette 1800-ms-Ruhefenster aktiv (nicht-reentrantes LittleFS).
+  bool uploadQuiet = isHttpUploadActive();
+  if (PlatformRuntime::isHighPerfPlatform() && !httpUploadFileOpen) {
+    if (pendingReloadNames) {
+      pendingReloadNames = false;
+      loadNamesFromFS();
+    }
+    if (pendingReloadTracks) {
+      pendingReloadTracks = false;
+      loadTracksFromFS();
+    }
+  }
+
+  if (uploadQuiet) return;
 
   if (pendingReloadNames) {
     pendingReloadNames = false;

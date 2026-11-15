@@ -9,6 +9,7 @@ using ReceiveCallback = void (*)(const uint8_t* mac, const uint8_t* data, int le
 int init(ReceiveCallback callback);
 uint8_t channel();
 void addOrUpdateBroadcastPeer(uint8_t channel);
+void maintain();
 int sendBroadcast(uint8_t* data, size_t length);
 void logReady(uint8_t channel);
 void logBeaconResult(int result, uint8_t channel);

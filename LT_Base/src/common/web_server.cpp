@@ -796,8 +796,7 @@ void handleNetworkTasks() {
 
   if (ghostWlanActive && ghostWlanOffTimer > 0 && millis() >= ghostWlanOffTimer) {
     ghostWlanActive = false;
-    NetworkPlatform::stopAccessPoint(true);
-    NetworkPlatform::setStationMode();
+    NetworkPlatform::finishGhostAccessPoint();
   }
 
   if (pendingWifiSwitch && millis() >= wifiSwitchTimer) {
