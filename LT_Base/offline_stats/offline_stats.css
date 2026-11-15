@@ -275,3 +275,232 @@ body.offline-app {
     text-align: left;
   }
 }
+
+.offline-upload-modal {
+  max-width: 740px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.offline-upload-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.offline-upload-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.offline-upload-header .btn {
+  margin: 0;
+  padding: 6px 10px;
+}
+
+.offline-upload-target {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  font-size: 13px;
+}
+
+.offline-upload-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.offline-upload-storage {
+  font-size: 12px;
+  color: var(--neon-cyan);
+}
+
+.offline-upload-storage.warn {
+  color: var(--neon-red);
+  font-weight: bold;
+}
+
+.offline-upload-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.offline-upload-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.offline-upload-check-row input[type="checkbox"],
+.offline-upload-track-head input[type="checkbox"],
+.offline-upload-subcheck input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--neon-cyan);
+  cursor: pointer;
+}
+
+.offline-upload-quick-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.offline-upload-quick-actions .btn {
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.offline-upload-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 46vh;
+  padding-right: 4px;
+}
+
+.offline-upload-track-card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: rgba(22, 27, 34, 0.78);
+  transition: border-color 0.15s ease;
+}
+
+.offline-upload-track-card.selected {
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+.offline-upload-track-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.offline-upload-track-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.offline-upload-track-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.offline-upload-track-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.offline-upload-track-card:not(.selected) .offline-upload-track-controls {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.offline-upload-subcheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.offline-upload-session-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.offline-upload-session-select select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: rgba(10, 12, 16, 0.95);
+  color: var(--text-main, #f0f6fc);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.offline-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.offline-upload-progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.offline-upload-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+  transition: width 0.15s ease;
+}
+
+.offline-upload-progress-text {
+  font-size: 12px;
+  color: var(--neon-cyan);
+}
+
+.offline-upload-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}
+
+.offline-upload-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.offline-upload-summary.warn {
+  color: var(--neon-red);
+  font-weight: bold;
+}
+
+.offline-upload-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.offline-upload-buttons .btn {
+  margin: 0;
+}

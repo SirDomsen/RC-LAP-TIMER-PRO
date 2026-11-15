@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c10">
-  <title>RC Lap Timer Pro – Offline-Statistik 1.0</title>
+  <title>RC Lap Timer Pro – Offline-Statistik 1.0.0</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
   <style>
 :root {
@@ -2036,6 +2036,235 @@ body.offline-app {
   }
 }
 
+.offline-upload-modal {
+  max-width: 740px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.offline-upload-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.offline-upload-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.offline-upload-header .btn {
+  margin: 0;
+  padding: 6px 10px;
+}
+
+.offline-upload-target {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  font-size: 13px;
+}
+
+.offline-upload-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.offline-upload-storage {
+  font-size: 12px;
+  color: var(--neon-cyan);
+}
+
+.offline-upload-storage.warn {
+  color: var(--neon-red);
+  font-weight: bold;
+}
+
+.offline-upload-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.offline-upload-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.offline-upload-check-row input[type="checkbox"],
+.offline-upload-track-head input[type="checkbox"],
+.offline-upload-subcheck input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--neon-cyan);
+  cursor: pointer;
+}
+
+.offline-upload-quick-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.offline-upload-quick-actions .btn {
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.offline-upload-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 46vh;
+  padding-right: 4px;
+}
+
+.offline-upload-track-card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: rgba(22, 27, 34, 0.78);
+  transition: border-color 0.15s ease;
+}
+
+.offline-upload-track-card.selected {
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+.offline-upload-track-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.offline-upload-track-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.offline-upload-track-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.offline-upload-track-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.offline-upload-track-card:not(.selected) .offline-upload-track-controls {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.offline-upload-subcheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.offline-upload-session-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.offline-upload-session-select select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: rgba(10, 12, 16, 0.95);
+  color: var(--text-main, #f0f6fc);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.offline-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.offline-upload-progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.offline-upload-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+  transition: width 0.15s ease;
+}
+
+.offline-upload-progress-text {
+  font-size: 12px;
+  color: var(--neon-cyan);
+}
+
+.offline-upload-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}
+
+.offline-upload-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.offline-upload-summary.warn {
+  color: var(--neon-red);
+  font-weight: bold;
+}
+
+.offline-upload-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.offline-upload-buttons .btn {
+  margin: 0;
+}
+
   </style>
   <script>
     window.LT_LANG = localStorage.getItem('lt_lang') || 'de';
@@ -2053,13 +2282,14 @@ body.offline-app {
   <header class="offline-toolbar">
     <div>
       <h1>🏁 RC LAP TIMER</h1>
-      <p>Offline-Statistikauswertung <strong>v1.0</strong> · Daten bleiben auf diesem Gerät</p>
+      <p>Offline-Statistikauswertung <strong>v1.0.0</strong> · Daten bleiben auf diesem Gerät</p>
     </div>
     <div class="offline-toolbar-actions">
       <div class="offline-sync-group">
         <label class="offline-host-label" for="laptimerHostInput">Lap-Timer (IP/Host):</label>
         <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer IP-Adresse oder Hostname im WLAN" spellcheck="false" autocomplete="url">
         <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Vom Lap Timer laden</button>
+        <button class="btn btn-green" id="uploadLaptimerButton" type="button" disabled title="Ausgewählte Strecken &amp; Statistiken auf den Lap Timer hochladen">📤 Auf Lap Timer laden</button>
         <button class="btn btn-red" id="clearLaptimerButton" type="button" disabled title="Erst nach erfolgreicher Übertragung verfügbar">🗑️ Lap-Timer leeren</button>
       </div>
       <label class="btn btn-purple" for="backupFileInput" title="Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON">📂 Laden</label>
@@ -2136,6 +2366,50 @@ body.offline-app {
       </div>
     </div>
   </main>
+
+  <div id="uploadLaptimerModal" class="modal" style="z-index: 10005;">
+    <div class="modal-content offline-upload-modal">
+      <div class="offline-upload-header">
+        <h2 id="uploadModalTitle">📤 AUF LAP TIMER HOCHLADEN</h2>
+        <button class="btn" id="uploadModalCloseBtn" type="button" aria-label="Schließen">✕</button>
+      </div>
+      <div class="offline-upload-target">
+        <div>
+          <span class="offline-upload-label">Zielgerät:</span>
+          <strong id="uploadTargetHost">--</strong>
+        </div>
+        <div id="uploadStorageInfo" class="offline-upload-storage">Speicher wird geprüft …</div>
+      </div>
+
+      <div class="offline-upload-options">
+        <label class="offline-upload-check-row">
+          <input type="checkbox" id="uploadIncludeNames" checked>
+          <span>👤 Fahrernamen &amp; Fahrzeuge (<code>names.json</code>) übernehmen / ergänzen</span>
+        </label>
+        <div class="offline-upload-quick-actions">
+          <button class="btn" id="uploadSelectAllBtn" type="button">Alle Strecken</button>
+          <button class="btn" id="uploadSelectNoneBtn" type="button">Keine</button>
+        </div>
+      </div>
+
+      <div id="uploadTracksList" class="offline-upload-tracks"></div>
+
+      <div id="uploadProgressBox" class="offline-upload-progress" style="display:none;">
+        <div class="offline-upload-progress-bar">
+          <div id="uploadProgressFill" class="offline-upload-progress-fill"></div>
+        </div>
+        <div id="uploadProgressText" class="offline-upload-progress-text"></div>
+      </div>
+
+      <div class="offline-upload-footer">
+        <div id="uploadSelectionSummary" class="offline-upload-summary"></div>
+        <div class="offline-upload-buttons">
+          <button class="btn btn-cyan" id="uploadCancelBtn" type="button">Abbrechen</button>
+          <button class="btn btn-green" id="uploadConfirmBtn" type="button">📤 Jetzt hochladen</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="universalModal" class="modal" style="z-index: 10010;">
     <div class="modal-content" id="universalModalContent" style="max-width:460px; text-align:center;">
@@ -2238,12 +2512,26 @@ body.offline-app {
     // --- Debug & Update Seiten ---
     "⚠️ TAB MINIMIERT - POLLING & AUFZEICHNUNG PAUSIERT ZUR ESP-ENTLASTUNG": "⚠️ TAB MINIMIZED - POLLING & RECORDING PAUSED TO SAVE ESP RESOURCES",
     "ESP8266 Systemlast": "ESP8266 System Load",
+    "Systemlast": "System Load",
     "Metriken abfragen (3s)": "Poll metrics (3s)",
     "Laufzeit": "Uptime",
     "CPU Takt": "CPU Clock",
+    "Core-Auslastung": "Core Load",
     "Freier Heap": "Free Heap",
+    "Min. Freier Heap": "Min. Free Heap",
+    "Seit Boot": "Since Boot",
+    "Freier PSRAM": "Free PSRAM",
     "Fragmentierung": "Fragmentation",
+    "LittleFS Speicher": "LittleFS Storage",
+    "Ø Loop / Rate": "Avg Loop / Rate",
     "Max. Loop-Dauer": "Max. Loop Time",
+    "Chip-Temperatur": "Chip Temperature",
+    "FreeRTOS Tasks": "FreeRTOS Tasks",
+    "Clients (WS / AP)": "Clients (WS / AP)",
+    "WLAN Kanal / RSSI": "WiFi Channel / RSSI",
+    "ESP-NOW Funk": "ESP-NOW Radio",
+    "WebSocket Traffic": "WebSocket Traffic",
+    "IR-Empfang (TSOP)": "IR Receive (TSOP)",
     "Debug-Modus ist deaktiviert.": "Debug mode is disabled.",
     "🚀 LITTLEFS DATEI- & SPEICHER-MANAGER": "🚀 LITTLEFS FILE & STORAGE MANAGER",
     "LittleFS Flash-Speicher": "LittleFS Flash Storage",
@@ -2595,6 +2883,8 @@ body.offline-app {
     "📊 SESSIONS VERWALTEN": "📊 MANAGE SESSIONS",
     "VERSTANDEN": "GOT IT",
     "Original Accolade MS-DOS PC-Speaker Chiptunes (1987–1990) direkt über den Hardware-Buzzer des ESP8266 abspielen.": "Play original Accolade MS-DOS PC-speaker chiptunes (1987–1990) directly on the ESP8266 hardware buzzer.",
+    "Original Accolade MS-DOS PC-Speaker Chiptunes (1987–1990) direkt über den Hardware-Buzzer des": "Play original Accolade MS-DOS PC-speaker chiptunes (1987–1990) directly on the hardware buzzer of the",
+    "abspielen.": "directly.",
     "Soundtrack auswählen:": "Select Soundtrack:",
     "Endlosschleife (Loop)": "Loop continuously",
     "▶ Abspielen": "▶ Play",
@@ -2638,7 +2928,10 @@ body.offline-app {
     "Audio & Buzzer Test-Konsole": "Audio & Buzzer Test Console",
     "Bereit": "Ready",
     "Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des ESP8266 (GPIO5), lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.": "Tests all audio outputs of the system: physical ESP8266 hardware buzzer (GPIO5), local Web Audio synthesizer beeps, and Web Speech (TTS) voice announcements on your phone.",
+    "Testet alle akustischen Ausgaben des Systems: Physischer Hardware-Buzzer des": "Tests all audio outputs of the system: physical hardware buzzer of the",
+    "lokale Web Audio Synthesizer-Beeps sowie die Web Speech Synthesizer (TTS) Sprachansagen auf dem Smartphone.": "local Web Audio synthesizer beeps, and Web Speech (TTS) voice announcements on your phone.",
     "1. ESP8266 Hardware-Buzzer (PC-Speaker an GPIO5 / D1)": "1. ESP8266 Hardware Buzzer (PC Speaker on GPIO5 / D1)",
+    "Hardware-Buzzer (PC-Speaker an": "Hardware Buzzer (PC Speaker on",
     "Sendet HTTP-Kommandos an": "Sends HTTP commands to",
     "zur direkten Tonausgabe über den Basisstations-Lautsprecher.": "for direct audio output via the base station speaker.",
     "Renn-Soundeffekte (FX):": "Race Sound Effects (FX):",
@@ -2679,6 +2972,7 @@ body.offline-app {
     "Auto-ID": "Car ID",
     "Nutzdaten": "Payload",
     "📋 ESP8266 Reset- & Crash-Log": "📋 ESP8266 Reset & Crash Log",
+    "Reset- & Crash-Log": "Reset & Crash Log",
     "Lade Log...": "Loading log...",
     "🗑️ Crash-Log leeren": "🗑️ Clear Crash Log",
     "Belegt:": "Used:",
@@ -2710,14 +3004,18 @@ body.offline-app {
     "Hier kann eine kompilierte": "Here you can flash a compiled",
     "direkt über das WLAN geflasht werden.": "directly over Wi-Fi.",
     "Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der ESP8266 automatisch neu.": "Progress is shown live in percent. After a successful flash, the ESP8266 reboots automatically.",
+    "Der Fortschritt wird live in Prozent angezeigt. Nach erfolgreichem Flash startet der": "Progress is shown live in percent. After a successful flash, the",
+    "automatisch neu.": "reboots automatically.",
     "📁 Klicke hier, um eine .bin Firmware-Datei auszuwählen": "📁 Click here to select a .bin firmware file",
     "Firmware jetzt flashen ⚡": "Flash Firmware Now ⚡",
     "⚙️ Sektorstationen Wartung (OTA)": "⚙️ Sector Stations Maintenance (OTA)",
     "Versetzt die Sektorstationen in den Flash-Modus. Sie verbinden sich mit dem aktuellen Netzwerk (Ausnahme: Hotspot-Modus nicht unterstützt).": "Puts sector stations into flash mode. They connect to the current network (except hotspot mode, which is not supported).",
     "⚡ SZ OTA-Wartungsmodus starten": "⚡ Start SZ OTA Maintenance Mode",
     "ESP8266 Wartung": "ESP8266 Maintenance",
+    "Wartung": "Maintenance",
     "Nach umfangreichen Dateiuploads empfiehlt sich ein gezielter Neustart, um den Heap-Speicher komplett zu defragmentieren .": "After large file uploads, a targeted reboot is recommended to completely defragment heap memory.",
     "⚡ ESP8266 neu starten (Speicher bereinigen)": "⚡ Reboot ESP8266 (Clean Memory)",
+    "neu starten (Speicher bereinigen)": "Reboot (Clean Memory)",
     "⚡ SZ WARTUNGSMODUS (OTA)": "⚡ SZ MAINTENANCE MODE (OTA)",
     "Ziel: ---": "Finish: ---",
     "🏁 Keine aktiven Fahrzeuge auf der Strecke": "🏁 No active cars on track",
@@ -2759,7 +3057,25 @@ body.offline-app {
     "Statistikbereiche": "Statistics sections",
     "← Zur Statistik": "← Back to Statistics",
     "Fahrer-Profil": "Driver Profile",
-    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln"
+    "Sprache wechseln / Switch language": "Switch language / Sprache wechseln",
+    "🏁 Renneinstellungen": "🏁 Race Settings",
+    "⚙️ Einstellungen": "⚙️ Settings",
+    "🏁 RENNEINSTELLUNGEN": "🏁 RACE SETTINGS",
+    "⚙️ EINSTELLUNGEN": "⚙️ SETTINGS",
+    "📡 Sektorstationen & Rennlogik": "📡 Sector Stations & Race Logic",
+    "⏱️ IR-Erfassung & Entprellung": "⏱️ IR Detection & Debouncing",
+    "Verhindert Geister-Runden und Fehlauslösungen, indem jedes Transponder-Signal doppelt verifiziert wird.": "Prevents ghost laps and false triggers by double-verifying every transponder signal.",
+    "📢 Renn-Durchsagen & Töne": "📢 Race Announcements & Audio",
+    "🏎️ Transponder-IDs zuweisen (Fahrer & Auto)": "🏎️ Assign Transponder IDs (Driver & Car)",
+    "💡 Onboard RGB-LED": "💡 Onboard RGB LED",
+    "↺ Klassik (Grün/Gelb)": "↺ Classic (Green/Yellow)",
+    "🌐 Netzwerk bereit": "🌐 Network ready",
+    "⏳ Boot / WLAN-Suche": "⏳ Boot / Wi-Fi search",
+    "⚡ IR-Signal erkannt": "⚡ IR signal detected",
+    "🏁 Runde gezählt": "🏁 Lap counted",
+    "Helligkeit:": "Brightness:",
+    "⚡ IR-Blitz testen": "⚡ Test IR flash",
+    "🏁 Runde testen": "🏁 Test lap"
   };
 
   window.LT_I18N = Object.assign(window.LT_I18N || {}, dict);
@@ -4782,7 +5098,7 @@ async function downloadStatsBackup() {
   };
 
   try {
-    let tRes = await fetch('/api/tracks');
+    let tRes = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
     if (!tRes.ok) throw new Error("Streckendaten konnten nicht geladen werden (HTTP " + tRes.status + ").");
     backupData.tracks = await tRes.json();
 
@@ -4840,7 +5156,7 @@ async function handleRestoreBackup(event) {
     boxLabel: "Ausgewählte Backup-Datei:",
     boxContent: file.name,
     boxSub: (file.size / 1024).toFixed(1) + " KB",
-    message: "Soll dieses Backup jetzt auf dem ESP8266 wiederhergestellt werden?<br><span style=\"color:var(--neon-orange); font-size:12px; display:block; margin-top:6px;\">⚠️ Vorhandene Statistiken werden mit den Backup-Daten überschrieben.</span>",
+    message: `Soll dieses Backup jetzt auf dem ${window.LT_PLATFORM_NAME || 'ESP8266'} wiederhergestellt werden?<br><span style="color:var(--neon-orange); font-size:12px; display:block; margin-top:6px;">⚠️ Vorhandene Statistiken werden mit den Backup-Daten überschrieben.</span>`,
     confirmText: "WIEDERHERSTELLEN 📦",
     cancelText: "ABBRECHEN"
   });
@@ -5113,7 +5429,7 @@ async function rebuildSessionsIndexUI() {
             compFd.append('data', compBlob, rawName);
             let cUpRes = await fetch('/api/upload', { method: 'POST', body: compFd });
             if (cUpRes.ok) compressedCount++;
-            await new Promise(r => setTimeout(r, 60)); // ESP8266 Pause
+            await new Promise(r => setTimeout(r, window.LT_FAST_MODE ? 5 : 60)); // ESP8266 Pause, auf S3 minimal
           } catch (compErr) {
             console.warn("Konnte Datei nicht optimieren:", rawName, compErr);
           }
@@ -5148,7 +5464,7 @@ async function rebuildSessionsIndexUI() {
       let todayFormatted = `${String(nowD.getFullYear()).slice(-2)}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
 
       // Aktuelle Streckenliste laden
-      let tRes = await fetch('/api/tracks');
+      let tRes = await fetch('/api/tracks?_t=' + Date.now(), { cache: 'no-store' });
       if (tRes.ok) {
         tracksDoc = await tRes.json();
       } else if (typeof allTracksList !== 'undefined' && Array.isArray(allTracksList)) {
@@ -5308,6 +5624,9 @@ async function rebuildSessionsIndexUI() {
           }
         });
 
+        if (typeof activeTrackId !== 'undefined' && activeTrackId && tracksDoc.tracks.some(tr => tr.id === activeTrackId)) {
+          tracksDoc.active = activeTrackId;
+        }
         let tBlob = new Blob([JSON.stringify(tracksDoc)], { type: 'application/json' });
         let tFd = new FormData();
         tFd.append('data', tBlob, '/tracks.json');
@@ -5364,7 +5683,7 @@ window.activeUseSz1 = true;
 window.activeUseSz2 = true;
 window.activeUseSz3 = true;
 
-const OFFLINE_STATS_VERSION = '1.0';
+const OFFLINE_STATS_VERSION = '1.0.0';
 const OFFLINE_DB_NAME = 'rc-lap-timer-offline-stats';
 const OFFLINE_DB_VERSION = 1;
 const MAX_ZIP_ENTRIES = 10000;
@@ -6081,7 +6400,12 @@ function supportsFileSystemSave() {
 
 function updateSaveButtonsUI(hasData) {
   let saveButton = document.getElementById('exportDatabaseButton');
+  let uploadButton = document.getElementById('uploadLaptimerButton');
   let canPick = supportsFileSystemSave();
+
+  if (uploadButton) {
+    uploadButton.disabled = !hasData;
+  }
 
   if (saveButton) {
     saveButton.disabled = !hasData;
@@ -6684,12 +7008,556 @@ async function clearLaptimerStorage() {
   }
 }
 
+const LAPTIMER_UPLOAD_TIMEOUT_MS = 15000;
+let uploadModalState = null;
+
+function formatBytesShort(bytes) {
+  let value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function getSortedSessionsForTrack(sessions, trackId) {
+  return (sessions || [])
+    .filter(s => (s.trackId || 'standard') === trackId)
+    .slice()
+    .sort((a, b) => (b.endTs || b.startTs || 0) - (a.endTs || a.startTs || 0));
+}
+
+function getSelectedSessionsForTrackState(trackState) {
+  if (!trackState || !trackState.selected) return [];
+  let mode = trackState.sessionMode || 'none';
+  if (mode === 'none') return [];
+  if (mode === 'last3') return trackState.sessions.slice(0, 3);
+  if (mode === 'last5') return trackState.sessions.slice(0, 5);
+  if (mode === 'last10') return trackState.sessions.slice(0, 10);
+  return trackState.sessions;
+}
+
+function estimateSessionSizeBytes(session, fileMap) {
+  let relPath = normalizeStoredPath(session && session.file);
+  let entry = relPath ? fileMap.get(relPath) : null;
+  if (entry && entry.size) return entry.size;
+  if (entry && entry.content) return JSON.stringify(entry.content).length;
+  return JSON.stringify(session || {}).length;
+}
+
+function computeUploadSelectionStats() {
+  if (!uploadModalState) {
+    return { trackCount: 0, sessionCount: 0, estimatedBytes: 0, includeNames: false };
+  }
+  let includeNamesEl = document.getElementById('uploadIncludeNames');
+  let includeNames = includeNamesEl ? includeNamesEl.checked : true;
+  let trackCount = 0;
+  let sessionCount = 0;
+  let estimatedBytes = 0;
+
+  uploadModalState.tracks.forEach(t => {
+    if (!t.selected) return;
+    trackCount++;
+    estimatedBytes += JSON.stringify(t.track).length;
+    let chosenSessions = getSelectedSessionsForTrackState(t);
+    sessionCount += chosenSessions.length;
+    chosenSessions.forEach(s => {
+      estimatedBytes += estimateSessionSizeBytes(s, uploadModalState.fileMap) + JSON.stringify(s).length;
+    });
+  });
+
+  if (includeNames) {
+    estimatedBytes += JSON.stringify(uploadModalState.dataset.names || {}).length;
+  }
+
+  return { trackCount, sessionCount, estimatedBytes, includeNames };
+}
+
+function updateUploadSelectionSummary() {
+  let summaryEl = document.getElementById('uploadSelectionSummary');
+  let confirmBtn = document.getElementById('uploadConfirmBtn');
+  if (!summaryEl || !uploadModalState) return;
+
+  let stats = computeUploadSelectionStats();
+  let storage = uploadModalState.remoteStorage;
+  let hasSelection = stats.trackCount > 0 || stats.includeNames;
+  let exceedsFree = storage && typeof storage.free === 'number' && stats.estimatedBytes > storage.free;
+  let storageFull = Boolean(storage && storage.full);
+
+  let text = _ot(
+    `Ausgewählt: ${stats.trackCount} Strecke(n) · ${stats.sessionCount} Session(s) · ca. ${formatBytesShort(stats.estimatedBytes)}`,
+    `Selected: ${stats.trackCount} track(s) · ${stats.sessionCount} session(s) · approx. ${formatBytesShort(stats.estimatedBytes)}`
+  );
+  if (storageFull) {
+    text += _ot(' — ⚠️ Flash-Speicher auf Lap Timer voll (>=95%)!', ' — ⚠️ Lap Timer flash storage full (>=95%)!');
+  } else if (exceedsFree) {
+    text += _ot(
+      ` — ⚠️ Auswahl größer als freier Speicher (${formatBytesShort(storage.free)})!`,
+      ` — ⚠️ Selection exceeds free storage (${formatBytesShort(storage.free)})!`
+    );
+  }
+
+  summaryEl.textContent = text;
+  summaryEl.classList.toggle('warn', Boolean(storageFull || exceedsFree));
+  if (confirmBtn) {
+    confirmBtn.disabled = !hasSelection || uploadModalState.uploading;
+  }
+}
+
+function renderUploadTracksList() {
+  let container = document.getElementById('uploadTracksList');
+  if (!container || !uploadModalState) return;
+
+  if (!uploadModalState.tracks.length) {
+    container.innerHTML = `<div class="offline-upload-track-card">${_ot('Keine Strecken in der Offline-Datenbank vorhanden.', 'No tracks found in the offline database.')}</div>`;
+    updateUploadSelectionSummary();
+    return;
+  }
+
+  container.innerHTML = uploadModalState.tracks.map((item, idx) => {
+    let track = item.track;
+    let totalSessions = item.sessions.length;
+    let recordCount = Array.isArray(track.allTimeRecords) ? track.allTimeRecords.length : 0;
+    let chosenCount = getSelectedSessionsForTrackState(item).length;
+    let disabledAttr = uploadModalState.uploading ? 'disabled' : '';
+
+    return `
+      <div class="offline-upload-track-card ${item.selected ? 'selected' : ''}" data-track-idx="${idx}">
+        <div class="offline-upload-track-head">
+          <label class="offline-upload-track-title">
+            <input type="checkbox" class="upload-track-toggle" data-track-idx="${idx}" ${item.selected ? 'checked' : ''} ${disabledAttr}>
+            <span>📍 ${escapeHtml(track.name || track.id)}</span>
+          </label>
+          <span class="offline-upload-track-meta">${recordCount} ${_ot('Rekorde', 'records')} · ${totalSessions} ${_ot('Sessions', 'sessions')}${item.selected && chosenCount > 0 ? ` (${chosenCount} ${_ot('gewählt', 'selected')})` : ''}</span>
+        </div>
+        <div class="offline-upload-track-controls">
+          <label class="offline-upload-subcheck">
+            <input type="checkbox" class="upload-records-toggle" data-track-idx="${idx}" ${item.includeRecords ? 'checked' : ''} ${disabledAttr}>
+            <span>🏆 ${_ot('Streckenrekorde (Top 5) zusammenführen', 'Merge track records (Top 5)')}</span>
+          </label>
+          <div class="offline-upload-session-select">
+            <label for="uploadSessionMode_${idx}">📊 ${_ot('Sessions:', 'Sessions:')}</label>
+            <select id="uploadSessionMode_${idx}" class="upload-session-mode" data-track-idx="${idx}" ${disabledAttr || totalSessions === 0 ? 'disabled' : ''}>
+              <option value="none" ${item.sessionMode === 'none' ? 'selected' : ''}>${_ot('Keine Sessions', 'No sessions')}</option>
+              ${totalSessions > 0 ? `<option value="last3" ${item.sessionMode === 'last3' ? 'selected' : ''}>${_ot('Letzte 3 Sessions', 'Last 3 sessions')}</option>` : ''}
+              ${totalSessions > 3 ? `<option value="last5" ${item.sessionMode === 'last5' ? 'selected' : ''}>${_ot('Letzte 5 Sessions', 'Last 5 sessions')}</option>` : ''}
+              ${totalSessions > 5 ? `<option value="last10" ${item.sessionMode === 'last10' ? 'selected' : ''}>${_ot('Letzte 10 Sessions', 'Last 10 sessions')}</option>` : ''}
+              ${totalSessions > 0 ? `<option value="all" ${item.sessionMode === 'all' ? 'selected' : ''}>${_ot(`Alle (${totalSessions})`, `All (${totalSessions})`)}</option>` : ''}
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.upload-track-toggle').forEach(cb => {
+    cb.addEventListener('change', event => {
+      let idx = Number(event.target.dataset.trackIdx);
+      if (uploadModalState && uploadModalState.tracks[idx]) {
+        uploadModalState.tracks[idx].selected = event.target.checked;
+        renderUploadTracksList();
+      }
+    });
+  });
+
+  container.querySelectorAll('.upload-records-toggle').forEach(cb => {
+    cb.addEventListener('change', event => {
+      let idx = Number(event.target.dataset.trackIdx);
+      if (uploadModalState && uploadModalState.tracks[idx]) {
+        uploadModalState.tracks[idx].includeRecords = event.target.checked;
+        updateUploadSelectionSummary();
+      }
+    });
+  });
+
+  container.querySelectorAll('.upload-session-mode').forEach(sel => {
+    sel.addEventListener('change', event => {
+      let idx = Number(event.target.dataset.trackIdx);
+      if (uploadModalState && uploadModalState.tracks[idx]) {
+        uploadModalState.tracks[idx].sessionMode = event.target.value;
+        renderUploadTracksList();
+      }
+    });
+  });
+
+  updateUploadSelectionSummary();
+}
+
+function closeUploadLaptimerModal(force = false) {
+  if (uploadModalState && uploadModalState.uploading && !force) return;
+  let modal = document.getElementById('uploadLaptimerModal');
+  if (modal) modal.style.display = 'none';
+  uploadModalState = null;
+}
+
+async function openUploadLaptimerModal() {
+  if (!offlineBackup) {
+    setOfflineStatus(_ot('Bitte zuerst eine Statistikdatenbank laden.', 'Please load a statistics database first.'), 'error');
+    return;
+  }
+
+  let hostInput = document.getElementById('laptimerHostInput');
+  let baseUrl;
+  try {
+    baseUrl = normalizeLaptimerBaseUrl(hostInput ? hostInput.value : DEFAULT_LAPTIMER_HOST);
+  } catch (error) {
+    setOfflineStatus(error.message, 'error');
+    return;
+  }
+
+  let snapshot = await readDatabaseSnapshot();
+  let fileMap = getStoredFileMap(snapshot);
+  let dataset = getDatasetFromSnapshot(snapshot, fileMap);
+  let trackDoc = getOfflineTrackDocument({ tracks: dataset.tracks });
+  let tracks = (trackDoc.tracks || []).map(track => {
+    let trackSessions = getSortedSessionsForTrack(dataset.sessions, track.id);
+    return {
+      track,
+      sessions: trackSessions,
+      selected: true,
+      includeRecords: true,
+      sessionMode: trackSessions.length > 0 ? 'last3' : 'none'
+    };
+  });
+
+  uploadModalState = {
+    baseUrl,
+    dataset,
+    fileMap,
+    tracks,
+    remoteStorage: null,
+    uploading: false
+  };
+
+  document.getElementById('uploadTargetHost').textContent = baseUrl;
+  let storageEl = document.getElementById('uploadStorageInfo');
+  storageEl.textContent = _ot('Speicher & Version werden geprüft …', 'Checking storage & version …');
+  storageEl.classList.remove('warn');
+
+  let progressBox = document.getElementById('uploadProgressBox');
+  if (progressBox) progressBox.style.display = 'none';
+  document.getElementById('uploadProgressFill').style.width = '0%';
+  document.getElementById('uploadProgressText').textContent = '';
+
+  renderUploadTracksList();
+  document.getElementById('uploadLaptimerModal').style.display = 'flex';
+
+  try {
+    let [versionInfo, storageInfo] = await Promise.all([
+      fetchLaptimerJson(`${baseUrl}/api/version`),
+      fetchLaptimerJson(`${baseUrl}/api/storage`)
+    ]);
+    if (!uploadModalState || uploadModalState.baseUrl !== baseUrl) return;
+    uploadModalState.remoteStorage = storageInfo;
+    let fw = versionInfo && versionInfo.firmware ? ` (${versionInfo.firmware})` : '';
+    document.getElementById('uploadTargetHost').textContent = `${baseUrl}${fw}`;
+    storageEl.textContent = _ot(
+      `Frei: ${formatBytesShort(storageInfo.free)} von ${formatBytesShort(storageInfo.total)} (${storageInfo.pct}% belegt)`,
+      `Free: ${formatBytesShort(storageInfo.free)} of ${formatBytesShort(storageInfo.total)} (${storageInfo.pct}% used)`
+    );
+    storageEl.classList.toggle('warn', Boolean(storageInfo.full));
+    updateUploadSelectionSummary();
+  } catch (error) {
+    if (!uploadModalState || uploadModalState.baseUrl !== baseUrl) return;
+    storageEl.textContent = _ot(
+      'Hinweis: Speicherstatus nicht abrufbar (Firmware ggf. älter als v4.8.7).',
+      'Note: Storage status unavailable (firmware may be older than v4.8.7).'
+    );
+    storageEl.classList.add('warn');
+  }
+}
+
+async function uploadLaptimerFile(baseUrl, relPath, jsonContent, attempt = 0) {
+  let cleanRel = normalizeStoredPath(relPath);
+  let formData = new FormData();
+  let blob = new Blob([JSON.stringify(jsonContent)], { type: 'application/json' });
+  formData.append('data', blob, cleanRel);
+
+  let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = controller ? setTimeout(() => controller.abort(), LAPTIMER_UPLOAD_TIMEOUT_MS) : null;
+
+  try {
+    let response = await fetch(`${baseUrl}/api/upload`, {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-store',
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    });
+    if (response.status === 503 && attempt < 1) {
+      await sleepMs(1000);
+      return uploadLaptimerFile(baseUrl, cleanRel, jsonContent, attempt + 1);
+    }
+    if (!response.ok) {
+      let err = new Error(_ot(`HTTP ${response.status} beim Hochladen von ${cleanRel}`, `HTTP ${response.status} while uploading ${cleanRel}`));
+      err.httpStatus = response.status;
+      throw err;
+    }
+    return true;
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error(_ot(`Zeitüberschreitung beim Hochladen von ${cleanRel}.`, `Timeout while uploading ${cleanRel}.`));
+    }
+    if (error && error.httpStatus) throw error;
+    throw new Error(_ot(
+      `Upload fehlgeschlagen (${error.message || 'Netzwerk/CORS'}). Ist Firmware >= v4.8.7 auf dem Lap Timer?`,
+      `Upload failed (${error.message || 'Network/CORS'}). Is firmware >= v4.8.7 installed on the Lap Timer?`
+    ));
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function mergeNamesForUpload(remoteNames, localNames) {
+  let merged = (remoteNames && typeof remoteNames === 'object' && !Array.isArray(remoteNames))
+    ? { ...remoteNames }
+    : {};
+  if (!localNames || typeof localNames !== 'object') return merged;
+
+  Object.keys(localNames).forEach(carId => {
+    let localEntry = localNames[carId];
+    if (!localEntry) return;
+    if (typeof localEntry === 'string') {
+      if (localEntry.trim()) merged[carId] = localEntry.trim();
+      return;
+    }
+    if (typeof localEntry === 'object') {
+      let driver = (localEntry.driver || '').trim();
+      let car = (localEntry.car || '').trim();
+      if (driver || car) {
+        let prev = (merged[carId] && typeof merged[carId] === 'object') ? merged[carId] : {};
+        merged[carId] = {
+          driver: driver || prev.driver || '',
+          car: car || prev.car || ''
+        };
+      }
+    }
+  });
+  return merged;
+}
+
+function mergeTracksForUpload(remoteTracksDoc, selectedTrackStates) {
+  let tracksMap = new Map();
+  ((remoteTracksDoc && remoteTracksDoc.tracks) || []).forEach(track => {
+    if (track && track.id) tracksMap.set(track.id, track);
+  });
+
+  selectedTrackStates.forEach(item => {
+    if (!item.selected || !item.track || !item.track.id) return;
+    let incoming = item.track;
+    let existing = tracksMap.get(incoming.id);
+
+    if (!existing) {
+      let newTrack = { ...incoming };
+      if (!item.includeRecords) {
+        newTrack.allTimeRecords = [];
+        newTrack.recordLap = 0;
+        newTrack.recordDriver = '';
+        newTrack.recordCar = '';
+        newTrack.recordCarId = 0;
+        newTrack.recordDate = '';
+      }
+      newTrack.dailyRecords = [];
+      newTrack.bestLap = 0;
+      tracksMap.set(incoming.id, newTrack);
+      return;
+    }
+
+    let mergedTrack = { ...existing };
+    if (incoming.name && !mergedTrack.name) mergedTrack.name = incoming.name;
+    if (item.includeRecords) {
+      mergedTrack.allTimeRecords = mergeTrackRecords(existing.allTimeRecords, incoming.allTimeRecords);
+      let best = mergedTrack.allTimeRecords[0];
+      if (best && (!mergedTrack.recordLap || best.lap <= mergedTrack.recordLap)) {
+        mergedTrack.recordLap = best.lap;
+        mergedTrack.recordDriver = best.driver || mergedTrack.recordDriver;
+        mergedTrack.recordCar = best.car || mergedTrack.recordCar;
+        mergedTrack.recordCarId = best.carId || mergedTrack.recordCarId;
+        mergedTrack.recordDate = best.date || mergedTrack.recordDate;
+      }
+    }
+    tracksMap.set(incoming.id, mergedTrack);
+  });
+
+  let active = (remoteTracksDoc && remoteTracksDoc.active && tracksMap.has(remoteTracksDoc.active))
+    ? remoteTracksDoc.active
+    : (Array.from(tracksMap.keys())[0] || 'standard');
+
+  return {
+    active,
+    tracks: Array.from(tracksMap.values())
+  };
+}
+
+async function uploadSelectedToLaptimer() {
+  if (!uploadModalState || uploadModalState.uploading) return;
+  let stats = computeUploadSelectionStats();
+  if (stats.trackCount === 0 && !stats.includeNames) return;
+
+  let baseUrl = uploadModalState.baseUrl;
+  let selectedTrackStates = uploadModalState.tracks.filter(t => t.selected);
+  let selectedSessions = [];
+  selectedTrackStates.forEach(t => {
+    selectedSessions.push(...getSelectedSessionsForTrackState(t));
+  });
+
+  uploadModalState.uploading = true;
+  document.getElementById('uploadCancelBtn').disabled = true;
+  document.getElementById('uploadModalCloseBtn').disabled = true;
+  document.getElementById('uploadSelectAllBtn').disabled = true;
+  document.getElementById('uploadSelectNoneBtn').disabled = true;
+  document.getElementById('uploadIncludeNames').disabled = true;
+  renderUploadTracksList();
+
+  let progressBox = document.getElementById('uploadProgressBox');
+  let progressFill = document.getElementById('uploadProgressFill');
+  let progressText = document.getElementById('uploadProgressText');
+  progressBox.style.display = 'flex';
+
+  const setProgress = (done, total, label) => {
+    let pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    progressFill.style.width = `${pct}%`;
+    progressText.textContent = label;
+    setOfflineStatus(label);
+  };
+
+  try {
+    setProgress(0, 1, _ot(`Lese aktuellen Stand von ${baseUrl} …`, `Reading current state from ${baseUrl} …`));
+    let rawRemoteTracks = await fetchLaptimerJson(`${baseUrl}/api/tracks`);
+    await sleepMs(LAPTIMER_STEP_DELAY_MS);
+    let remoteNames = stats.includeNames ? await fetchLaptimerJson(`${baseUrl}/api/names`) : null;
+    if (stats.includeNames) await sleepMs(LAPTIMER_STEP_DELAY_MS);
+    let remoteSessionsDoc = await fetchLaptimerJson(`${baseUrl}/api/sessions`);
+    let remoteSessions = Array.isArray(remoteSessionsDoc)
+      ? remoteSessionsDoc
+      : ((remoteSessionsDoc && remoteSessionsDoc.sessions) || []);
+
+    let remoteByKey = new Map();
+    remoteSessions.forEach(s => {
+      let key = getSessionKey(s);
+      if (key) remoteByKey.set(key, s);
+    });
+
+    let sessionFilesToUpload = [];
+    let skippedMissingLocal = 0;
+    let skippedAlreadyOnTimer = 0;
+
+    selectedSessions.forEach(session => {
+      let relPath = normalizeStoredPath(session.file);
+      if (!relPath || !isStatisticPath(relPath)) return;
+      let fileEntry = uploadModalState.fileMap.get(relPath);
+      if (!fileEntry || !fileEntry.content) {
+        skippedMissingLocal++;
+        return;
+      }
+      let existingRemote = remoteByKey.get(getSessionKey(session));
+      if (existingRemote && getSessionSignature(existingRemote) === getSessionSignature(session)) {
+        skippedAlreadyOnTimer++;
+        return;
+      }
+      sessionFilesToUpload.push({ path: relPath, content: fileEntry.content });
+    });
+
+    let totalSteps = sessionFilesToUpload.length
+      + (stats.includeNames ? 1 : 0)
+      + (selectedTrackStates.length > 0 ? 1 : 0)
+      + (selectedSessions.length > 0 ? 1 : 0);
+    let currentStep = 0;
+
+    for (let i = 0; i < sessionFilesToUpload.length; i++) {
+      let item = sessionFilesToUpload[i];
+      currentStep++;
+      setProgress(
+        currentStep,
+        totalSteps,
+        _ot(
+          `Lade Session-Datei ${i + 1}/${sessionFilesToUpload.length}: ${item.path} …`,
+          `Uploading session file ${i + 1}/${sessionFilesToUpload.length}: ${item.path} …`
+        )
+      );
+      await sleepMs(LAPTIMER_STEP_DELAY_MS);
+      await uploadLaptimerFile(baseUrl, item.path, item.content);
+    }
+
+    if (stats.includeNames) {
+      currentStep++;
+      setProgress(currentStep, totalSteps, _ot('Lade Fahrernamen (names.json) hoch …', 'Uploading driver names (names.json) …'));
+      await sleepMs(LAPTIMER_STEP_DELAY_MS);
+      let mergedNames = mergeNamesForUpload(remoteNames, uploadModalState.dataset.names);
+      await uploadLaptimerFile(baseUrl, 'names.json', mergedNames);
+    }
+
+    if (selectedTrackStates.length > 0) {
+      currentStep++;
+      setProgress(currentStep, totalSteps, _ot('Lade Strecken & Rekorde (tracks.json) hoch …', 'Uploading tracks & records (tracks.json) …'));
+      await sleepMs(LAPTIMER_STEP_DELAY_MS);
+      let remoteTracksDoc = getOfflineTrackDocument({ tracks: rawRemoteTracks });
+      let mergedTracks = mergeTracksForUpload(remoteTracksDoc, selectedTrackStates);
+      await uploadLaptimerFile(baseUrl, 'tracks.json', mergedTracks);
+    }
+
+    if (selectedSessions.length > 0) {
+      currentStep++;
+      setProgress(currentStep, totalSteps, _ot('Lade Sessions-Index (sessions.json) hoch …', 'Uploading sessions index (sessions.json) …'));
+      await sleepMs(LAPTIMER_STEP_DELAY_MS);
+      let mergedSessions = mergeSessions(remoteSessions, selectedSessions);
+      await uploadLaptimerFile(baseUrl, 'sessions.json', { sessions: mergedSessions });
+    }
+
+    await writeOfflineSetting('laptimerHost', baseUrl.replace(/^https?:\/\//i, ''));
+
+    let msg = _ot(
+      `Upload auf ${baseUrl} abgeschlossen: ${selectedTrackStates.length} Strecke(n), ${sessionFilesToUpload.length} neue/aktualisierte Session-Datei(en)`,
+      `Upload to ${baseUrl} complete: ${selectedTrackStates.length} track(s), ${sessionFilesToUpload.length} new/updated session file(s)`
+    );
+    if (stats.includeNames) msg += _ot(', Fahrernamen übernommen', ', driver names merged');
+    if (skippedAlreadyOnTimer > 0) {
+      msg += _ot(` (${skippedAlreadyOnTimer} bereits aktuell)`, ` (${skippedAlreadyOnTimer} already up to date)`);
+    }
+    if (skippedMissingLocal > 0) {
+      msg += _ot(` (${skippedMissingLocal} lokale Runden-Datei(en) fehlten)`, ` (${skippedMissingLocal} local lap file(s) missing)`);
+    }
+    msg += '.';
+
+    setOfflineStatus(msg, skippedMissingLocal > 0 ? 'error' : 'success');
+    uploadModalState.uploading = false;
+    closeUploadLaptimerModal(true);
+  } catch (error) {
+    uploadModalState.uploading = false;
+    document.getElementById('uploadCancelBtn').disabled = false;
+    document.getElementById('uploadModalCloseBtn').disabled = false;
+    document.getElementById('uploadSelectAllBtn').disabled = false;
+    document.getElementById('uploadSelectNoneBtn').disabled = false;
+    document.getElementById('uploadIncludeNames').disabled = false;
+    renderUploadTracksList();
+    let errMsg = error.message || _ot('Upload auf den Lap Timer fehlgeschlagen.', 'Upload to Lap Timer failed.');
+    progressText.textContent = errMsg;
+    setOfflineStatus(errMsg, 'error');
+  }
+}
+
 document.getElementById('backupFileInput').addEventListener('change', async event => {
   await loadOfflineFile(event.target.files[0]);
   event.target.value = '';
 });
 document.getElementById('syncLaptimerButton').addEventListener('click', syncFromLaptimer);
+document.getElementById('uploadLaptimerButton').addEventListener('click', openUploadLaptimerModal);
 document.getElementById('clearLaptimerButton').addEventListener('click', clearLaptimerStorage);
+document.getElementById('uploadModalCloseBtn').addEventListener('click', () => closeUploadLaptimerModal());
+document.getElementById('uploadCancelBtn').addEventListener('click', () => closeUploadLaptimerModal());
+document.getElementById('uploadSelectAllBtn').addEventListener('click', () => {
+  if (!uploadModalState || uploadModalState.uploading) return;
+  uploadModalState.tracks.forEach(t => { t.selected = true; });
+  renderUploadTracksList();
+});
+document.getElementById('uploadSelectNoneBtn').addEventListener('click', () => {
+  if (!uploadModalState || uploadModalState.uploading) return;
+  uploadModalState.tracks.forEach(t => { t.selected = false; });
+  renderUploadTracksList();
+});
+document.getElementById('uploadIncludeNames').addEventListener('change', updateUploadSelectionSummary);
+document.getElementById('uploadConfirmBtn').addEventListener('click', uploadSelectedToLaptimer);
+document.getElementById('uploadLaptimerModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeUploadLaptimerModal();
+});
 document.getElementById('laptimerHostInput').addEventListener('input', () => {
   lastSyncedLaptimerUrl = null;
   let clearButton = document.getElementById('clearLaptimerButton');

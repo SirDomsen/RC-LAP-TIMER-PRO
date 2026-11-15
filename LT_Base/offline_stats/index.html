@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c10">
-  <title>RC Lap Timer Pro – Offline-Statistik 1.0</title>
+  <title>RC Lap Timer Pro – Offline-Statistik 1.0.0</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
   <link rel="stylesheet" href="../data/style.css?v=4.8.0">
-  <link rel="stylesheet" href="offline_stats.css?v=1.0">
+  <link rel="stylesheet" href="offline_stats.css?v=1.0.0">
   <script>
     window.LT_LANG = localStorage.getItem('lt_lang') || 'de';
     window.LT_I18N = window.LT_I18N || {};
@@ -24,13 +24,14 @@
   <header class="offline-toolbar">
     <div>
       <h1>🏁 RC LAP TIMER</h1>
-      <p>Offline-Statistikauswertung <strong>v1.0</strong> · Daten bleiben auf diesem Gerät</p>
+      <p>Offline-Statistikauswertung <strong>v1.0.0</strong> · Daten bleiben auf diesem Gerät</p>
     </div>
     <div class="offline-toolbar-actions">
       <div class="offline-sync-group">
         <label class="offline-host-label" for="laptimerHostInput">Lap-Timer (IP/Host):</label>
         <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer IP-Adresse oder Hostname im WLAN" spellcheck="false" autocomplete="url">
         <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Vom Lap Timer laden</button>
+        <button class="btn btn-green" id="uploadLaptimerButton" type="button" disabled title="Ausgewählte Strecken &amp; Statistiken auf den Lap Timer hochladen">📤 Auf Lap Timer laden</button>
         <button class="btn btn-red" id="clearLaptimerButton" type="button" disabled title="Erst nach erfolgreicher Übertragung verfügbar">🗑️ Lap-Timer leeren</button>
       </div>
       <label class="btn btn-purple" for="backupFileInput" title="Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON">📂 Laden</label>
@@ -108,6 +109,50 @@
     </div>
   </main>
 
+  <div id="uploadLaptimerModal" class="modal" style="z-index: 10005;">
+    <div class="modal-content offline-upload-modal">
+      <div class="offline-upload-header">
+        <h2 id="uploadModalTitle">📤 AUF LAP TIMER HOCHLADEN</h2>
+        <button class="btn" id="uploadModalCloseBtn" type="button" aria-label="Schließen">✕</button>
+      </div>
+      <div class="offline-upload-target">
+        <div>
+          <span class="offline-upload-label">Zielgerät:</span>
+          <strong id="uploadTargetHost">--</strong>
+        </div>
+        <div id="uploadStorageInfo" class="offline-upload-storage">Speicher wird geprüft …</div>
+      </div>
+
+      <div class="offline-upload-options">
+        <label class="offline-upload-check-row">
+          <input type="checkbox" id="uploadIncludeNames" checked>
+          <span>👤 Fahrernamen &amp; Fahrzeuge (<code>names.json</code>) übernehmen / ergänzen</span>
+        </label>
+        <div class="offline-upload-quick-actions">
+          <button class="btn" id="uploadSelectAllBtn" type="button">Alle Strecken</button>
+          <button class="btn" id="uploadSelectNoneBtn" type="button">Keine</button>
+        </div>
+      </div>
+
+      <div id="uploadTracksList" class="offline-upload-tracks"></div>
+
+      <div id="uploadProgressBox" class="offline-upload-progress" style="display:none;">
+        <div class="offline-upload-progress-bar">
+          <div id="uploadProgressFill" class="offline-upload-progress-fill"></div>
+        </div>
+        <div id="uploadProgressText" class="offline-upload-progress-text"></div>
+      </div>
+
+      <div class="offline-upload-footer">
+        <div id="uploadSelectionSummary" class="offline-upload-summary"></div>
+        <div class="offline-upload-buttons">
+          <button class="btn btn-cyan" id="uploadCancelBtn" type="button">Abbrechen</button>
+          <button class="btn btn-green" id="uploadConfirmBtn" type="button">📤 Jetzt hochladen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="universalModal" class="modal" style="z-index: 10010;">
     <div class="modal-content" id="universalModalContent" style="max-width:460px; text-align:center;">
       <h3 id="universalModalTitle" style="font-family:var(--font-display); margin-top:0; font-size:18px; letter-spacing:1px;">DIALOG</h3>
@@ -126,6 +171,6 @@
 
   <script src="../data/lang_en.js?v=4.8.0"></script>
   <script src="../data/stats.js?v=4.8.0"></script>
-  <script src="offline_stats.js?v=1.0"></script>
+  <script src="offline_stats.js?v=1.0.0"></script>
 </body>
 </html>

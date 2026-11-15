@@ -434,7 +434,9 @@ void initNetworkAndServer() {
   server.on("/debug.html", HTTP_GET, serveDebugPage);
 
   server.on("/api/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Upload erfolgreich!");
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "Upload erfolgreich!");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
   }, handleFileUpload);
 
   server.on("/api/update/firmware", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -485,7 +487,10 @@ void initNetworkAndServer() {
     json += ",\"full\":";
     json += (storageFullLocked || cachedFsUsedPct >= 95 ? "true" : "false");
     json += "}";
-    request->send(200, "application/json", json);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    request->send(response);
   });
 
   server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
