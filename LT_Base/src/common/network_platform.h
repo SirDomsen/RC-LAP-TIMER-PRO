@@ -14,6 +14,8 @@ IPAddress stationIP();
 IPAddress accessPointIP();
 String stationSSID();
 uint8_t channel();
+uint8_t apClientCount();
+int32_t stationRssi();
 void configureAccessPoint(IPAddress localIP, IPAddress gateway, IPAddress subnet);
 void startAccessPoint(const char* ssid, const char* password, uint8_t channel, uint8_t hidden, uint8_t maxConnections);
 void stopAccessPoint(bool turnOff);

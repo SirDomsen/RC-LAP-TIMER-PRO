@@ -61,6 +61,14 @@ uint8_t channel() {
   return WiFi.channel();
 }
 
+uint8_t apClientCount() {
+  return WiFi.softAPgetStationNum();
+}
+
+int32_t stationRssi() {
+  return (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+}
+
 void configureAccessPoint(IPAddress localIP, IPAddress gateway, IPAddress subnet) {
   WiFi.softAPConfig(localIP, gateway, subnet);
 }

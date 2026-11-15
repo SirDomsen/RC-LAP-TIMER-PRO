@@ -1340,8 +1340,16 @@ STORAGE_NOINLINE void saveTracksToFS() {
     writeActiveTrackStream(out);
   }
   out.print("]}");
-  size_t outSize = out.size();
   out.close();
+
+  size_t outSize = 0;
+  {
+    File chk = LittleFS.open(tmpPath, "r");
+    if (chk) {
+      outSize = chk.size();
+      chk.close();
+    }
+  }
 
   if (!okWrite || outSize < 20) {
     LittleFS.remove(tmpPath);
@@ -1608,8 +1616,15 @@ STORAGE_NOINLINE static bool appendMissingTrackToTracksJson(const String& missin
   writeRecordArrayStream(out, "dailyRecords", daily, dailyCount);
   out.print("}]}");
 
-  size_t outSize = out.size();
   out.close();
+  size_t outSize = 0;
+  {
+    File chk = LittleFS.open(tmpPath, "r");
+    if (chk) {
+      outSize = chk.size();
+      chk.close();
+    }
+  }
   if (outSize < 20 || !atomicReplaceFile(tmpPath, "/tracks.json")) {
     LittleFS.remove(tmpPath);
     return false;

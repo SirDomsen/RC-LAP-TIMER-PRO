@@ -54,6 +54,7 @@
     }
     .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-family: 'Orbitron', sans-serif; }
     .metric-val { font-size: 18px; font-weight: bold; margin-top: 4px; font-family: monospace; }
+    .metric-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; font-family: monospace; }
     
     .table-wrapper {
       max-height: 400px;
@@ -189,18 +190,54 @@
         <div class="metric-box">
           <div class="metric-label">Freier Heap</div>
           <div class="metric-val" id="valHeap" style="color:var(--text-muted);">-- KB</div>
+          <div class="metric-sub" id="valHeapSub">Block: -- KB</div>
+        </div>
+        <div class="metric-box" id="minHeapMetricBox" style="display:none;">
+          <div class="metric-label">Min. Freier Heap</div>
+          <div class="metric-val" id="valMinHeap" style="color:var(--text-muted);">-- KB</div>
+          <div class="metric-sub">Seit Boot</div>
         </div>
         <div class="metric-box" id="psramMetricBox" style="display:none;">
           <div class="metric-label">Freier PSRAM</div>
           <div class="metric-val" id="valPsram" style="color:var(--text-muted);">-- KB</div>
+          <div class="metric-sub" id="valPsramSub">--</div>
         </div>
         <div class="metric-box">
           <div class="metric-label">Fragmentierung</div>
           <div class="metric-val" id="valFrag" style="color:var(--text-muted);">-- %</div>
         </div>
         <div class="metric-box">
+          <div class="metric-label">LittleFS Speicher</div>
+          <div class="metric-val" id="valLittleFs" style="color:var(--text-muted);">-- %</div>
+          <div class="metric-sub" id="valLittleFsSub">-- / --</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Ø Loop / Rate</div>
+          <div class="metric-val" id="valAvgLoop" style="color:var(--text-muted);">-- µs</div>
+          <div class="metric-sub" id="valLoopsPerSec">-- /s</div>
+        </div>
+        <div class="metric-box">
           <div class="metric-label">Max. Loop-Dauer</div>
           <div class="metric-val" id="valMaxLoop" style="color:var(--text-muted);">-- ms</div>
+        </div>
+        <div class="metric-box" id="tempMetricBox" style="display:none;">
+          <div class="metric-label">Chip-Temperatur</div>
+          <div class="metric-val" id="valChipTemp" style="color:var(--text-muted);">-- °C</div>
+        </div>
+        <div class="metric-box" id="rtosMetricBox" style="display:none;">
+          <div class="metric-label">FreeRTOS Tasks</div>
+          <div class="metric-val" id="valTaskCount" style="color:var(--text-muted);">--</div>
+          <div class="metric-sub" id="valLoopStack">Stack frei: --</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Clients (WS / AP)</div>
+          <div class="metric-val" id="valClients" style="color:var(--text-muted);">-- / --</div>
+          <div class="metric-sub" id="valClientsSub">WS / AP</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">WLAN Kanal / RSSI</div>
+          <div class="metric-val" id="valWifiCh" style="color:var(--text-muted);">CH --</div>
+          <div class="metric-sub" id="valWifiRssi">--</div>
         </div>
         <div class="metric-box">
           <div class="metric-label">Ping (Latenz)</div>
@@ -437,10 +474,10 @@
       document.querySelectorAll('.lt-speaker-pin-short').forEach(el => {
         el.textContent = isS3 ? 'GPIO7' : 'GPIO5';
       });
-      const psramBox = document.getElementById('psramMetricBox');
-      if (psramBox && isS3) {
-        psramBox.style.display = '';
-      }
+      ['psramMetricBox', 'minHeapMetricBox', 'tempMetricBox', 'rtosMetricBox'].forEach(id => {
+        const box = document.getElementById(id);
+        if (box && isS3) box.style.display = '';
+      });
     }
     const MAX_HISTORY = 200;
     let allPackets = [];
@@ -613,16 +650,31 @@
             elHeap.innerText = Math.round(heap / 1024) + " KB";
             elHeap.style.color = 'var(--neon-cyan)';
           }
+          let elHeapSub = document.getElementById('valHeapSub');
+          if (elHeapSub && data.maxAllocHeap) {
+            elHeapSub.innerText = "Block: " + Math.round(data.maxAllocHeap / 1024) + " KB";
+          }
+
+          let minHeapBox = document.getElementById('minHeapMetricBox');
+          let elMinHeap = document.getElementById('valMinHeap');
+          if (minHeapBox && elMinHeap && data.minFreeHeap > 0) {
+            minHeapBox.style.display = '';
+            elMinHeap.innerText = Math.round(data.minFreeHeap / 1024) + " KB";
+            elMinHeap.style.color = data.minFreeHeap < 24576 ? 'var(--neon-orange)' : 'var(--neon-green)';
+          }
 
           let freePsram = data.freePsram ?? 0;
           let psramBox = document.getElementById('psramMetricBox');
           let elPsram = document.getElementById('valPsram');
+          let elPsramSub = document.getElementById('valPsramSub');
           if (psramBox && elPsram && (freePsram > 0 || ltPlatform === 'esp32s3')) {
             psramBox.style.display = '';
-            elPsram.innerText = freePsram >= 1048576
-              ? (freePsram / 1048576).toFixed(2) + " MB"
-              : Math.round(freePsram / 1024) + " KB";
+            const fmtMem = (b) => b >= 1048576 ? (b / 1048576).toFixed(2) + " MB" : Math.round(b / 1024) + " KB";
+            elPsram.innerText = fmtMem(freePsram);
             elPsram.style.color = 'var(--neon-cyan)';
+            if (elPsramSub && data.totalPsram > 0) {
+              elPsramSub.innerText = "von " + fmtMem(data.totalPsram) + (data.minFreePsram > 0 ? " · Min: " + fmtMem(data.minFreePsram) : "");
+            }
           }
           
           let fragEl = document.getElementById('valFrag');
@@ -630,11 +682,74 @@
             fragEl.innerText = frag + " %";
             fragEl.style.color = frag > 30 ? "var(--neon-red)" : "var(--neon-green)";
           }
+
+          let elFs = document.getElementById('valLittleFs');
+          let elFsSub = document.getElementById('valLittleFsSub');
+          if (elFs && data.fsTotalBytes > 0) {
+            let fsPct = data.fsUsedPct ?? Math.round((data.fsUsedBytes * 100) / data.fsTotalBytes);
+            elFs.innerText = fsPct + " %";
+            elFs.style.color = fsPct > 85 ? 'var(--neon-red)' : (fsPct > 70 ? 'var(--neon-orange)' : 'var(--neon-green)');
+            if (elFsSub) {
+              const fmtFs = (b) => b >= 1048576 ? (b / 1048576).toFixed(2) + " MB" : Math.round(b / 1024) + " KB";
+              elFsSub.innerText = fmtFs(data.fsUsedBytes || 0) + " / " + fmtFs(data.fsTotalBytes);
+            }
+          }
+
+          let elAvgLoop = document.getElementById('valAvgLoop');
+          let elLoopsSec = document.getElementById('valLoopsPerSec');
+          if (elAvgLoop && data.avgLoopUs !== undefined) {
+            elAvgLoop.innerText = data.avgLoopUs + " µs";
+            elAvgLoop.style.color = data.avgLoopUs > 1000 ? 'var(--neon-orange)' : 'var(--neon-green)';
+          }
+          if (elLoopsSec && data.loopsPerSec !== undefined) {
+            let lps = data.loopsPerSec;
+            elLoopsSec.innerText = (lps >= 1000 ? (lps / 1000).toFixed(1) + "k" : lps) + " /s";
+          }
           
           let elLoop = document.getElementById('valMaxLoop');
           if (elLoop) {
             elLoop.innerText = maxLoopMs + " ms";
             elLoop.style.color = maxLoopUs > 15000 ? 'var(--neon-red)' : (maxLoopUs > 5000 ? 'var(--neon-orange)' : 'var(--neon-green)');
+          }
+
+          let tempBox = document.getElementById('tempMetricBox');
+          let elTemp = document.getElementById('valChipTemp');
+          if (tempBox && elTemp && data.chipTempC !== null && data.chipTempC !== undefined) {
+            tempBox.style.display = '';
+            elTemp.innerText = Number(data.chipTempC).toFixed(1) + " °C";
+            elTemp.style.color = data.chipTempC >= 75 ? 'var(--neon-red)' : (data.chipTempC >= 60 ? 'var(--neon-orange)' : 'var(--neon-green)');
+          }
+
+          let rtosBox = document.getElementById('rtosMetricBox');
+          let elTasks = document.getElementById('valTaskCount');
+          let elStack = document.getElementById('valLoopStack');
+          if (rtosBox && elTasks && data.taskCount > 0) {
+            rtosBox.style.display = '';
+            elTasks.innerText = data.taskCount;
+            elTasks.style.color = 'var(--neon-cyan)';
+            if (elStack && data.loopStackFree > 0) {
+              elStack.innerText = "Stack frei: " + (data.loopStackFree / 1024).toFixed(1) + " KB";
+            }
+          }
+
+          let elClients = document.getElementById('valClients');
+          let elClientsSub = document.getElementById('valClientsSub');
+          if (elClients && data.wsClients !== undefined) {
+            elClients.innerText = data.wsClients + " / " + (data.apClients ?? 0);
+            elClients.style.color = 'var(--neon-cyan)';
+            if (elClientsSub) {
+              elClientsSub.innerText = "WS (max " + (data.wsMaxClients ?? "?") + ") · AP (max " + (data.apMaxClients ?? "?") + ")";
+            }
+          }
+
+          let elWifiCh = document.getElementById('valWifiCh');
+          let elWifiRssi = document.getElementById('valWifiRssi');
+          if (elWifiCh && data.wifiChannel !== undefined) {
+            elWifiCh.innerText = "CH " + data.wifiChannel;
+            elWifiCh.style.color = 'var(--neon-cyan)';
+            if (elWifiRssi) {
+              elWifiRssi.innerText = (data.wifiRssi && data.wifiRssi < 0) ? ("RSSI: " + data.wifiRssi + " dBm") : "AP-Modus";
+            }
           }
 
           let elPing = document.getElementById('valPing');

@@ -24,6 +24,7 @@ static IPAddress currentActiveIP(192, 168, 0, 8);
 
 extern uint32_t perfMaxLoopUs;
 extern uint32_t perfAvgLoopUs;
+extern uint32_t perfLoopsPerSec;
 
 uint8_t currentRuntimeWifiMode = 0;
 
@@ -636,20 +637,41 @@ void initNetworkAndServer() {
 
   auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(448);
+    json.reserve(896);
     uint32_t uptime = millis() / 1000UL;
     uint32_t freeHeap = ESP.getFreeHeap();
+    uint32_t minFreeHeap = PlatformRuntime::getMinFreeHeapBytes();
+    uint32_t maxAllocHeap = PlatformRuntime::getMaxAllocHeapBytes();
     uint32_t freePsram = (uint32_t)PlatformRuntime::getFreePsramBytes();
+    uint32_t totalPsram = (uint32_t)PlatformRuntime::getTotalPsramBytes();
+    uint32_t minFreePsram = (uint32_t)PlatformRuntime::getMinFreePsramBytes();
     uint8_t frag = PlatformRuntime::getHeapFragmentationPercent();
     uint32_t cpu = ESP.getCpuFreqMHz();
     float maxLoopMs = perfMaxLoopUs / 1000.0f;
+    float chipTempC = PlatformRuntime::getChipTemperatureC();
+    uint32_t loopStackFree = PlatformRuntime::getLoopStackHighWaterBytes();
+    uint16_t taskCount = PlatformRuntime::getTaskCount();
+    uint8_t wsClients = (uint8_t)ws.count();
+    uint8_t apClients = NetworkPlatform::apClientCount();
+    uint8_t wifiCh = NetworkPlatform::channel();
+    int32_t wifiRssi = NetworkPlatform::stationRssi();
 
-    json = "{\"freeHeap\":";
+    json = "{\"platform\":\"";
+    json += PlatformRuntime::getPlatformId();
+    json += "\",\"freeHeap\":";
     json += freeHeap;
     json += ",\"free_heap\":";
     json += freeHeap;
+    json += ",\"minFreeHeap\":";
+    json += minFreeHeap;
+    json += ",\"maxAllocHeap\":";
+    json += maxAllocHeap;
     json += ",\"freePsram\":";
     json += freePsram;
+    json += ",\"totalPsram\":";
+    json += totalPsram;
+    json += ",\"minFreePsram\":";
+    json += minFreePsram;
     json += ",\"frag\":";
     json += frag;
     json += ",\"maxLoopUs\":";
@@ -658,10 +680,40 @@ void initNetworkAndServer() {
     json += String(maxLoopMs, 1);
     json += ",\"avgLoopUs\":";
     json += perfAvgLoopUs;
+    json += ",\"loopsPerSec\":";
+    json += perfLoopsPerSec;
     json += ",\"cpuMhz\":";
     json += cpu;
     json += ",\"cpu_mhz\":";
     json += cpu;
+    json += ",\"chipTempC\":";
+    if (isfinite(chipTempC)) {
+      json += String(chipTempC, 1);
+    } else {
+      json += "null";
+    }
+    json += ",\"loopStackFree\":";
+    json += loopStackFree;
+    json += ",\"taskCount\":";
+    json += taskCount;
+    json += ",\"fsUsedBytes\":";
+    json += cachedFsUsedBytes;
+    json += ",\"fsTotalBytes\":";
+    json += cachedFsTotalBytes;
+    json += ",\"fsUsedPct\":";
+    json += cachedFsUsedPct;
+    json += ",\"wsClients\":";
+    json += wsClients;
+    json += ",\"wsMaxClients\":";
+    json += (uint16_t)PLATFORM_MAX_WS_SESSIONS;
+    json += ",\"apClients\":";
+    json += apClients;
+    json += ",\"apMaxClients\":";
+    json += (uint16_t)PLATFORM_MAX_AP_CLIENTS;
+    json += ",\"wifiChannel\":";
+    json += wifiCh;
+    json += ",\"wifiRssi\":";
+    json += wifiRssi;
     json += ",\"uptimeSec\":";
     json += uptime;
     json += ",\"uptime\":";

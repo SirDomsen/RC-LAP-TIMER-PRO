@@ -3,6 +3,8 @@
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
+#include <math.h>
 #include "platform_runtime.h"
 #include "hardware_config.h"
 
@@ -84,8 +86,37 @@ uint8_t getHeapFragmentationPercent() {
   return (uint8_t)(((uint64_t)(freeHeap - maxBlock) * 100ULL) / freeHeap);
 }
 
+uint32_t getMinFreeHeapBytes() {
+  return ESP.getMinFreeHeap();
+}
+
+uint32_t getMaxAllocHeapBytes() {
+  return ESP.getMaxAllocHeap();
+}
+
 size_t getFreePsramBytes() {
   return ESP.getFreePsram();
+}
+
+size_t getTotalPsramBytes() {
+  return ESP.getPsramSize();
+}
+
+size_t getMinFreePsramBytes() {
+  return ESP.getMinFreePsram();
+}
+
+float getChipTemperatureC() {
+  float t = temperatureRead();
+  return isfinite(t) ? t : NAN;
+}
+
+uint32_t getLoopStackHighWaterBytes() {
+  return (uint32_t)uxTaskGetStackHighWaterMark(nullptr);
+}
+
+uint16_t getTaskCount() {
+  return (uint16_t)uxTaskGetNumberOfTasks();
 }
 
 uint16_t getChipIdSuffix16() {

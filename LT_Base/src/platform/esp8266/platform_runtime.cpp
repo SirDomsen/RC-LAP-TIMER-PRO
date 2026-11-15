@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #include <user_interface.h>
 #include "platform_runtime.h"
 
@@ -67,7 +68,35 @@ uint8_t getHeapFragmentationPercent() {
   return ESP.getHeapFragmentation();
 }
 
+uint32_t getMinFreeHeapBytes() {
+  return 0;
+}
+
+uint32_t getMaxAllocHeapBytes() {
+  return ESP.getMaxFreeBlockSize();
+}
+
 size_t getFreePsramBytes() {
+  return 0;
+}
+
+size_t getTotalPsramBytes() {
+  return 0;
+}
+
+size_t getMinFreePsramBytes() {
+  return 0;
+}
+
+float getChipTemperatureC() {
+  return NAN;
+}
+
+uint32_t getLoopStackHighWaterBytes() {
+  return 0;
+}
+
+uint16_t getTaskCount() {
   return 0;
 }
 
