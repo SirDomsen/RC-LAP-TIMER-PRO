@@ -651,6 +651,8 @@ void initNetworkAndServer() {
     float chipTempC = PlatformRuntime::getChipTemperatureC();
     uint32_t loopStackFree = PlatformRuntime::getLoopStackHighWaterBytes();
     uint16_t taskCount = PlatformRuntime::getTaskCount();
+    int8_t core0Load = PlatformRuntime::getCoreLoadPercent(0);
+    int8_t core1Load = PlatformRuntime::getCoreLoadPercent(1);
     uint8_t wsClients = (uint8_t)ws.count();
     uint8_t apClients = NetworkPlatform::apClientCount();
     uint8_t wifiCh = NetworkPlatform::channel();
@@ -696,6 +698,10 @@ void initNetworkAndServer() {
     json += loopStackFree;
     json += ",\"taskCount\":";
     json += taskCount;
+    json += ",\"core0Load\":";
+    json += core0Load;
+    json += ",\"core1Load\":";
+    json += core1Load;
     json += ",\"fsUsedBytes\":";
     json += cachedFsUsedBytes;
     json += ",\"fsTotalBytes\":";

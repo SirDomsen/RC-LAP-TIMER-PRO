@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <esp_attr.h>
+#include <esp_freertos_hooks.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -42,6 +43,38 @@ uint32_t calcRtcStepCheck(const RtcStepBlock& b) {
 }
 
 static SemaphoreHandle_t sStorageMutex = nullptr;
+static portMUX_TYPE sLoadMux = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t sTotalTicks[2] = {0, 0};
+static volatile uint32_t sIdleTicks[2] = {0, 0};
+static volatile bool sIdleThisTick[2] = {false, false};
+static uint8_t sCoreLoadPct[2] = {0, 0};
+static uint32_t sLastLoadSampleMs = 0;
+
+static bool IRAM_ATTR onIdleCore0() {
+  if (!sIdleThisTick[0]) {
+    sIdleThisTick[0] = true;
+    sIdleTicks[0]++;
+  }
+  return false;
+}
+
+static bool IRAM_ATTR onIdleCore1() {
+  if (!sIdleThisTick[1]) {
+    sIdleThisTick[1] = true;
+    sIdleTicks[1]++;
+  }
+  return false;
+}
+
+static void IRAM_ATTR onTickCore0() {
+  sTotalTicks[0]++;
+  sIdleThisTick[0] = false;
+}
+
+static void IRAM_ATTR onTickCore1() {
+  sTotalTicks[1]++;
+  sIdleThisTick[1] = false;
+}
 
 } // namespace
 
@@ -50,6 +83,11 @@ void init() {
   if (sStorageMutex == nullptr) {
     sStorageMutex = xSemaphoreCreateRecursiveMutex();
   }
+  esp_register_freertos_idle_hook_for_cpu(onIdleCore0, 0);
+  esp_register_freertos_idle_hook_for_cpu(onIdleCore1, 1);
+  esp_register_freertos_tick_hook_for_cpu(onTickCore0, 0);
+  esp_register_freertos_tick_hook_for_cpu(onTickCore1, 1);
+  sLastLoadSampleMs = millis();
   Serial.begin(115200);
   uint32_t cdcWait = millis();
   while (!Serial && (millis() - cdcWait < 1500)) {
@@ -117,6 +155,33 @@ uint32_t getLoopStackHighWaterBytes() {
 
 uint16_t getTaskCount() {
   return (uint16_t)uxTaskGetNumberOfTasks();
+}
+
+int8_t getCoreLoadPercent(uint8_t core) {
+  if (core > 1) return -1;
+  uint32_t now = millis();
+  if (now - sLastLoadSampleMs >= 500) {
+    uint32_t tot[2];
+    uint32_t idl[2];
+    portENTER_CRITICAL(&sLoadMux);
+    tot[0] = sTotalTicks[0];
+    idl[0] = sIdleTicks[0];
+    tot[1] = sTotalTicks[1];
+    idl[1] = sIdleTicks[1];
+    sTotalTicks[0] = 0;
+    sIdleTicks[0] = 0;
+    sTotalTicks[1] = 0;
+    sIdleTicks[1] = 0;
+    portEXIT_CRITICAL(&sLoadMux);
+    sLastLoadSampleMs = now;
+    for (uint8_t i = 0; i < 2; i++) {
+      if (tot[i] > 0) {
+        uint32_t clampedIdle = (idl[i] > tot[i]) ? tot[i] : idl[i];
+        sCoreLoadPct[i] = (uint8_t)(((tot[i] - clampedIdle) * 100UL) / tot[i]);
+      }
+    }
+  }
+  return (int8_t)sCoreLoadPct[core];
 }
 
 uint16_t getChipIdSuffix16() {

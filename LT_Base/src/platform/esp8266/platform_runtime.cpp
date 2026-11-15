@@ -100,6 +100,10 @@ uint16_t getTaskCount() {
   return 0;
 }
 
+int8_t getCoreLoadPercent(uint8_t) {
+  return -1;
+}
+
 uint16_t getChipIdSuffix16() {
   return (uint16_t)(ESP.getChipId() & 0xFFFF);
 }

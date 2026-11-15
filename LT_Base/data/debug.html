@@ -187,6 +187,11 @@
           <div class="metric-label">CPU Takt</div>
           <div class="metric-val" id="valCpu" style="color:var(--text-muted);">-- MHz</div>
         </div>
+        <div class="metric-box" id="coreLoadMetricBox" style="display:none;">
+          <div class="metric-label">Core-Auslastung</div>
+          <div class="metric-val" id="valCoreLoad" style="color:var(--text-muted);">C0 --%</div>
+          <div class="metric-sub" id="valCoreLoadSub">C1 --%</div>
+        </div>
         <div class="metric-box">
           <div class="metric-label">Freier Heap</div>
           <div class="metric-val" id="valHeap" style="color:var(--text-muted);">-- KB</div>
@@ -474,7 +479,7 @@
       document.querySelectorAll('.lt-speaker-pin-short').forEach(el => {
         el.textContent = isS3 ? 'GPIO7' : 'GPIO5';
       });
-      ['psramMetricBox', 'minHeapMetricBox', 'tempMetricBox', 'rtosMetricBox'].forEach(id => {
+      ['psramMetricBox', 'minHeapMetricBox', 'tempMetricBox', 'rtosMetricBox', 'coreLoadMetricBox'].forEach(id => {
         const box = document.getElementById(id);
         if (box && isS3) box.style.display = '';
       });
@@ -643,6 +648,18 @@
           if (elCpu) {
             elCpu.innerText = cpu + " MHz";
             elCpu.style.color = 'var(--neon-cyan)';
+          }
+
+          let coreBox = document.getElementById('coreLoadMetricBox');
+          let elCore = document.getElementById('valCoreLoad');
+          let elCoreSub = document.getElementById('valCoreLoadSub');
+          if (coreBox && elCore && data.core0Load !== undefined && data.core0Load >= 0) {
+            coreBox.style.display = '';
+            elCore.innerText = "C0: " + data.core0Load + " %";
+            elCore.style.color = data.core0Load >= 80 ? 'var(--neon-red)' : (data.core0Load >= 50 ? 'var(--neon-orange)' : 'var(--neon-green)');
+            if (elCoreSub && data.core1Load !== undefined && data.core1Load >= 0) {
+              elCoreSub.innerText = "C1: " + data.core1Load + " % (Loop)";
+            }
           }
 
           let elHeap = document.getElementById('valHeap');

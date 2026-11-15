@@ -86,6 +86,7 @@
     "Metriken abfragen (3s)": "Poll metrics (3s)",
     "Laufzeit": "Uptime",
     "CPU Takt": "CPU Clock",
+    "Core-Auslastung": "Core Load",
     "Freier Heap": "Free Heap",
     "Min. Freier Heap": "Min. Free Heap",
     "Seit Boot": "Since Boot",

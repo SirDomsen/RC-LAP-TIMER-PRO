@@ -37,6 +37,7 @@ size_t getMinFreePsramBytes();
 float getChipTemperatureC();
 uint32_t getLoopStackHighWaterBytes();
 uint16_t getTaskCount();
+int8_t getCoreLoadPercent(uint8_t core);
 uint16_t getChipIdSuffix16();
 void feedWatchdog();
 const char* getPlatformId();
