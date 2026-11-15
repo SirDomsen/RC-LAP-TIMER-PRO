@@ -17,6 +17,12 @@ static bool sz3Unicast = false;
 
 static bool debugModeEnabled = false;
 
+uint32_t espNowRxPackets = 0;
+uint32_t espNowRxBytes = 0;
+uint32_t espNowTxPackets = 0;
+uint32_t espNowTxErrors = 0;
+uint32_t espNowDupDrops = 0;
+
 #define MAX_DEBUG_PACKETS PLATFORM_MAX_DEBUG_PACKETS
 struct DebugPacketLog {
   uint32_t timestampMs;
@@ -106,6 +112,9 @@ bool isDuplicateEvent(uint32_t eventId) {
 }
 
 static void processIncomingEspNow(const uint8_t*, const uint8_t *incomingData, int len) {
+  espNowRxPackets++;
+  if (len > 0) espNowRxBytes += (uint32_t)len;
+
   // 1a. Hotspot ACK abfangen
   if (len == sizeof(HotspotAckPacket)) {
     HotspotAckPacket ack;
@@ -155,6 +164,7 @@ static void processIncomingEspNow(const uint8_t*, const uint8_t *incomingData, i
 
     // Duplikate filtern
     if (isDuplicateEvent(eventId)) {
+      espNowDupDrops++;
       return; 
     }
 
@@ -202,6 +212,8 @@ void handleTimeSyncBroadcast() {
     syncPkt.stratum = 0;
 
     int sendRes = EspNowTransport::sendBroadcast((uint8_t *)&syncPkt, sizeof(syncPkt));
+    espNowTxPackets++;
+    if (sendRes != 0) espNowTxErrors++;
 
     static uint32_t lastBeaconLog = 0;
     if (millis() - lastBeaconLog > 3000) {

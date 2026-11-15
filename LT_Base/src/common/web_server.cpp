@@ -25,6 +25,13 @@ static IPAddress currentActiveIP(192, 168, 0, 8);
 extern uint32_t perfMaxLoopUs;
 extern uint32_t perfAvgLoopUs;
 extern uint32_t perfLoopsPerSec;
+extern uint32_t irRxFrames;
+
+static uint32_t wsTxMsgs = 0;
+static uint32_t wsTxBytes = 0;
+static uint32_t wsRxMsgs = 0;
+static uint32_t wsRxBytes = 0;
+static uint32_t wsDrops = 0;
 
 uint8_t currentRuntimeWifiMode = 0;
 
@@ -239,6 +246,7 @@ static void unregisterWsClient(uint32_t clientId) {
 static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     if (!PlatformRuntime::canAcceptWebSocket(ws.count(), currentRuntimeWifiMode)) {
+      wsDrops++;
       client->close(1013, "Boxengasse voll");
       return;
     }
@@ -246,6 +254,8 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
     client->keepAlivePeriod(30);
     addWsClient(client->id());
   } else if (type == WS_EVT_DATA) {
+    wsRxMsgs++;
+    wsRxBytes += (uint32_t)len;
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       data[len] = 0;
@@ -262,8 +272,12 @@ static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsE
         }
       } else if (strncmp(str, "{\"cmd\":\"ping\"", 13) == 0) {
         client->text(F("{\"cmd\":\"pong\"}"));
+        wsTxMsgs++;
+        wsTxBytes += 14;
       } else if (strncmp(str, "{\"ping\":", 8) == 0) {
         client->text(str);
+        wsTxMsgs++;
+        wsTxBytes += (uint32_t)len;
       }
     }
   } else if (type == WS_EVT_DISCONNECT) {
@@ -637,7 +651,7 @@ void initNetworkAndServer() {
 
   auto handleSystemMetrics = [](AsyncWebServerRequest *request) {
     String json;
-    json.reserve(896);
+    json.reserve(1152);
     uint32_t uptime = millis() / 1000UL;
     uint32_t freeHeap = ESP.getFreeHeap();
     uint32_t minFreeHeap = PlatformRuntime::getMinFreeHeapBytes();
@@ -720,6 +734,28 @@ void initNetworkAndServer() {
     json += wifiCh;
     json += ",\"wifiRssi\":";
     json += wifiRssi;
+    json += ",\"espNowRxPkts\":";
+    json += espNowRxPackets;
+    json += ",\"espNowRxBytes\":";
+    json += espNowRxBytes;
+    json += ",\"espNowTxPkts\":";
+    json += espNowTxPackets;
+    json += ",\"espNowTxErr\":";
+    json += espNowTxErrors;
+    json += ",\"espNowDupDrops\":";
+    json += espNowDupDrops;
+    json += ",\"wsTxMsgs\":";
+    json += wsTxMsgs;
+    json += ",\"wsTxBytes\":";
+    json += wsTxBytes;
+    json += ",\"wsRxMsgs\":";
+    json += wsRxMsgs;
+    json += ",\"wsRxBytes\":";
+    json += wsRxBytes;
+    json += ",\"wsDrops\":";
+    json += wsDrops;
+    json += ",\"irRxFrames\":";
+    json += irRxFrames;
     json += ",\"uptimeSec\":";
     json += uptime;
     json += ",\"uptime\":";
@@ -884,6 +920,7 @@ void handleNetworkTasks() {
               } else if (now - wsSessions[i].stuckQueueSince >= 8000) {
                 uint32_t deadId = wsSessions[i].clientId;
                 unregisterWsClient(deadId);
+                wsDrops++;
                 c->close(1008, "Queue stalled");
               }
             } else {
@@ -905,6 +942,8 @@ void handleNetworkTasks() {
 
 void broadcastWebSocket(const String& msg) {
   if (ws.count() > 0) {
+    wsTxMsgs++;
+    wsTxBytes += (uint32_t)msg.length();
     ws.textAll(msg);
   }
 }

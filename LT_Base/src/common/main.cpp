@@ -15,6 +15,7 @@ uint32_t perfLoopCount = 0;
 uint32_t perfLoopsPerSec = 0;
 uint32_t perfMaxLoopUs = 0;
 uint32_t perfAvgLoopUs = 0;
+uint32_t irRxFrames = 0;
 
 void setup() {
   PlatformRuntime::init();
@@ -35,6 +36,7 @@ void loop() {
   uint32_t exactSignalTime = 0;
   bool confirmed = false;
   if (LapIrInput::consumeFrame(MAX_CARS, carId, exactSignalTime, confirmed)) {
+    irRxFrames++;
     processLapInputFrame(carId, exactSignalTime, confirmed);
   }
   updateLapLogicTasks();

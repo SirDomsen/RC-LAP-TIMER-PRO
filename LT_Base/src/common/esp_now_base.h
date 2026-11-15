@@ -18,4 +18,10 @@ void setDebugMode(bool active);
 bool getDebugMode();
 const String& getDebugPacketsJSON();
 
+extern uint32_t espNowRxPackets;
+extern uint32_t espNowRxBytes;
+extern uint32_t espNowTxPackets;
+extern uint32_t espNowTxErrors;
+extern uint32_t espNowDupDrops;
+
 #endif
