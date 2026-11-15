@@ -18,7 +18,7 @@ Unterstützte Eingaben:
 
 - LittleFS-ZIP-Backups des Lap Timers
 - Statistik-JSON-Backups der Versionen 3, 4 und 5
-- Direkter WLAN-Abruf vom Lap Timer (`📡 Vom Lap Timer laden` über IP oder `laptimer.local`): Lädt `tracks`, `names`, `sessions` sowie nur neue oder geänderte Session-Dateien sequenziell nach und führt sie lokal zusammen (erfordert Lap-Timer-Firmware mit CORS-Header ab `v4.7.15`). Nach erfolgreicher Übertragung kann der Statistikspeicher auf dem Lap Timer optional über `🗑️ Lap-Timer leeren` freigegeben werden (ab Firmware `v4.7.16`).
+- Direkter WLAN-Abruf vom Lap Timer (`📡 Download vom Laptimer` über IP oder `laptimer.local`): Lädt `tracks`, `names`, `sessions` sowie nur neue oder geänderte Session-Dateien sequenziell nach und führt sie lokal zusammen (erfordert Lap-Timer-Firmware mit CORS-Header ab `v4.7.15`). Nach erfolgreicher Übertragung kann der Statistikspeicher auf dem Lap Timer optional über `🗑️ Lap-Timer leeren` freigegeben werden (ab Firmware `v4.7.16`). Über `📤 Upload auf Laptimer` lassen sich ausgewählte Strecken, Rekorde, Fahrernamen und Sessions wieder auf den Lap Timer hochladen (ab Firmware `v4.8.7`).
 
 Beim ZIP-Import werden nur Statistikdaten übernommen: `tracks.json`, `sessions.json`, `names.json`, `daily_best.json` sowie JSON-Sessiondateien in den Strecken-/Modus-Unterordnern. Neue Sessiondateien speichern Fahrer und Fahrzeug als Snapshot (`d`/`v`) beim ersten Auftreten einer ID. Kompakte Header- und Sektor-Keys reduzieren die Dateigröße; das aktuelle Backupformat ist Version 5. Frontend-Dateien, WLAN-Konfigurationen und sonstige Konfigurationsdateien werden ausgelassen. Unsichere Pfade mit Traversal-Segmenten werden verworfen.
 

@@ -22,16 +22,19 @@
 </head>
 <body class="offline-app">
   <header class="offline-toolbar">
-    <div>
-      <h1>🏁 RC LAP TIMER</h1>
-      <p>Offline-Statistikauswertung <strong>v1.0.0</strong> · Daten bleiben auf diesem Gerät</p>
+    <div class="offline-brand">
+      <h1>🏁 RC LAP TIMER PRO 🏁</h1>
+      <p class="offline-brand-sub"><span class="offline-brand-badge">OFFLINE STATISTIC BROWSER</span> <span class="offline-brand-meta"><strong>v1.0.0</strong> · Daten bleiben auf diesem Gerät</span></p>
     </div>
     <div class="offline-toolbar-actions">
       <div class="offline-sync-group">
         <label class="offline-host-label" for="laptimerHostInput">Lap-Timer (IP/Host):</label>
-        <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer IP-Adresse oder Hostname im WLAN" spellcheck="false" autocomplete="url">
-        <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Vom Lap Timer laden</button>
-        <button class="btn btn-green" id="uploadLaptimerButton" type="button" disabled title="Ausgewählte Strecken &amp; Statistiken auf den Lap Timer hochladen">📤 Auf Lap Timer laden</button>
+        <div class="offline-host-combo">
+          <input id="laptimerHostInput" class="offline-host-input" type="text" value="laptimer.local" placeholder="laptimer.local oder IP" aria-label="Lap-Timer IP-Adresse oder Hostname im WLAN" spellcheck="false" autocomplete="url">
+          <button class="btn" id="discoverLaptimerButton" type="button" title="Aktive Lap Timer im WLAN suchen">🔍</button>
+        </div>
+        <button class="btn btn-cyan" id="syncLaptimerButton" type="button">📡 Download vom Laptimer</button>
+        <button class="btn btn-green" id="uploadLaptimerButton" type="button" disabled title="Ausgewählte Strecken &amp; Statistiken auf den Lap Timer hochladen">📤 Upload auf Laptimer</button>
         <button class="btn btn-red" id="clearLaptimerButton" type="button" disabled title="Erst nach erfolgreicher Übertragung verfügbar">🗑️ Lap-Timer leeren</button>
       </div>
       <label class="btn btn-purple" for="backupFileInput" title="Lädt Lap-Timer-Vollbackup (.zip), statistics.zip oder Statistik-JSON">📂 Laden</label>
@@ -57,7 +60,6 @@
       <div class="modal-content offline-stats-content">
         <div class="offline-stats-heading">
           <h2>📊 STATISTIKEN &amp; RENN-HISTORIE</h2>
-          <span id="offlineBackupSummary"></span>
         </div>
 
         <div id="statsStorageWarningBanner" class="storage-warning-banner" style="display:none;"></div>
@@ -108,6 +110,44 @@
       </div>
     </div>
   </main>
+
+  <div id="discoverLaptimerModal" class="modal" style="z-index: 10004;">
+    <div class="modal-content offline-discover-modal">
+      <div class="offline-upload-header">
+        <h2>🔍 LAP TIMER IM WLAN SUCHEN</h2>
+        <button class="btn" id="discoverModalCloseBtn" type="button" aria-label="Schließen">✕</button>
+      </div>
+
+      <div id="discoverStatusText" class="offline-discover-status">Schnellcheck läuft …</div>
+
+      <div id="discoverProgressBox" class="offline-upload-progress" style="display:none;">
+        <div class="offline-upload-progress-bar">
+          <div id="discoverProgressFill" class="offline-upload-progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="discoverResultsList" class="offline-discover-results"></div>
+
+      <div class="offline-discover-subnet-box">
+        <div class="offline-discover-subnet-title">Optional: Subnetz komplett scannen (.1–.254)</div>
+        <div class="offline-discover-subnet-row">
+          <input id="discoverSubnetInput" class="offline-host-input" type="text" value="192.168.178" placeholder="z. B. 192.168.0" aria-label="Subnetz-Präfix">
+          <button class="btn btn-cyan" id="discoverSubnetScanBtn" type="button">🔎 Subnetz scannen</button>
+        </div>
+        <div class="offline-discover-presets">
+          <button class="btn discover-preset-btn" type="button" data-subnet="192.168.178">192.168.178.x</button>
+          <button class="btn discover-preset-btn" type="button" data-subnet="192.168.0">192.168.0.x</button>
+          <button class="btn discover-preset-btn" type="button" data-subnet="192.168.1">192.168.1.x</button>
+          <button class="btn discover-preset-btn" type="button" data-subnet="192.168.2">192.168.2.x</button>
+        </div>
+      </div>
+
+      <div class="offline-upload-footer">
+        <span class="offline-upload-summary">Klicke auf einen gefundenen Lap Timer, um ihn auszuwählen.</span>
+        <button class="btn" id="discoverCancelBtn" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
 
   <div id="uploadLaptimerModal" class="modal" style="z-index: 10005;">
     <div class="modal-content offline-upload-modal">

@@ -25,10 +25,34 @@ body.offline-app {
   letter-spacing: 1px;
 }
 
-.offline-toolbar p {
-  margin: 3px 0 0;
+.offline-brand-sub {
+  margin: 5px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.offline-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-family: var(--font-display, inherit);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--neon-cyan);
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.16), rgba(168, 85, 247, 0.16));
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.18);
+}
+
+.offline-brand-meta {
+  color: var(--text-muted);
 }
 
 .offline-toolbar-actions {
@@ -52,6 +76,21 @@ body.offline-app {
   white-space: nowrap;
 }
 
+.offline-host-combo {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: rgba(22, 27, 34, 0.95);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.offline-host-combo:focus-within {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+}
+
 .offline-host-input {
   width: 195px;
   max-width: 100%;
@@ -64,10 +103,21 @@ body.offline-app {
   font-family: inherit;
 }
 
+.offline-host-combo .offline-host-input {
+  width: 175px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .offline-host-input:focus {
   outline: none;
   border-color: var(--neon-cyan);
   box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+}
+
+.offline-host-combo .offline-host-input:focus {
+  box-shadow: none;
 }
 
 .offline-host-input:disabled {
@@ -503,4 +553,131 @@ body.offline-app {
 
 .offline-upload-buttons .btn {
   margin: 0;
+}
+
+#discoverLaptimerButton {
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-left: 1px solid var(--card-border);
+  border-radius: 0;
+  background: rgba(0, 229, 255, 0.08);
+  box-shadow: none;
+}
+
+#discoverLaptimerButton:hover {
+  background: rgba(0, 229, 255, 0.2);
+}
+
+.offline-discover-modal {
+  max-width: 560px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.offline-discover-status {
+  font-size: 13px;
+  color: var(--neon-cyan);
+}
+
+.offline-discover-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+
+.offline-discover-empty {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--card-border);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.offline-discover-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  background: rgba(22, 27, 34, 0.9);
+  color: var(--text-main, #f0f6fc);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.offline-discover-item:hover {
+  border-color: var(--neon-green);
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.offline-discover-item-host {
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--neon-cyan);
+}
+
+.offline-discover-item-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.offline-discover-item-action {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--neon-green);
+  white-space: nowrap;
+}
+
+.offline-discover-subnet-box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.offline-discover-subnet-title {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.offline-discover-subnet-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offline-discover-subnet-row .offline-host-input {
+  flex: 1 1 150px;
+}
+
+.offline-discover-subnet-row .btn {
+  margin: 0;
+}
+
+.offline-discover-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.offline-discover-presets .btn {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 11px;
 }

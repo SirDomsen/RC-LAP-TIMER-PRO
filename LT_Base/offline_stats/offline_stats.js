@@ -698,11 +698,6 @@ async function loadOfflineFile(file) {
     await refreshOfflineViews(imported.dataset, imported.fileMap);
     updateSaveButtonsUI(true);
 
-    let summary = _ot(
-      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
-      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
-    );
-    document.getElementById('offlineBackupSummary').textContent = summary;
     let status = _ot(
       `${file.name}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
       `${file.name}: ${imported.added} new, ${imported.updated} updated; database now has ${imported.dataset.sessions.length} sessions.`
@@ -912,10 +907,6 @@ async function restoreLocalDatabase() {
   }
 
   await refreshOfflineViews(dataset, fileMap);
-  document.getElementById('offlineBackupSummary').textContent = _ot(
-    `${dataset.sessions.length} Sessions · ${fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
-    `${dataset.sessions.length} sessions · ${fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
-  );
   let status = _ot(
     `Lokale Datenbank geladen: ${dataset.sessions.length} Sessions, ${fileMap.size} Statistikdateien.`,
     `Local database loaded: ${dataset.sessions.length} sessions, ${fileMap.size} statistics files.`
@@ -1124,12 +1115,6 @@ async function syncFromLaptimer() {
     updateSaveButtonsUI(true);
     lastSyncedLaptimerUrl = baseUrl;
     if (clearButton) clearButton.disabled = false;
-
-    let summary = _ot(
-      `${imported.dataset.sessions.length} Sessions · ${imported.fileMap.size} Dateien · Offline v${OFFLINE_STATS_VERSION}`,
-      `${imported.dataset.sessions.length} sessions · ${imported.fileMap.size} files · Offline v${OFFLINE_STATS_VERSION}`
-    );
-    document.getElementById('offlineBackupSummary').textContent = summary;
 
     let status = _ot(
       `Lap Timer${firmwareLabel}: ${imported.added} neu, ${imported.updated} aktualisiert; Datenbank jetzt ${imported.dataset.sessions.length} Sessions.`,
@@ -1884,6 +1869,234 @@ document.getElementById('uploadIncludeNames').addEventListener('change', updateU
 document.getElementById('uploadConfirmBtn').addEventListener('click', uploadSelectedToLaptimer);
 document.getElementById('uploadLaptimerModal').addEventListener('click', event => {
   if (event.target === event.currentTarget) closeUploadLaptimerModal();
+});
+
+let discoverScanState = null;
+
+function extractSubnetPrefix(host) {
+  let cleaned = String(host || '').trim().replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+  let match = /^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/.exec(cleaned);
+  return match ? match[1] : null;
+}
+
+async function probeLaptimerHost(host, timeoutMs = 1200, signal = null) {
+  let controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let onParentAbort = () => {
+    if (controller) controller.abort();
+  };
+  if (signal && controller) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+  let timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  try {
+    let response = await fetch(`http://${host}/api/version`, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    });
+    if (!response.ok) return null;
+    let info = await response.json();
+    if (!info || typeof info !== 'object' || !info.firmware) return null;
+    return {
+      host,
+      firmware: info.firmware,
+      platform: info.platformName || info.platform || 'ESP'
+    };
+  } catch (error) {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (signal && controller) signal.removeEventListener('abort', onParentAbort);
+  }
+}
+
+function renderDiscoverResults() {
+  let list = document.getElementById('discoverResultsList');
+  if (!list || !discoverScanState) return;
+  let items = discoverScanState.results;
+  if (!items.length) {
+    list.innerHTML = `<div class="offline-discover-empty">${discoverScanState.scanning
+      ? _ot('Suche nach aktiven Lap Timern …', 'Searching for active Lap Timers …')
+      : _ot('Noch kein aktiver Lap Timer gefunden. Prüfe das WLAN oder starte einen Subnetz-Scan.', 'No active Lap Timer found yet. Check Wi-Fi or run a subnet scan.')}</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map((item, idx) => `
+    <button type="button" class="offline-discover-item" data-discover-idx="${idx}">
+      <div>
+        <div class="offline-discover-item-host">📡 ${escapeHtml(item.host)}</div>
+        <div class="offline-discover-item-meta">${escapeHtml(item.platform)} · ${escapeHtml(item.firmware)}</div>
+      </div>
+      <span class="offline-discover-item-action">${_ot('Übernehmen →', 'Select →')}</span>
+    </button>
+  `).join('');
+
+  list.querySelectorAll('.offline-discover-item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      let idx = Number(btn.dataset.discoverIdx);
+      let chosen = discoverScanState && discoverScanState.results[idx];
+      if (!chosen) return;
+      let hostInput = document.getElementById('laptimerHostInput');
+      if (hostInput) hostInput.value = chosen.host;
+      lastSyncedLaptimerUrl = null;
+      let clearButton = document.getElementById('clearLaptimerButton');
+      if (clearButton) clearButton.disabled = true;
+      await writeOfflineSetting('laptimerHost', chosen.host);
+      setOfflineStatus(_ot(
+        `Lap Timer ausgewählt: ${chosen.host} (${chosen.platform} · ${chosen.firmware})`,
+        `Lap Timer selected: ${chosen.host} (${chosen.platform} · ${chosen.firmware})`
+      ), 'success');
+      closeDiscoverLaptimerModal();
+    });
+  });
+}
+
+function addDiscoverResult(found) {
+  if (!found || !discoverScanState) return;
+  if (discoverScanState.results.some(r => r.host === found.host)) return;
+  discoverScanState.results.push(found);
+  renderDiscoverResults();
+}
+
+function closeDiscoverLaptimerModal() {
+  if (discoverScanState && discoverScanState.abortController) {
+    discoverScanState.abortController.abort();
+  }
+  discoverScanState = null;
+  let modal = document.getElementById('discoverLaptimerModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function openDiscoverLaptimerModal() {
+  if (window.location.protocol === 'https:') {
+    setOfflineStatus(_ot(
+      'Aus einer HTTPS-Seite heraus blockiert der Browser HTTP-Scans im lokalen Netz. Bitte offline_stats/index.html lokal öffnen.',
+      'Browsers block local HTTP scans from an HTTPS page. Please open offline_stats/index.html locally.'
+    ), 'error');
+    return;
+  }
+
+  let hostInput = document.getElementById('laptimerHostInput');
+  let currentHost = hostInput ? hostInput.value.trim().replace(/^https?:\/\//i, '').split('/')[0] : '';
+  let savedHost = await readOfflineSetting('laptimerHost');
+  let detectedSubnet = extractSubnetPrefix(currentHost) || extractSubnetPrefix(savedHost) || '192.168.178';
+
+  let subnetInput = document.getElementById('discoverSubnetInput');
+  if (subnetInput) subnetInput.value = detectedSubnet;
+
+  let abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  discoverScanState = {
+    scanning: true,
+    abortController,
+    results: []
+  };
+
+  document.getElementById('discoverProgressBox').style.display = 'none';
+  document.getElementById('discoverProgressFill').style.width = '0%';
+  document.getElementById('discoverSubnetScanBtn').disabled = false;
+  document.getElementById('discoverStatusText').textContent = _ot(
+    'Schnellcheck: prüfe laptimer.local, 192.168.4.1 und gespeicherte Adresse …',
+    'Quick check: probing laptimer.local, 192.168.4.1, and saved address …'
+  );
+  renderDiscoverResults();
+  document.getElementById('discoverLaptimerModal').style.display = 'flex';
+
+  let candidates = Array.from(new Set(
+    [currentHost, savedHost, DEFAULT_LAPTIMER_HOST, '192.168.4.1']
+      .map(h => String(h || '').trim().replace(/^https?:\/\//i, '').split('/')[0])
+      .filter(Boolean)
+  ));
+
+  await Promise.all(candidates.map(async host => {
+    let found = await probeLaptimerHost(host, 1400, abortController ? abortController.signal : null);
+    if (found) addDiscoverResult(found);
+  }));
+
+  if (!discoverScanState || (abortController && abortController.signal.aborted)) return;
+  discoverScanState.scanning = false;
+  document.getElementById('discoverStatusText').textContent = discoverScanState.results.length > 0
+    ? _ot(`${discoverScanState.results.length} aktive(r) Lap Timer beim Schnellcheck gefunden.`, `Found ${discoverScanState.results.length} active Lap Timer(s) in quick check.`)
+    : _ot('Schnellcheck ohne Treffer. Starte bei Bedarf den Subnetz-Scan unten.', 'Quick check found none. Run a subnet scan below if needed.');
+  renderDiscoverResults();
+}
+
+async function scanSubnetForLaptimers() {
+  if (!discoverScanState) return;
+  let subnetInput = document.getElementById('discoverSubnetInput');
+  let rawPrefix = String(subnetInput ? subnetInput.value : '').trim().replace(/\.$/, '');
+  if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(rawPrefix)) {
+    document.getElementById('discoverStatusText').textContent = _ot(
+      'Bitte ein gültiges Subnetz-Präfix eingeben (z. B. 192.168.0).',
+      'Please enter a valid subnet prefix (e.g. 192.168.0).'
+    );
+    return;
+  }
+
+  if (discoverScanState.abortController) {
+    discoverScanState.abortController.abort();
+  }
+  let abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  discoverScanState.abortController = abortController;
+  discoverScanState.scanning = true;
+
+  let scanBtn = document.getElementById('discoverSubnetScanBtn');
+  let progressBox = document.getElementById('discoverProgressBox');
+  let progressFill = document.getElementById('discoverProgressFill');
+  let statusText = document.getElementById('discoverStatusText');
+  scanBtn.disabled = true;
+  progressBox.style.display = 'flex';
+  progressFill.style.width = '0%';
+  renderDiscoverResults();
+
+  const totalHosts = 254;
+  const batchSize = 16;
+  let checked = 0;
+
+  for (let start = 1; start <= totalHosts; start += batchSize) {
+    if (!discoverScanState || (abortController && abortController.signal.aborted)) return;
+    let batch = [];
+    for (let oct = start; oct < start + batchSize && oct <= totalHosts; oct++) {
+      batch.push(`${rawPrefix}.${oct}`);
+    }
+    statusText.textContent = _ot(
+      `Scanne ${rawPrefix}.${start}–${rawPrefix}.${Math.min(start + batchSize - 1, totalHosts)} (${checked}/${totalHosts}) …`,
+      `Scanning ${rawPrefix}.${start}–${rawPrefix}.${Math.min(start + batchSize - 1, totalHosts)} (${checked}/${totalHosts}) …`
+    );
+
+    await Promise.all(batch.map(async host => {
+      let found = await probeLaptimerHost(host, 700, abortController ? abortController.signal : null);
+      if (found) addDiscoverResult(found);
+    }));
+
+    checked += batch.length;
+    progressFill.style.width = `${Math.round((checked / totalHosts) * 100)}%`;
+  }
+
+  if (!discoverScanState || (abortController && abortController.signal.aborted)) return;
+  discoverScanState.scanning = false;
+  scanBtn.disabled = false;
+  statusText.textContent = _ot(
+    `Subnetz-Scan (${rawPrefix}.x) abgeschlossen: ${discoverScanState.results.length} Lap Timer gefunden.`,
+    `Subnet scan (${rawPrefix}.x) complete: ${discoverScanState.results.length} Lap Timer(s) found.`
+  );
+  renderDiscoverResults();
+}
+
+document.getElementById('discoverLaptimerButton').addEventListener('click', openDiscoverLaptimerModal);
+document.getElementById('discoverModalCloseBtn').addEventListener('click', closeDiscoverLaptimerModal);
+document.getElementById('discoverCancelBtn').addEventListener('click', closeDiscoverLaptimerModal);
+document.getElementById('discoverSubnetScanBtn').addEventListener('click', scanSubnetForLaptimers);
+document.querySelectorAll('.discover-preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    let input = document.getElementById('discoverSubnetInput');
+    if (input) input.value = btn.dataset.subnet || '192.168.178';
+  });
+});
+document.getElementById('discoverLaptimerModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeDiscoverLaptimerModal();
 });
 document.getElementById('laptimerHostInput').addEventListener('input', () => {
   lastSyncedLaptimerUrl = null;

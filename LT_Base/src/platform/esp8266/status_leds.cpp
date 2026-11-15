@@ -6,6 +6,11 @@ namespace {
 uint32_t readyLedOffTime = 0;
 uint32_t lastYellowFlash = 0;
 bool readyLedBlinking = false;
+
+void setReadyLeds(bool on) {
+  digitalWrite(LED_READY, on ? HIGH : LOW);
+  digitalWrite(LED_ONBOARD, on ? LOW : HIGH);  // Active LOW
+}
 }
 
 void LapStatusLeds::init() {
@@ -13,13 +18,12 @@ void LapStatusLeds::init() {
   pinMode(LED_SIGNAL, OUTPUT);
   pinMode(LED_ONBOARD, OUTPUT);
 
-  digitalWrite(LED_READY, LOW);
+  setReadyLeds(false);
   digitalWrite(LED_SIGNAL, LOW);
-  digitalWrite(LED_ONBOARD, HIGH);
 }
 
 void LapStatusLeds::pulseReady() {
-  digitalWrite(LED_READY, LOW);
+  setReadyLeds(false);
   readyLedBlinking = true;
   readyLedOffTime = millis() + 200;
 }
@@ -29,7 +33,7 @@ void LapStatusLeds::cancelReadyPulse() {
 }
 
 void LapStatusLeds::setNetworkReady(bool ready) {
-  digitalWrite(LED_READY, ready ? HIGH : LOW);
+  setReadyLeds(ready);
 }
 
 void LapStatusLeds::update() {
@@ -43,7 +47,7 @@ void LapStatusLeds::update() {
   }
 
   if (readyLedBlinking && millis() >= readyLedOffTime) {
-    digitalWrite(LED_READY, HIGH);
+    setReadyLeds(true);
     readyLedBlinking = false;
   }
 }
