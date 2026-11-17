@@ -625,22 +625,22 @@
           </div>
         </div>
 
-        <div style="background:#0d1117; padding:12px; border-radius:8px; margin-bottom:15px; text-align: left; border: 1px solid var(--neon-orange);">
-          <h4 style="color:var(--neon-orange); margin:0 0 8px 0; font-family:var(--font-display);">
-            📶 WLAN Kontrollzentrum
-            <span id="activeWifiBadge" style="float:right; font-size:11px; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.1); border:1px solid #555; color:var(--text-main);">Lade...</span>
-          </h4>
-          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">
+        <div class="wifi-control-card">
+          <div class="wifi-card-header">
+            <h4 style="color:var(--neon-orange); margin:0; font-family:var(--font-display);">📶 WLAN Kontrollzentrum</h4>
+            <span id="activeWifiBadge" class="wifi-status-badge">Lade...</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">
             Hier Daten für alle Netzwerke pflegen. Ein Klick auf die Buttons zwingt die Basis sofort ins gewählte WLAN.
           </p>
 
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div class="wifi-field-grid">
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">Heim-WLAN SSID:</label>
+              <label class="wifi-field-label">Heim-WLAN SSID:</label>
               <input type="text" id="cfg_home_ssid" class="wifi-input" placeholder="WLAN Name">
             </div>
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
+              <label class="wifi-field-label">Passwort:</label>
               <div class="wifi-pass-wrap">
                 <input type="password" id="cfg_home_pass" class="wifi-input" placeholder="Passwort" autocomplete="off">
                 <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_home_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
@@ -650,13 +650,13 @@
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div class="wifi-field-grid">
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">Hotspot SSID:</label>
+              <label class="wifi-field-label">Hotspot SSID:</label>
               <input type="text" id="cfg_hotspot_ssid" class="wifi-input" placeholder="z.B. Poco F7">
             </div>
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">Passwort:</label>
+              <label class="wifi-field-label">Passwort:</label>
               <div class="wifi-pass-wrap">
                 <input type="password" id="cfg_hotspot_pass" class="wifi-input" placeholder="Passwort" autocomplete="off">
                 <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_hotspot_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
@@ -666,13 +666,13 @@
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+          <div class="wifi-field-grid">
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">AP SSID (Name):</label>
+              <label class="wifi-field-label">AP SSID (Name):</label>
               <input type="text" id="cfg_ap_ssid" class="wifi-input" placeholder="z.B. RC-LapTimer">
             </div>
             <div>
-              <label style="font-size: 11px; color: var(--text-muted);">Passwort (AP):</label>
+              <label class="wifi-field-label">Passwort (AP):</label>
               <div class="wifi-pass-wrap">
                 <input type="password" id="cfg_ap_pass" class="wifi-input" placeholder="Rennstrecke123" autocomplete="off">
                 <button type="button" class="wifi-pass-toggle" onclick="toggleWifiPass('cfg_ap_pass', this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">
@@ -682,10 +682,10 @@
             </div>
           </div>
 
-          <div style="display:flex; gap: 5px; flex-wrap: wrap;">
-            <button class="btn btn-success" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(1)">🏠 Zu Heim-WLAN</button>
-            <button class="btn btn-warning" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(2)">📱 Zu Hotspot</button>
-            <button class="btn btn-purple" style="flex: 1; padding:8px; font-size:11px;" onclick="forceWifiMode(0)">📡 Zu AP-Modus</button>
+          <div class="wifi-mode-actions">
+            <button class="btn btn-success wifi-mode-btn" onclick="forceWifiMode(1)">🏠 Zu Heim-WLAN</button>
+            <button class="btn btn-warning wifi-mode-btn" onclick="forceWifiMode(2)">📱 Zu Hotspot</button>
+            <button class="btn btn-purple wifi-mode-btn" onclick="forceWifiMode(0)">📡 Zu AP-Modus</button>
           </div>
         </div>
 
