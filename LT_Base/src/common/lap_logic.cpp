@@ -17,9 +17,9 @@ uint16_t lapCounter[MAX_CARS + 1]      = {0};
 uint16_t targetRounds                  = 0;
 uint16_t minLapTimeMs                  = DEFAULT_MIN_LAP_MS;
 
-bool useSz1 = true;
-bool useSz2 = true;
-bool useSz3 = true;
+bool useSz1 = DEFAULT_USE_SZ1;
+bool useSz2 = DEFAULT_USE_SZ2;
+bool useSz3 = DEFAULT_USE_SZ3;
 bool checkpointMode = false;
 bool dragraceMode = false;
 bool sectorAudioFeedback = true;

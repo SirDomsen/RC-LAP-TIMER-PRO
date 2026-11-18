@@ -38,9 +38,13 @@
 #endif
 
 // --- Renn- & EEPROM Parameter ---
-#define MAX_CARS            15
-#define DEFAULT_MIN_LAP_MS  2000    // Standard-Entprellung (2 Sekunden)
-#define PIT_PAUSE_FACTOR_PERCENT 250 // Schwellenwert für dynamische Boxen-/Pausen-/Outlap-Erkennung (250% von AvgLap)
+#define MAX_CARS                 15
+#define DEFAULT_MIN_LAP_MS       5000   // Standard-Entprellung / Mindestrundenzeit (5 Sekunden)
+#define DEFAULT_TWO_FRAME_FILTER false  // 2-Frame-IR-Filter (nur indoors nötig)
+#define DEFAULT_USE_SZ1          false  // Sektorstation 1 per Default aus
+#define DEFAULT_USE_SZ2          false  // Sektorstation 2 per Default aus
+#define DEFAULT_USE_SZ3          false  // Sektorstation 3 per Default aus
+#define PIT_PAUSE_FACTOR_PERCENT 250    // Schwellenwert für dynamische Boxen-/Pausen-/Outlap-Erkennung (250% von AvgLap)
 #define EEPROM_MAGIC        0xAC    // Magic Byte
 #define EEPROM_SIZE         1024
 #define NAME_LENGTH         20      // Max. Zeichen pro Fahrername

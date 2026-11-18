@@ -2047,10 +2047,10 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(0, EEPROM_MAGIC);
     EEPROM.write(301, (uint8_t)(DEFAULT_MIN_LAP_MS & 0xFF));
     EEPROM.write(302, (uint8_t)((DEFAULT_MIN_LAP_MS >> 8) & 0xFF));
-    EEPROM.write(303, 1);
-    EEPROM.write(304, 1);
-    EEPROM.write(305, 1);
-    EEPROM.write(306, 1);
+    EEPROM.write(303, DEFAULT_TWO_FRAME_FILTER ? 1 : 0);
+    EEPROM.write(304, DEFAULT_USE_SZ1 ? 1 : 0);
+    EEPROM.write(305, DEFAULT_USE_SZ2 ? 1 : 0);
+    EEPROM.write(306, DEFAULT_USE_SZ3 ? 1 : 0);
     EEPROM.write(307, 0);
     EEPROM.write(308, 0);
     EEPROM.write(309, 1);
@@ -2058,10 +2058,10 @@ void loadSettingsFromEEPROM() {
     EEPROM.commit();
     
     minLapTimeMs = DEFAULT_MIN_LAP_MS;
-    IrDecoder::setTwoFrameFilterEnabled(true);
-    useSz1 = true;
-    useSz2 = true;
-    useSz3 = true;
+    IrDecoder::setTwoFrameFilterEnabled(DEFAULT_TWO_FRAME_FILTER);
+    useSz1 = DEFAULT_USE_SZ1;
+    useSz2 = DEFAULT_USE_SZ2;
+    useSz3 = DEFAULT_USE_SZ3;
     checkpointMode = false;
     dragraceMode = false;
     sectorAudioFeedback = true;

@@ -15,7 +15,7 @@ volatile uint32_t irTriggerTimeMicros = 0;
 
 namespace {
 uint8_t signalLedPin = 0;
-bool twoFrameFilterEnabled = true;
+bool twoFrameFilterEnabled = false;
 uint8_t lastPendingId = 0;
 uint32_t firstDetectTimeMicros = 0;
 uint8_t detectionCount = 0;
