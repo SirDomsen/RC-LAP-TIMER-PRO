@@ -337,9 +337,11 @@ void onDataRecv(u8 *mac, u8 *incomingData, u8 len) {
 
 void setup() {
   pinMode(LED_SIGNAL, OUTPUT);
+#ifndef BOARD_ESP12F_IR
   pinMode(1, OUTPUT);
   digitalWrite(1, LOW); // TX-Pin hart auf Masse fuer Schaltung/Spannungsteiler
   pinMode(0, INPUT_PULLUP);
+#endif
 
   digitalWrite(LED_SIGNAL, LOW);
   delay(100);
@@ -433,11 +435,13 @@ void loop() {
   }
 
   // --- 6. BATTERIESTATUS ---
+#ifndef BOARD_ESP12F_IR
   static uint32_t lastBatteryCheckMs = 0;
   if (nowMs - lastBatteryCheckMs > 10000) {
     lastBatteryCheckMs = nowMs;
     batteryLow = (digitalRead(0) == HIGH);
   }
+#endif
 
   // --- 7. ALIVE HEARTBEAT (3 Bytes, Unicast-Flag) ---
   static uint32_t lastAliveMs = 0;

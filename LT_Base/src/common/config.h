@@ -28,7 +28,11 @@
 
 // --- Hardware Pin Definitionen ---
 #ifdef SECTOR_STATION
-  #define IR_PIN      3           // GPIO3 (RX) für den TSOP-Empfänger auf dem ESP-01S
+  #ifdef BOARD_ESP12F_IR
+    #define IR_PIN    14          // GPIO14 für den IR-Empfänger auf dem ESP-12F IR-Board
+  #else
+    #define IR_PIN    3           // GPIO3 (RX) für den TSOP-Empfänger auf dem ESP-01S
+  #endif
   #define LED_SIGNAL  2           // GPIO2 für die blaue Onboard-LED (Active LOW)
   #define LED_ONBOARD 2           // GPIO2
 #elif defined(ESP32)

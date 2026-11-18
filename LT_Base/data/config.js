@@ -1,5 +1,5 @@
 let pendingWifiMode = 0;
-let lastLearnedApIp = '192.168.0.8';
+let lastLearnedApIp = '192.168.4.1';
 let defaultApSSID = 'RC-LapTimer';
 let rgbPreviewTimer = null;
 let lastRgbPreviewColor = '#00ff00';
@@ -501,7 +501,7 @@ async function forceWifiMode(mode) {
   } else {
     let activeAp = (apS.trim().length > 0) ? apS.trim() : defaultApSSID;
     expectedSsid = activeAp + (apPassVal ? " (PW: " + apPassVal + ")" : "");
-    targetIp = lastLearnedApIp || "192.168.0.8";
+    targetIp = lastLearnedApIp || "192.168.4.1";
     step1Text = t("1. Smartphone direkt mit Laptimer-WLAN verbinden:");
     step2Text = t("2. Im Browser öffnen (gewohnte Heim-IP):");
     descText = t("Der Laptimer spannt sein eigenes Direkt-WLAN an der Rennstrecke auf (kein Router erforderlich).");

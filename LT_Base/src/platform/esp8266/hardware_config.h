@@ -1,8 +1,8 @@
 #ifndef ESP8266_HARDWARE_CONFIG_H
 #define ESP8266_HARDWARE_CONFIG_H
 
-#ifdef TESTBOARD_ESP12F_IR
-// ESP-12F IR-Transceiver-Testboard (Type-C)
+#ifdef BOARD_ESP12F_IR
+// ESP-12F IR-Transceiver-Board (Type-C)
 #define IR_PIN      14          // GPIO14 - IR-Empfaenger
 #define LED_ONBOARD LED_BUILTIN // GPIO2  - interne Status-LED (Active LOW, Ready-Funktion)
 #define LED_SIGNAL  0xFF        // Deaktiviert (keine zweite Signal-LED)

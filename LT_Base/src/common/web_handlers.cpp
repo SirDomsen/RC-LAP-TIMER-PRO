@@ -931,7 +931,7 @@ void handleGetAllConfig(AsyncWebServerRequest *request) {
           phase = 2;
         } else if (phase == 2) {
           String curIP = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
-          String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+          String lIP = (learnedApIP.length() > 0) ? learnedApIP : "192.168.4.1";
           n = snprintf(pending, sizeof(pending),
             "\"apPass\":\"%s\",\"currentIP\":\"%s\",\"learnedApIP\":\"%s\",\"defaultApSSID\":\"%s\"},",
             apPass.c_str(), curIP.c_str(), lIP.c_str(), getDefaultApSSID().c_str());
@@ -998,7 +998,7 @@ void handleGetWifiConfig(AsyncWebServerRequest *request) {
   doc["apSSID"] = apSSID;
   doc["apPass"] = apPass;
   doc["currentIP"] = (currentRuntimeWifiMode == 0) ? NetworkPlatform::accessPointIP().toString() : NetworkPlatform::stationIP().toString();
-  doc["learnedApIP"] = (learnedApIP.length() > 0) ? learnedApIP : "192.168.0.8";
+  doc["learnedApIP"] = (learnedApIP.length() > 0) ? learnedApIP : "192.168.4.1";
   doc["defaultApSSID"] = getDefaultApSSID();
 
   checkDailyBestDateRollover();

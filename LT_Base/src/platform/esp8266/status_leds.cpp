@@ -4,7 +4,9 @@
 
 namespace {
 uint32_t readyLedOffTime = 0;
+#if defined(LED_SIGNAL) && (LED_SIGNAL != 0xFF)
 uint32_t lastYellowFlash = 0;
+#endif
 bool readyLedBlinking = false;
 
 void setReadyLeds(bool on) {

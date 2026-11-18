@@ -20,7 +20,7 @@
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-static IPAddress currentActiveIP(192, 168, 0, 8);
+static IPAddress currentActiveIP(192, 168, 4, 1);
 
 extern uint32_t perfMaxLoopUs;
 extern uint32_t perfAvgLoopUs;
@@ -320,7 +320,7 @@ static void setupFallbackAP() {
   delay(50);
   NetworkPlatform::prepareAccessPoint(false);
   
-  IPAddress local_IP(192, 168, 0, 8);
+  IPAddress local_IP(192, 168, 4, 1);
   if (learnedApIP.length() > 0) {
     IPAddress parsed;
     if (parsed.fromString(learnedApIP) && parsed[0] != 0) {
