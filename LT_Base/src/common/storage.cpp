@@ -119,7 +119,7 @@ String hotspotPass = "";
 String apSSID = "";
 String apPass = AP_PASS;
 String learnedApIP = "";
-uint8_t activeWifiMode = 1; // Standard: 1 = Heim-WLAN
+uint8_t activeWifiMode = 0; // Standard: 0 = AP-Mode (ohne /wifi.json)
 
 // Eindeutige Hardware-Identifikatoren
 String getChipIdSuffix() {

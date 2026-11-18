@@ -344,28 +344,32 @@ static void connectNetworkCascade(uint8_t startMode) {
   if (startMode == 1) {
     String s = homeSSID.length() > 0 ? homeSSID : HOME_SSID;
     String p = homePass.length() > 0 ? homePass : HOME_PASS;
-    
-    LapStatusLeds::setNetworkReady(false);
-    NetworkPlatform::disconnect(true);
-    delay(50);
-    String hostname = getDeviceHostname();
-    NetworkPlatform::prepareStation(hostname.c_str());
-    
-    NetworkPlatform::beginStation(s.c_str(), p.c_str());
-    uint32_t startMs = millis();
-    while (!NetworkPlatform::isStationConnected() && (millis() - startMs < 10000)) {
-      delay(100);
-    }
-    
-    if (NetworkPlatform::isStationConnected()) {
-      currentRuntimeWifiMode = 1;
-      updateLearnedApIP(NetworkPlatform::stationIP());
-      setupGhostWLAN();
-      return; 
+
+    if (s.length() == 0 || s == "DEIN_WLAN_NAME") {
+      startMode = 2;
     } else {
-      blinkGreenLED(3);
-      delay(300);
-      startMode = 2; 
+      LapStatusLeds::setNetworkReady(false);
+      NetworkPlatform::disconnect(true);
+      delay(50);
+      String hostname = getDeviceHostname();
+      NetworkPlatform::prepareStation(hostname.c_str());
+
+      NetworkPlatform::beginStation(s.c_str(), p.c_str());
+      uint32_t startMs = millis();
+      while (!NetworkPlatform::isStationConnected() && (millis() - startMs < 10000)) {
+        delay(100);
+      }
+
+      if (NetworkPlatform::isStationConnected()) {
+        currentRuntimeWifiMode = 1;
+        updateLearnedApIP(NetworkPlatform::stationIP());
+        setupGhostWLAN();
+        return;
+      } else {
+        blinkGreenLED(3);
+        delay(300);
+        startMode = 2;
+      }
     }
   }
 
