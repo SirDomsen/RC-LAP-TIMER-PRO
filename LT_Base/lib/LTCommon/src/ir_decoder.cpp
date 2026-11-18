@@ -27,6 +27,10 @@ void IRAM_ATTR handleIRInterrupt() {
     return;
   }
 
+  if (signalLedPin == 0xFF) {
+    return;
+  }
+
 #if defined(ESP8266)
   GPOS = (1 << signalLedPin);
 #elif defined(ESP32)
